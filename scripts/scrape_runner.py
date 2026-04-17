@@ -185,7 +185,147 @@ def build_url(query: str, mode: str = "sold"):
     elif mode == "auction":
         params["LH_Auction"] = "1"
         params["_sop"] = "1"  # ending soonest
+    elif mode == "bin":
+        params["LH_BIN"] = "1"
+        params["_sop"] = "10"  # newly listed
     return f"{EBAY_BASE}?{urlencode(params)}"
+
+
+def upsert_auction(conn, rows):
+    """Upsert active auction/BIN rows into the `auctions` table.
+    rows: list of tuples matching the column order below."""
+    if not rows:
+        return 0
+    sql = """
+        INSERT INTO auctions (
+            card_id, ebay_listing_id, title, current_price, buy_now_price,
+            bid_count, end_time, seller, seller_feedback, condition,
+            snipe_eligible, snipe_score, status, ebay_url, image_url,
+            shipping_cost, is_real_ebay, buying_options, last_updated
+        ) VALUES %s
+        ON CONFLICT (ebay_listing_id) DO UPDATE SET
+            current_price = EXCLUDED.current_price,
+            buy_now_price = EXCLUDED.buy_now_price,
+            end_time = EXCLUDED.end_time,
+            buying_options = EXCLUDED.buying_options,
+            image_url = COALESCE(EXCLUDED.image_url, auctions.image_url),
+            last_updated = EXCLUDED.last_updated,
+            status = 'active'
+    """
+    with conn.cursor() as cur:
+        execute_values(cur, sql, rows)
+    conn.commit()
+    return len(rows)
+
+
+def get_default_card_id(conn) -> int:
+    """Return any card_id to satisfy the FK. We mostly want the listing data;
+    card linkage is best-effort matching on driver_name."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM cards ORDER BY id LIMIT 1")
+        row = cur.fetchone()
+        return row[0] if row else 1
+
+
+def find_card_id_for(conn, driver: str, parallel: str, default: int) -> int:
+    """Best-effort match: driver+parallel exact → driver only → default."""
+    if not driver:
+        return default
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM cards WHERE driver_name = %s AND parallel = %s LIMIT 1",
+            (driver, parallel),
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        cur.execute("SELECT id FROM cards WHERE driver_name = %s LIMIT 1", (driver,))
+        row = cur.fetchone()
+        return row[0] if row else default
+
+
+def parse_end_time(time_text: str, mode: str) -> datetime:
+    """For auctions, parse '2d 4h' or 'Apr 18, 4:00 PM' to absolute UTC datetime.
+    For BIN, return now+30 days (BIN doesn't expire on a clock)."""
+    if mode == "bin":
+        return datetime.utcnow() + timedelta(days=30)
+    if not time_text:
+        return datetime.utcnow() + timedelta(hours=6)
+    t = time_text.lower()
+    # "2d 4h", "5h 12m", "23m 7s"
+    days = re.search(r"(\d+)\s*d", t)
+    hours = re.search(r"(\d+)\s*h", t)
+    mins = re.search(r"(\d+)\s*m\b", t)
+    if days or hours or mins:
+        return datetime.utcnow() + timedelta(
+            days=int(days.group(1)) if days else 0,
+            hours=int(hours.group(1)) if hours else 0,
+            minutes=int(mins.group(1)) if mins else 0,
+        )
+    return datetime.utcnow() + timedelta(hours=6)
+
+
+def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int):
+    """Scrape active auctions or BINs and upsert into the auctions table.
+    mode: 'auction' or 'bin'."""
+    total_added = 0
+    total_seen = 0
+    for query in queries:
+        url = build_url(query, mode)
+        log.info(f"Scraping [{mode}] {query!r}")
+        try:
+            items = scrape_search_page(page, url)
+        except Exception as e:
+            log.warning(f"Page failed: {e}")
+            items = []
+        total_seen += len(items)
+        rows = []
+        for it in items:
+            raw_title = it["title"] or ""
+            title = re.sub(r"\s*Opens in a new window or tab\s*$", "", raw_title, flags=re.I).strip()
+            title = re.sub(r"\s+", " ", title).strip()
+            if not is_valid_2025_f1(title):
+                continue
+            price = parse_price(it["price"])
+            if price <= 0:
+                continue
+            item_id = extract_ebay_item_id(it["url"])
+            if not item_id:
+                continue
+            ebay_listing_id = f"v1|{item_id}|0"
+            driver = driver_from_title(title)
+            parallel = parallel_from_title(title)
+            card_id = find_card_id_for(conn, driver, parallel, default_card_id)
+            end_time = parse_end_time(it.get("date_text", ""), mode)
+            buying_opts = '["AUCTION"]' if mode == "auction" else '["FIXED_PRICE"]'
+            buy_now = price if mode == "bin" else None
+            rows.append((
+                card_id,
+                ebay_listing_id,
+                title[:255],
+                price,
+                buy_now,
+                0,                  # bid_count (unknown from search page)
+                end_time,
+                "ebay_seller",      # seller (unknown from search page)
+                0,                  # seller_feedback
+                "Used",
+                False,              # snipe_eligible
+                0.0,                # snipe_score
+                "active",
+                it["url"],
+                it["image"] or None,
+                0.0,                # shipping_cost
+                True,               # is_real_ebay
+                buying_opts,
+                datetime.utcnow(),
+            ))
+        if rows:
+            added = upsert_auction(conn, rows)
+            total_added += added
+            log.info(f"  → {added} {mode} rows upserted")
+        time.sleep(2)
+    return total_seen, total_added
 
 
 def scrape_search_page(page, url: str):
@@ -386,10 +526,35 @@ def main():
                 log.info(f"  → 0 rows (skipped {skipped_not_sold} non-sold)")
             time.sleep(2)  # polite gap between queries
 
+        # ---- Active auctions (write to auctions table, not sold_cards) ----
+        default_card_id = get_default_card_id(conn)
+        log.info(f"=== Active auction scan (default card_id={default_card_id}) ===")
+        auc_seen, auc_added = scrape_active_listings(
+            page, conn, QUERIES, "auction", default_card_id
+        )
+        log.info(f"Auction pass: {auc_seen} seen, {auc_added} upserted")
+
+        # ---- Buy-It-Now (write to auctions table with FIXED_PRICE buying_options) ----
+        log.info("=== BIN scan ===")
+        bin_seen, bin_added = scrape_active_listings(
+            page, conn, QUERIES[:5], "bin", default_card_id  # fewer queries to stay under 25min
+        )
+        log.info(f"BIN pass: {bin_seen} seen, {bin_added} upserted")
+
+        # Mark stale auctions as ended (anything not seen in this run + past end_time)
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE auctions SET status = 'ended' "
+                "WHERE status = 'active' AND end_time < NOW() AND is_real_ebay = true"
+            )
+            ended = cur.rowcount
+        conn.commit()
+        log.info(f"Marked {ended} stale auctions as ended")
+
         browser.close()
 
     conn.close()
-    log.info(f"DONE: {total_seen} listings seen, {total_added} rows upserted")
+    log.info(f"DONE: sold {total_seen}/{total_added}, auction {auc_seen}/{auc_added}, bin {bin_seen}/{bin_added}")
 
 
 if __name__ == "__main__":
