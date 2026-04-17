@@ -205,32 +205,25 @@ def scrape_search_page(page, url: str):
         return []
 
     # Try old + new eBay layouts. Modern eBay uses .s-card / .su-card-container.
+    # Price extraction is strict: only accept text that contains "$" so we don't
+    # catch "16 watchers" or "FREE shipping" badges.
     items = page.evaluate("""
         () => {
             const out = [];
             const seen = new Set();
-            // Modern layout (2025+): .s-card or .su-card-container
             const cards = document.querySelectorAll(
                 'li.s-item, .s-item__wrapper, .s-card, .su-card-container'
             );
             cards.forEach(el => {
-                // title
                 const titleEl = el.querySelector(
-                    '.s-item__title, .s-item__title span, .s-card__title, .su-styled-text.primary, [data-testid="item-title"], h3'
+                    '.s-item__title, .s-item__title span, .s-card__title, [data-testid="item-title"], h3'
                 );
-                // price
-                const priceEl = el.querySelector(
-                    '.s-item__price, .s-card__price, .su-styled-text.positive, [data-testid="item-price"]'
-                );
-                // link
                 const linkEl = el.querySelector(
                     'a.s-item__link, a.s-card__link, a[href*="/itm/"]'
                 );
-                // image
                 const imgEl = el.querySelector('img');
-                // date
                 const dateEl = el.querySelector(
-                    '.s-item__caption--signal, .s-item__title--tagblock, .s-item__listingDate, .s-card__caption, .s-card__subtitle'
+                    '.s-item__caption--signal, .s-item__title--tagblock, .s-item__listingDate, .s-card__caption'
                 );
                 if (!titleEl || !linkEl) return;
                 const title = (titleEl.innerText || titleEl.textContent || '').trim();
@@ -238,10 +231,29 @@ def scrape_search_page(page, url: str):
                 const url = linkEl.href || '';
                 if (!url.includes('/itm/')) return;
                 if (seen.has(url)) return;
+
+                // Price: try known selectors first, but VALIDATE each candidate
+                // contains a "$". Fall back to scanning all text inside the card
+                // for the first dollar amount.
+                let priceText = '';
+                const priceCandidates = el.querySelectorAll(
+                    '.s-item__price, .s-card__price, [data-testid="item-price"], .su-styled-text.positive'
+                );
+                for (const p of priceCandidates) {
+                    const t = (p.innerText || p.textContent || '').trim();
+                    if (t.includes('$')) { priceText = t; break; }
+                }
+                if (!priceText) {
+                    // Fallback: scan all text nodes for first $ amount.
+                    const all = (el.innerText || el.textContent || '');
+                    const m = all.match(/\\$\\s*[\\d,]+\\.?\\d{0,2}/);
+                    if (m) priceText = m[0];
+                }
+                if (!priceText) return;  // No real price → skip
                 seen.add(url);
                 out.push({
                     title,
-                    price: priceEl ? (priceEl.innerText || priceEl.textContent || '').trim() : '',
+                    price: priceText,
                     url,
                     image: imgEl ? (imgEl.src || imgEl.dataset.src || '') : '',
                     date_text: dateEl ? (dateEl.innerText || dateEl.textContent || '').trim() : ''
