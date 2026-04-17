@@ -315,51 +315,64 @@ def main():
         except Exception as e:
             log.warning(f"Homepage warm-up failed: {e}")
 
+        # SOLD ONLY — active auctions belong in /auctions table (handled by Vercel Browse sync).
+        # The Sales Database must only contain actual completed sales.
         for query in QUERIES:
-            for mode in ("sold", "auction"):
-                url = build_url(query, mode)
-                log.info(f"Scraping [{mode}] {query!r}")
-                try:
-                    items = scrape_search_page(page, url)
-                except Exception as e:
-                    log.warning(f"Page failed: {e}")
-                    items = []
-                total_seen += len(items)
+            url = build_url(query, "sold")
+            log.info(f"Scraping [sold] {query!r}")
+            try:
+                items = scrape_search_page(page, url)
+            except Exception as e:
+                log.warning(f"Page failed: {e}")
+                items = []
+            total_seen += len(items)
 
-                rows = []
-                for it in items:
-                    title = it["title"]
-                    if not is_valid_2025_f1(title):
-                        continue
-                    price = parse_price(it["price"])
-                    if price <= 0:
-                        continue
-                    parallel = parallel_from_title(title)
-                    if parallel == "Base":
-                        continue  # non-base only
-                    item_id = extract_ebay_item_id(it["url"])
-                    if not item_id:
-                        continue
-                    rows.append((
-                        item_id,
-                        title[:500],
-                        driver_from_title(title),
-                        parallel,
-                        grade_from_title(title),
-                        "Used",
-                        price,
-                        parse_sale_date(it["date_text"]) if mode == "sold" else datetime.utcnow(),
-                        it["image"] or None,
-                        it["url"],
-                        mode == "auction",
-                        "F1",
-                    ))
+            rows = []
+            skipped_not_sold = 0
+            for it in items:
+                # Clean eBay's "Opens in a new window or tab" appendage and any newlines.
+                raw_title = it["title"] or ""
+                title = re.sub(r"\s*Opens in a new window or tab\s*$", "", raw_title, flags=re.I).strip()
+                title = re.sub(r"\s+", " ", title).strip()
+                if not is_valid_2025_f1(title):
+                    continue
+                # Require "Sold" marker in eBay's date text — protects against
+                # active auctions sneaking in if eBay's Sold filter ever leaks.
+                date_txt = (it.get("date_text") or "").lower()
+                if "sold" not in date_txt:
+                    skipped_not_sold += 1
+                    continue
+                price = parse_price(it["price"])
+                if price <= 0:
+                    continue
+                parallel = parallel_from_title(title)
+                if parallel == "Base":
+                    continue  # non-base only
+                item_id = extract_ebay_item_id(it["url"])
+                if not item_id:
+                    continue
+                rows.append((
+                    item_id,
+                    title[:500],
+                    driver_from_title(title),
+                    parallel,
+                    grade_from_title(title),
+                    "Used",
+                    price,
+                    parse_sale_date(it["date_text"]),
+                    it["image"] or None,
+                    it["url"],
+                    False,  # is_auction — always False; this table is sold only
+                    "F1",
+                ))
 
-                if rows:
-                    added = upsert_sold(conn, rows)
-                    total_added += added
-                    log.info(f"  → {added} rows upserted")
-                time.sleep(2)  # polite gap between queries
+            if rows:
+                added = upsert_sold(conn, rows)
+                total_added += added
+                log.info(f"  → {added} sold rows upserted (skipped {skipped_not_sold} non-sold)")
+            elif skipped_not_sold:
+                log.info(f"  → 0 rows (skipped {skipped_not_sold} non-sold)")
+            time.sleep(2)  # polite gap between queries
 
         browser.close()
 
