@@ -65,7 +65,7 @@ export default function Auctions() {
   const load = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
     swrFetch(
-      `${API}/api/auctions?limit=400&status=active`,
+      `${API}/api/auctions?limit=500&status=active&buying=auction`,
       d => { setAuctions(d.auctions || d || []); setLoading(false) },
       () => setRefreshing(false)
     )

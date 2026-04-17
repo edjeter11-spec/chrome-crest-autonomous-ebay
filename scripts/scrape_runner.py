@@ -244,25 +244,27 @@ def find_card_id_for(conn, driver: str, parallel: str, default: int) -> int:
         return row[0] if row else default
 
 
-def parse_end_time(time_text: str, mode: str) -> datetime:
-    """For auctions, parse '2d 4h' or 'Apr 18, 4:00 PM' to absolute UTC datetime.
-    For BIN, return now+30 days (BIN doesn't expire on a clock)."""
+def parse_end_time(time_text: str, mode: str):
+    """For auctions, parse '2d 4h' / '5h 12m' / '23m 7s' to absolute UTC datetime.
+    Returns None if unparseable (don't fake a countdown).
+    For BIN, return now+30 days (no real countdown)."""
     if mode == "bin":
         return datetime.utcnow() + timedelta(days=30)
     if not time_text:
-        return datetime.utcnow() + timedelta(hours=6)
+        return None
     t = time_text.lower()
-    # "2d 4h", "5h 12m", "23m 7s"
-    days = re.search(r"(\d+)\s*d", t)
-    hours = re.search(r"(\d+)\s*h", t)
+    days = re.search(r"(\d+)\s*d\b", t)
+    hours = re.search(r"(\d+)\s*h\b", t)
     mins = re.search(r"(\d+)\s*m\b", t)
-    if days or hours or mins:
+    secs = re.search(r"(\d+)\s*s\b", t)
+    if days or hours or mins or secs:
         return datetime.utcnow() + timedelta(
             days=int(days.group(1)) if days else 0,
             hours=int(hours.group(1)) if hours else 0,
             minutes=int(mins.group(1)) if mins else 0,
+            seconds=int(secs.group(1)) if secs else 0,
         )
-    return datetime.utcnow() + timedelta(hours=6)
+    return None
 
 
 def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int):
@@ -297,6 +299,8 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
             parallel = parallel_from_title(title)
             card_id = find_card_id_for(conn, driver, parallel, default_card_id)
             end_time = parse_end_time(it.get("date_text", ""), mode)
+            if mode == "auction" and end_time is None:
+                continue  # Skip rows we can't determine end time for — better than fake countdown
             buying_opts = '["AUCTION"]' if mode == "auction" else '["FIXED_PRICE"]'
             buy_now = price if mode == "bin" else None
             rows.append((
@@ -390,13 +394,23 @@ def scrape_search_page(page, url: str):
                     if (m) priceText = m[0];
                 }
                 if (!priceText) return;  // No real price → skip
+
+                // Time-left extraction: try dedicated selectors first, then
+                // fall back to scanning the whole card for "Xd Yh" / "Xh Ym" / "Xm Ys".
+                let dateText = dateEl ? (dateEl.innerText || dateEl.textContent || '').trim() : '';
+                if (!dateText || !/\\d+\\s*[dhms]\\b/i.test(dateText)) {
+                    const allText = el.innerText || el.textContent || '';
+                    const m = allText.match(/\\b\\d+d\\s+\\d+h\\b|\\b\\d+h\\s+\\d+m\\b|\\b\\d+m\\s+\\d+s\\b/i);
+                    if (m) dateText = m[0];
+                }
+
                 seen.add(url);
                 out.push({
                     title,
                     price: priceText,
                     url,
                     image: imgEl ? (imgEl.src || imgEl.dataset.src || '') : '',
-                    date_text: dateEl ? (dateEl.innerText || dateEl.textContent || '').trim() : ''
+                    date_text: dateText
                 });
             });
             return out;
