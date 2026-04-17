@@ -15,7 +15,7 @@ import httpx
 from datetime import datetime
 
 from database import create_tables, get_db, Auction, Card, engine
-from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales
+from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales, psa_data
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -36,6 +36,7 @@ app.include_router(alerts.router)
 app.include_router(analytics.router)
 app.include_router(wishlist.router)
 app.include_router(sales.router)
+app.include_router(psa_data.router)
 
 
 @app.post("/api/admin/migrate-sold-cards")
@@ -86,6 +87,73 @@ def migrate_sold_cards():
                     results.append({"stmt": stmt[:60], "ok": True})
                 except Exception as e:
                     results.append({"stmt": stmt[:60], "ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
+
+
+@app.post("/api/admin/migrate-psa-tables")
+def migrate_psa_tables():
+    """Create psa_pop and psa_sales tables on Neon Postgres (idempotent)."""
+    from sqlalchemy import text
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS psa_pop (
+            id SERIAL PRIMARY KEY,
+            set_year INTEGER,
+            set_name VARCHAR,
+            card_num VARCHAR,
+            driver_name VARCHAR,
+            parallel VARCHAR,
+            grade VARCHAR,
+            pop_count INTEGER DEFAULT 0,
+            pop_higher INTEGER DEFAULT 0,
+            source_url VARCHAR,
+            last_scraped TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_psa_pop_driver_name ON psa_pop (driver_name)",
+        "CREATE INDEX IF NOT EXISTS ix_psa_pop_parallel ON psa_pop (parallel)",
+        "CREATE INDEX IF NOT EXISTS ix_psa_pop_grade ON psa_pop (grade)",
+        "CREATE INDEX IF NOT EXISTS ix_psa_pop_driver_parallel_grade ON psa_pop (driver_name, parallel, grade)",
+        """
+        CREATE TABLE IF NOT EXISTS psa_sales (
+            id SERIAL PRIMARY KEY,
+            driver_name VARCHAR,
+            parallel VARCHAR,
+            grade VARCHAR,
+            price FLOAT,
+            sale_date TIMESTAMP,
+            source VARCHAR,
+            auction_house VARCHAR,
+            image_url VARCHAR,
+            listing_url VARCHAR UNIQUE,
+            title VARCHAR,
+            scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_psa_sales_driver_name ON psa_sales (driver_name)",
+        "CREATE INDEX IF NOT EXISTS ix_psa_sales_grade ON psa_sales (grade)",
+        "CREATE INDEX IF NOT EXISTS ix_psa_sales_sale_date ON psa_sales (sale_date)",
+        "CREATE INDEX IF NOT EXISTS ix_psa_sales_driver_grade_date ON psa_sales (driver_name, grade, sale_date)",
+    ]
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"stmt": stmt[:60].strip(), "ok": True})
+                except Exception as e:
+                    results.append({"stmt": stmt[:60].strip(), "ok": False, "error": str(e)[:200]})
     except Exception as e:
         return {"status": "error", "error": str(e)[:300]}
     return {"status": "done", "results": results}

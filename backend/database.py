@@ -172,6 +172,47 @@ class SoldCard(Base):
     )
 
 
+class PsaPop(Base):
+    """Official PSA population data per card-grade combo. Sourced from psacard.com/pop/."""
+    __tablename__ = "psa_pop"
+    id = Column(Integer, primary_key=True, index=True)
+    set_year = Column(Integer)
+    set_name = Column(String)
+    card_num = Column(String, nullable=True)
+    driver_name = Column(String, index=True)
+    parallel = Column(String, index=True)
+    grade = Column(String, index=True)
+    pop_count = Column(Integer, default=0)
+    pop_higher = Column(Integer, default=0)
+    source_url = Column(String, nullable=True)
+    last_scraped = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_psa_pop_driver_parallel_grade", "driver_name", "parallel", "grade"),
+    )
+
+
+class PsaSale(Base):
+    """Individual graded sale record. Sourced from psacard.com/auctionprices + our eBay scraper."""
+    __tablename__ = "psa_sales"
+    id = Column(Integer, primary_key=True, index=True)
+    driver_name = Column(String, index=True)
+    parallel = Column(String, index=True)
+    grade = Column(String, index=True)
+    price = Column(Float)
+    sale_date = Column(DateTime, index=True)
+    source = Column(String)
+    auction_house = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
+    listing_url = Column(String, nullable=True, unique=True)
+    title = Column(String, nullable=True)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_psa_sales_driver_grade_date", "driver_name", "grade", "sale_date"),
+    )
+
+
 class Wishlist(Base):
     __tablename__ = "wishlist"
     id = Column(Integer, primary_key=True, index=True)

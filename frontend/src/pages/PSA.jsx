@@ -22,6 +22,12 @@ export default function PSA() {
   const [psaData, setPsaData] = useState(null)
   const [psaLoading, setPsaLoading] = useState(false)
 
+  // New PSA data layer
+  const [leaderboard, setLeaderboard] = useState(null)
+  const [observed, setObserved] = useState(null)
+  const [officialPop, setOfficialPop] = useState(null)
+  const [recentSales, setRecentSales] = useState([])
+
   useEffect(() => {
     fetch(`${API}/api/cards?limit=500`)
       .then(r => r.json())
@@ -32,6 +38,8 @@ export default function PSA() {
         setLoading(false)
       })
       .catch(() => setLoading(false))
+    fetch(`${API}/api/psa/leaderboard`)
+      .then(r => r.json()).then(setLeaderboard).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -43,6 +51,20 @@ export default function PSA() {
       .then(d => { setPsaData(d); setPsaLoading(false) })
       .catch(() => setPsaLoading(false))
   }, [selectedCard])
+
+  useEffect(() => {
+    if (!selectedDriver) {
+      setObserved(null); setOfficialPop(null); setRecentSales([])
+      return
+    }
+    const drv = encodeURIComponent(selectedDriver)
+    fetch(`${API}/api/psa/observed?driver=${drv}`)
+      .then(r => r.json()).then(setObserved).catch(() => setObserved(null))
+    fetch(`${API}/api/psa/pop?driver=${drv}`)
+      .then(r => r.json()).then(setOfficialPop).catch(() => setOfficialPop(null))
+    fetch(`${API}/api/psa/sales?driver=${drv}&limit=20`)
+      .then(r => r.json()).then(d => setRecentSales(d.sales || [])).catch(() => setRecentSales([]))
+  }, [selectedDriver])
 
   // Unique drivers, sorted by highest investment score
   const drivers = [...new Map(
@@ -94,8 +116,26 @@ export default function PSA() {
     <div className="space-y-5 max-w-[1400px]">
       <div>
         <h1 className="page-title">PSA Population</h1>
-        <p className="text-sm text-gray-500 mt-1">Grade estimates · eBay graded sales data · Pop report links</p>
+        <p className="text-sm text-gray-500 mt-1">Observed graded sales (eBay) · Official PSA pop · Auction Prices Realized</p>
       </div>
+
+      {/* KPI strip */}
+      {leaderboard?.kpis && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            { label: 'Graded Sales Tracked', value: leaderboard.kpis.total_graded_sales_tracked?.toLocaleString() || 0, color: 'text-white' },
+            { label: 'Total Graded $ Value', value: `$${(leaderboard.kpis.total_graded_value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, color: 'text-green-400' },
+            { label: 'Drivers w/ PSA 10s', value: leaderboard.kpis.drivers_with_psa10 || 0, color: 'text-yellow-400' },
+            { label: 'Official PSA Pop Rows', value: leaderboard.kpis.psa_pop_rows || 0, color: leaderboard.kpis.psa_pop_rows ? 'text-blue-400' : 'text-gray-600' },
+            { label: 'PSA APR Sales', value: leaderboard.kpis.psa_apr_sales || 0, color: leaderboard.kpis.psa_apr_sales ? 'text-purple-400' : 'text-gray-600' },
+          ].map(k => (
+            <div key={k.label} className="panel p-3">
+              <div className={`text-xl font-black ${k.color}`}>{k.value}</div>
+              <div className="text-[10px] text-gray-500 uppercase tracking-wide mt-0.5">{k.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex gap-4">
         {/* Driver list */}
@@ -159,12 +199,23 @@ export default function PSA() {
         </div>
 
         {/* Detail panel */}
-        {!selectedCard && (
+        {!selectedCard && !selectedDriver && (
           <div className="flex-1 panel flex items-center justify-center py-24 text-gray-600">
             <div className="text-center">
               <Shield size={36} className="mx-auto mb-3 opacity-20" />
-              <p className="text-sm">{selectedDriver ? 'Pick a parallel' : 'Select a driver to get started'}</p>
+              <p className="text-sm">Select a driver to get started</p>
             </div>
+          </div>
+        )}
+
+        {!selectedCard && selectedDriver && (
+          <div className="flex-1 space-y-4">
+            <DriverObservedPanel
+              driver={selectedDriver}
+              observed={observed}
+              officialPop={officialPop}
+              recentSales={recentSales}
+            />
           </div>
         )}
 
@@ -303,6 +354,14 @@ export default function PSA() {
               </div>
             )}
 
+            {/* Observed + official PSA pop + recent sales for this driver */}
+            <DriverObservedPanel
+              driver={selectedDriver}
+              observed={observed}
+              officialPop={officialPop}
+              recentSales={recentSales}
+            />
+
             {/* Should you grade? */}
             <div className="panel p-5">
               <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
@@ -338,6 +397,148 @@ export default function PSA() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DriverObservedPanel({ driver, observed, officialPop, recentSales }) {
+  const indexed = officialPop?.psa_indexed
+  const popRows = officialPop?.drivers?.[driver] || []
+
+  return (
+    <div className="space-y-4">
+      {/* Observed (Track A) */}
+      <div className="panel p-5">
+        <div className="flex items-baseline justify-between mb-3">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <BarChart2 size={14} className="text-blue-400" />
+            Observed Graded Sales — {driver}
+          </h3>
+          <span className="text-[10px] text-gray-600 uppercase tracking-wide">eBay sold_cards</span>
+        </div>
+        {!observed ? (
+          <div className="text-xs text-gray-600">Loading…</div>
+        ) : observed.total_graded_sales === 0 ? (
+          <div className="text-xs text-gray-600">No graded sales observed yet for this driver.</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+                <div className="text-xl font-black text-white">{observed.total_graded_sales}</div>
+                <div className="text-[10px] text-gray-500 uppercase tracking-wide mt-0.5">Graded Sales</div>
+              </div>
+              <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+                <div className="text-xl font-black text-green-400">${(observed.total_graded_value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                <div className="text-[10px] text-gray-500 uppercase tracking-wide mt-0.5">Graded $ Value</div>
+              </div>
+              <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+                <div className="text-xl font-black text-yellow-400">{observed.gem_rate_pct}%</div>
+                <div className="text-[10px] text-gray-500 uppercase tracking-wide mt-0.5">Gem Rate (PSA 10 %)</div>
+              </div>
+              <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+                <div className="text-xl font-black text-white">{observed.psa_10_count}</div>
+                <div className="text-[10px] text-gray-500 uppercase tracking-wide mt-0.5">PSA 10s Observed</div>
+              </div>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-800">
+                  <th className="text-left py-1.5 font-semibold">Grade</th>
+                  <th className="text-right py-1.5 font-semibold">Count</th>
+                  <th className="text-right py-1.5 font-semibold">Avg</th>
+                  <th className="text-right py-1.5 font-semibold">Min</th>
+                  <th className="text-right py-1.5 font-semibold">Max</th>
+                  <th className="text-right py-1.5 font-semibold">Most Recent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {observed.per_grade.map(r => (
+                  <tr key={r.grade} className="border-b border-gray-800/50">
+                    <td className={`py-1.5 font-bold ${r.grade === 'PSA 10' ? 'text-yellow-400' : r.grade === 'PSA 9' ? 'text-green-400' : 'text-gray-300'}`}>{r.grade}</td>
+                    <td className="text-right text-white">{r.count}</td>
+                    <td className="text-right text-white">${r.avg_price?.toLocaleString() ?? '—'}</td>
+                    <td className="text-right text-gray-400">${r.min_price?.toLocaleString() ?? '—'}</td>
+                    <td className="text-right text-gray-400">${r.max_price?.toLocaleString() ?? '—'}</td>
+                    <td className="text-right text-gray-500">
+                      {r.most_recent_price ? `$${r.most_recent_price.toLocaleString()} · ${r.most_recent_date?.slice(0, 10)}` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
+
+      {/* Official PSA pop */}
+      <div className="panel p-5">
+        <div className="flex items-baseline justify-between mb-3">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <Shield size={14} className="text-blue-400" />
+            Official PSA Population
+          </h3>
+          <span className="text-[10px] text-gray-600 uppercase tracking-wide">psacard.com/pop</span>
+        </div>
+        {!indexed ? (
+          <div className="px-3 py-2 rounded-xl bg-yellow-900/20 border border-yellow-800/40 text-xs text-yellow-400">
+            Not yet indexed by PSA (or scraper blocked by Cloudflare). Showing observed data only.
+          </div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-gray-500 border-b border-gray-800">
+                <th className="text-left py-1.5 font-semibold">Set</th>
+                <th className="text-left py-1.5 font-semibold">Parallel</th>
+                <th className="text-left py-1.5 font-semibold">Grade</th>
+                <th className="text-right py-1.5 font-semibold">Pop</th>
+                <th className="text-right py-1.5 font-semibold">Higher</th>
+              </tr>
+            </thead>
+            <tbody>
+              {popRows.slice(0, 30).map((r, i) => (
+                <tr key={i} className="border-b border-gray-800/50">
+                  <td className="py-1.5 text-gray-400">{r.set_year}</td>
+                  <td className="py-1.5 text-gray-300">{r.parallel}</td>
+                  <td className={`py-1.5 font-bold ${r.grade === 'PSA 10' ? 'text-yellow-400' : 'text-gray-300'}`}>{r.grade}</td>
+                  <td className="text-right text-white">{r.pop_count}</td>
+                  <td className="text-right text-gray-400">{r.pop_higher}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Recent graded sales feed */}
+      <div className="panel p-5">
+        <div className="flex items-baseline justify-between mb-3">
+          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <TrendingUp size={14} className="text-green-400" />
+            Recent Graded Sales
+          </h3>
+          <span className="text-[10px] text-gray-600 uppercase tracking-wide">{recentSales.length} rows</span>
+        </div>
+        {recentSales.length === 0 ? (
+          <div className="text-xs text-gray-600">No recent graded sales for this driver.</div>
+        ) : (
+          <div className="space-y-1">
+            {recentSales.slice(0, 20).map((s, i) => (
+              <div key={i} className="flex items-center gap-3 text-xs py-1 border-b border-gray-800/40 last:border-0">
+                <span className={`font-bold w-14 shrink-0 ${s.grade === 'PSA 10' ? 'text-yellow-400' : s.grade === 'PSA 9' ? 'text-green-400' : 'text-gray-400'}`}>{s.grade}</span>
+                <span className="text-gray-300 truncate flex-1">{s.parallel} · {s.title?.slice(0, 60)}</span>
+                <span className="text-white font-bold w-16 text-right">${s.price?.toLocaleString()}</span>
+                <span className="text-gray-600 w-20 text-right">{s.sale_date?.slice(0, 10)}</span>
+                <span className="text-[10px] text-gray-600 w-14 text-right">{s.source}</span>
+                {s.listing_url && (
+                  <a href={s.listing_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300">
+                    <ExternalLink size={10} />
+                  </a>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
