@@ -191,41 +191,69 @@ def build_url(query: str, mode: str = "sold"):
 def scrape_search_page(page, url: str):
     """Return list of dicts: title, price, url, image, sale_date_text."""
     page.goto(url, wait_until="domcontentloaded", timeout=45000)
-    # Detect bot challenge page
     title = page.title() or ""
-    if "Pardon" in title or "interruption" in title.lower() or "challenge" in title.lower():
-        log.warning(f"Bot challenge detected at {url[:80]} — page title: {title}")
-        # Try waiting longer in case it auto-resolves
+    if "Pardon" in title or "interruption" in title.lower():
+        log.warning(f"Bot challenge: {title}")
         page.wait_for_timeout(8000)
     try:
-        page.wait_for_selector("li.s-item, .s-item__wrapper, .srp-results", timeout=20000)
+        page.wait_for_selector(
+            "li.s-item, .s-item__wrapper, .srp-results, .su-card-container, .s-card",
+            timeout=20000,
+        )
     except Exception:
-        log.warning(f"No s-item selector found at {url[:80]} (title={title})")
+        log.warning(f"No selector match at {url[:80]} (title={title})")
         return []
 
+    # Try old + new eBay layouts. Modern eBay uses .s-card / .su-card-container.
     items = page.evaluate("""
         () => {
             const out = [];
-            document.querySelectorAll('li.s-item').forEach(el => {
-                const titleEl = el.querySelector('.s-item__title, .s-item__title span');
-                const priceEl = el.querySelector('.s-item__price');
-                const linkEl = el.querySelector('a.s-item__link');
-                const imgEl = el.querySelector('.s-item__image img');
-                const dateEl = el.querySelector('.s-item__caption--signal, .s-item__title--tagblock, .s-item__listingDate');
+            const seen = new Set();
+            // Modern layout (2025+): .s-card or .su-card-container
+            const cards = document.querySelectorAll(
+                'li.s-item, .s-item__wrapper, .s-card, .su-card-container'
+            );
+            cards.forEach(el => {
+                // title
+                const titleEl = el.querySelector(
+                    '.s-item__title, .s-item__title span, .s-card__title, .su-styled-text.primary, [data-testid="item-title"], h3'
+                );
+                // price
+                const priceEl = el.querySelector(
+                    '.s-item__price, .s-card__price, .su-styled-text.positive, [data-testid="item-price"]'
+                );
+                // link
+                const linkEl = el.querySelector(
+                    'a.s-item__link, a.s-card__link, a[href*="/itm/"]'
+                );
+                // image
+                const imgEl = el.querySelector('img');
+                // date
+                const dateEl = el.querySelector(
+                    '.s-item__caption--signal, .s-item__title--tagblock, .s-item__listingDate, .s-card__caption, .s-card__subtitle'
+                );
                 if (!titleEl || !linkEl) return;
-                const title = (titleEl.innerText || '').trim();
-                if (!title || title === 'Shop on eBay') return;
+                const title = (titleEl.innerText || titleEl.textContent || '').trim();
+                if (!title || title === 'Shop on eBay' || title.length < 5) return;
+                const url = linkEl.href || '';
+                if (!url.includes('/itm/')) return;
+                if (seen.has(url)) return;
+                seen.add(url);
                 out.push({
                     title,
-                    price: priceEl ? priceEl.innerText.trim() : '',
-                    url: linkEl.href,
+                    price: priceEl ? (priceEl.innerText || priceEl.textContent || '').trim() : '',
+                    url,
                     image: imgEl ? (imgEl.src || imgEl.dataset.src || '') : '',
-                    date_text: dateEl ? dateEl.innerText.trim() : ''
+                    date_text: dateEl ? (dateEl.innerText || dateEl.textContent || '').trim() : ''
                 });
             });
             return out;
         }
     """)
+    if not items:
+        # Dump first 2KB of body for debugging
+        body_snippet = page.evaluate("() => document.body.innerText.slice(0, 800)")
+        log.warning(f"Zero items extracted. Body preview: {body_snippet[:400]}")
     return items
 
 
