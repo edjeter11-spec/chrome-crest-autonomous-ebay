@@ -23,6 +23,11 @@ from urllib.parse import urlencode
 import psycopg2
 from psycopg2.extras import execute_values
 from playwright.sync_api import sync_playwright
+try:
+    from tf_playwright_stealth import stealth_sync
+    HAS_STEALTH = True
+except ImportError:
+    HAS_STEALTH = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("scraper")
@@ -186,10 +191,16 @@ def build_url(query: str, mode: str = "sold"):
 def scrape_search_page(page, url: str):
     """Return list of dicts: title, price, url, image, sale_date_text."""
     page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    # Detect bot challenge page
+    title = page.title() or ""
+    if "Pardon" in title or "interruption" in title.lower() or "challenge" in title.lower():
+        log.warning(f"Bot challenge detected at {url[:80]} — page title: {title}")
+        # Try waiting longer in case it auto-resolves
+        page.wait_for_timeout(8000)
     try:
-        page.wait_for_selector("li.s-item, .s-item__wrapper", timeout=15000)
+        page.wait_for_selector("li.s-item, .s-item__wrapper, .srp-results", timeout=20000)
     except Exception:
-        log.warning(f"No s-item selector found at {url[:80]}")
+        log.warning(f"No s-item selector found at {url[:80]} (title={title})")
         return []
 
     items = page.evaluate("""
@@ -240,16 +251,41 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+            args=[
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--disable-web-security",
+            ],
         )
         ctx = browser.new_context(
             user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
             ),
-            viewport={"width": 1366, "height": 900},
+            viewport={"width": 1440, "height": 900},
+            locale="en-US",
+            timezone_id="America/New_York",
+            extra_http_headers={
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "sec-ch-ua": '"Chromium";v="127", "Not)A;Brand";v="99"',
+            },
         )
         page = ctx.new_page()
+        if HAS_STEALTH:
+            try:
+                stealth_sync(page)
+                log.info("Stealth mode active")
+            except Exception as e:
+                log.warning(f"Stealth init failed: {e}")
+        # Visit eBay homepage first to get cookies
+        try:
+            page.goto("https://www.ebay.com/", wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(2500)
+            log.info(f"Homepage warm-up: {page.title()[:60]}")
+        except Exception as e:
+            log.warning(f"Homepage warm-up failed: {e}")
 
         for query in QUERIES:
             for mode in ("sold", "auction"):
