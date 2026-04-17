@@ -1,0 +1,936 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(__file__))
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query as QueryParam
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, Response
+from sqlalchemy.orm import Session
+import asyncio
+import json
+import httpx
+from datetime import datetime
+
+from database import create_tables, get_db, Auction, Card, engine
+from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales
+from scheduler import start_scheduler
+from ebay_api import has_real_credentials
+
+app = FastAPI(title="F1 Chrome Crest", version="2.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(cards.router)
+app.include_router(auctions.router)
+app.include_router(portfolio.router)
+app.include_router(alerts.router)
+app.include_router(analytics.router)
+app.include_router(wishlist.router)
+app.include_router(sales.router)
+
+
+@app.post("/api/admin/migrate-sold-cards")
+def migrate_sold_cards():
+    """Create the sold_cards table and its index on Neon Postgres (idempotent)."""
+    from sqlalchemy import text
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS sold_cards (
+            id SERIAL PRIMARY KEY,
+            ebay_item_id VARCHAR NOT NULL UNIQUE,
+            title VARCHAR NOT NULL,
+            driver_name VARCHAR,
+            parallel VARCHAR,
+            grade VARCHAR,
+            condition VARCHAR,
+            sale_price FLOAT NOT NULL,
+            sale_date TIMESTAMP NOT NULL,
+            image_url VARCHAR,
+            ebay_url VARCHAR,
+            shipping_cost FLOAT,
+            is_auction BOOLEAN DEFAULT FALSE,
+            series VARCHAR DEFAULT 'F1',
+            scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_sold_cards_ebay_item_id ON sold_cards (ebay_item_id)",
+        "CREATE INDEX IF NOT EXISTS ix_sold_cards_driver_name ON sold_cards (driver_name)",
+        "CREATE INDEX IF NOT EXISTS ix_sold_cards_parallel ON sold_cards (parallel)",
+        "CREATE INDEX IF NOT EXISTS ix_sold_cards_sale_date ON sold_cards (sale_date)",
+        "CREATE INDEX IF NOT EXISTS ix_sold_cards_driver_parallel_date ON sold_cards (driver_name, parallel, sale_date)",
+    ]
+    # Also run SQLAlchemy create_all for local SQLite dev
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"stmt": stmt[:60], "ok": True})
+                except Exception as e:
+                    results.append({"stmt": stmt[:60], "ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
+
+
+@app.get("/api/admin/debug-finding-api")
+async def debug_finding_api():
+    """Diagnose why the Finding API returns 0 items."""
+    from ebay_finding_api import _find_completed_items, _app_id
+    import os as _os
+    app_id = _app_id()
+    result = {
+        "app_id_present": bool(app_id),
+        "app_id_len": len(app_id) if app_id else 0,
+        "ebay_app_id_env": bool(_os.getenv("EBAY_APP_ID")),
+    }
+    try:
+        items = await _find_completed_items("2025 Topps Chrome F1 Verstappen", page=1)
+        result["items_returned"] = len(items)
+        result["sample"] = items[:2] if items else []
+    except Exception as e:
+        result["error"] = str(e)[:300]
+
+    # Raw call to see eBay's actual response
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                "https://svcs.ebay.com/services/search/FindingService/v1",
+                params={
+                    "OPERATION-NAME": "findCompletedItems",
+                    "SERVICE-VERSION": "1.0.0",
+                    "SECURITY-APPNAME": app_id,
+                    "RESPONSE-DATA-FORMAT": "JSON",
+                    "REST-PAYLOAD": "",
+                    "keywords": "2025 Topps Chrome F1 Verstappen",
+                    "paginationInput.entriesPerPage": "5",
+                    "itemFilter(0).name": "SoldItemsOnly",
+                    "itemFilter(0).value": "true",
+                },
+            )
+            result["http_status"] = resp.status_code
+            result["body_preview"] = resp.text[:800]
+    except Exception as e:
+        result["raw_error"] = str(e)[:300]
+    return result
+
+
+@app.post("/api/admin/ingest-sold")
+async def admin_ingest_sold():
+    """Pull sold listings from eBay Finding API and upsert non-base 2025 Chrome F1."""
+    from sold_ingest import ingest_all_drivers
+    try:
+        result = await ingest_all_drivers()
+        return {"status": "ok", **result}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "error": str(e)[:300], "trace": traceback.format_exc()[:800]}
+
+
+@app.post("/api/admin/scrape-card-images")
+async def trigger_card_image_scrape():
+    """Manually trigger a card image scrape from eBay public search."""
+    asyncio.create_task(_scrape_card_images())
+    return {"status": "scraping started — check logs"}
+
+
+@app.post("/api/admin/scrape-130point")
+async def admin_scrape_130point():
+    """Scrape 130point.com sold comps and upsert into SoldCard."""
+    from scrape_130point import ingest_130point
+    try:
+        result = await ingest_130point()
+        return {"status": "ok", **result}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "error": str(e)[:300], "trace": traceback.format_exc()[:800]}
+
+
+@app.post("/api/admin/scrape-ebay-html")
+async def admin_scrape_ebay_html(mode: str = QueryParam("sold")):
+    """Scrape eBay search HTML (mode=sold|auction) — no Browse API quota used."""
+    try:
+        if mode == "auction":
+            from scrape_ebay_html import ingest_ebay_html_auction
+            result = await ingest_ebay_html_auction()
+        else:
+            from scrape_ebay_html import ingest_ebay_html_sold
+            result = await ingest_ebay_html_sold()
+        return {"status": "ok", **result}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "error": str(e)[:300], "trace": traceback.format_exc()[:800]}
+
+
+@app.post("/api/admin/ingest-finding-api-all")
+async def admin_ingest_finding_api_all():
+    """Aggressive Finding API ingest: driver × parallel matrix, sold + active."""
+    from sold_ingest import ingest_finding_api_all
+    try:
+        result = await ingest_finding_api_all()
+        return {"status": "ok", **result}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "error": str(e)[:300], "trace": traceback.format_exc()[:800]}
+
+
+@app.get("/api/drivers/photo")
+async def driver_photo(name: str = QueryParam(...)):
+    """Return cached Wikipedia headshot URL for a driver."""
+    from driver_photos import get_photo
+    url = await get_photo(name)
+    return {"driver": name, "photo_url": url}
+
+
+@app.post("/api/drivers/refresh-photos")
+async def refresh_driver_photos():
+    """Re-fetch all driver photos from Wikipedia in parallel and persist to DB."""
+    from database import SessionLocal, Card
+    from driver_photos import DRIVER_WIKIPEDIA, fetch_driver_photo
+    names = list(DRIVER_WIKIPEDIA.keys())
+    results = await asyncio.gather(*[fetch_driver_photo(n) for n in names], return_exceptions=True)
+    db = SessionLocal()
+    updated = 0
+    try:
+        for name, url in zip(names, results):
+            if isinstance(url, str) and url:
+                cards = db.query(Card).filter(Card.driver_name == name).all()
+                for c in cards:
+                    c.image_url = url
+                updated += len(cards)
+        db.commit()
+    finally:
+        db.close()
+    return {"status": "done", "updated": updated}
+
+
+_ALLOWED_HOSTS = {
+    "i.ebayimg.com", "ir.ebaystatic.com", "thumbs.ebaystatic.com",
+    "upload.wikimedia.org", "commons.wikimedia.org",
+}
+
+
+@app.get("/api/proxy/image")
+async def proxy_image(url: str = QueryParam(...)):
+    """Proxy eBay CDN images server-side to avoid hotlink/CORS blocks."""
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(url).netloc.lstrip("www.")
+        if host not in _ALLOWED_HOSTS:
+            return Response(status_code=403)
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+            r = await client.get(url, headers={"Referer": "https://www.ebay.com/"})
+            if r.status_code != 200:
+                return Response(status_code=r.status_code)
+            content_type = r.headers.get("content-type", "image/jpeg")
+            return Response(
+                content=r.content,
+                media_type=content_type,
+                headers={"Cache-Control": "public, max-age=86400"},
+            )
+    except Exception:
+        return Response(status_code=502)
+
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        dead = []
+        for conn in self.active_connections:
+            try:
+                await conn.send_json(message)
+            except Exception:
+                dead.append(conn)
+        for d in dead:
+            self.disconnect(d)
+
+
+manager = ConnectionManager()
+
+# Wire scheduler broadcast to our WS manager
+from scheduler import set_broadcast
+set_broadcast(manager.broadcast)
+
+
+@app.get("/api/cards/{card_id}/psa-pop")
+async def psa_pop_report(card_id: int, db: Session = Depends(get_db)):
+    from database import PriceHistory
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if not card:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Card not found")
+
+    driver_name = card.driver_name or ""
+    # eBay sold search for PSA-graded versions of this card
+    ebay_psa_url = (
+        f"https://www.ebay.com/sch/i.html?_nkw=2025+Topps+Chrome+Formula+1+"
+        f"{driver_name.replace(' ', '+')}+PSA&LH_Complete=1&LH_Sold=1"
+    )
+    psa_pop_url = "https://www.psacard.com/pop/"
+
+    # Pull eBay sold records that include PSA grading info from our scraper
+    # condition field contains grade info scraped from eBay titles ("PSA 10", "PSA 9", etc.)
+    from sqlalchemy import or_
+    graded_sales = db.query(PriceHistory).filter(
+        PriceHistory.card_id == card_id,
+        or_(
+            PriceHistory.source == "PSA Auction",
+            PriceHistory.condition.ilike("PSA%"),
+            PriceHistory.condition.ilike("BGS%"),
+            PriceHistory.condition.ilike("SGC%"),
+        )
+    ).order_by(PriceHistory.sale_date.desc()).limit(50).all()
+
+    # Also pull all raw sales for price context
+    all_sales = db.query(PriceHistory).filter(
+        PriceHistory.card_id == card_id,
+    ).order_by(PriceHistory.sale_date.desc()).limit(100).all()
+
+    sales_by_grade: dict = {}
+    for s in graded_sales:
+        grade = s.condition or "Unknown"
+        if grade not in sales_by_grade:
+            sales_by_grade[grade] = []
+        sales_by_grade[grade].append({"price": s.price, "date": s.sale_date.isoformat()})
+
+    raw_prices = [s.price for s in all_sales if not (s.condition or "").startswith(("PSA", "BGS", "SGC"))]
+    avg_raw = sum(raw_prices) / len(raw_prices) if raw_prices else None
+
+    return {
+        "card_id": card_id,
+        "driver": driver_name,
+        "parallel": card.parallel,
+        "grade": card.grade,
+        "ebay_psa_url": ebay_psa_url,
+        "psa_pop_url": psa_pop_url,
+        "psa_sales": sales_by_grade,
+        "total_graded_sales": len(graded_sales),
+        "total_raw_sales": len(raw_prices),
+        "avg_raw_price": round(avg_raw, 2) if avg_raw else None,
+        "psa_not_indexed": True,  # PSA hasn't catalogued this 2025 set yet
+    }
+
+
+@app.post("/api/auctions/{auction_id}/watch")
+def toggle_watch(auction_id: int, db: Session = Depends(get_db)):
+    a = db.query(Auction).filter(Auction.id == auction_id).first()
+    if not a:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Auction not found")
+    a.status = "active" if a.status == "watchlist" else "watchlist"
+    db.commit()
+    return {"watching": a.status == "watchlist", "id": auction_id}
+
+
+@app.get("/api/auctions/watchlist")
+def get_watchlist(db: Session = Depends(get_db)):
+    items = db.query(Auction).filter(Auction.status == "watchlist").all()
+    import json
+    return {"items": [{"id": a.id, "title": a.title, "current_price": a.current_price,
+                       "ebay_url": a.ebay_url, "image_url": a.image_url,
+                       "end_time": a.end_time.isoformat() if a.end_time else None,
+                       "buying_options": json.loads(a.buying_options) if a.buying_options else []} for a in items]}
+
+
+@app.post("/api/auctions/{auction_id}/execute-snipe")
+async def execute_snipe(auction_id: int, body: dict, db: Session = Depends(get_db)):
+    """Execute a snipe bid on eBay. Requires max_bid in body."""
+    a = db.query(Auction).filter(Auction.id == auction_id).first()
+    if not a:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Auction not found")
+
+    max_bid = float(body.get("max_bid", 0))
+    if max_bid <= 0:
+        from fastapi import HTTPException
+        raise HTTPException(400, "max_bid must be > 0")
+
+    # Check for eBay user OAuth token (Trading API)
+    user_token = os.getenv("EBAY_USER_TOKEN", "")
+    if not user_token:
+        return {
+            "status": "no_credentials",
+            "message": "EBAY_USER_TOKEN not set. Add your eBay OAuth user token to place real bids.",
+            "auction_id": auction_id,
+            "ebay_url": a.ebay_url,
+            "max_bid": max_bid,
+        }
+
+    # Call eBay Trading API PlaceBid
+    import httpx
+    item_id = a.ebay_listing_id.split("|")[1] if "|" in a.ebay_listing_id else a.ebay_listing_id
+    xml_body = f"""<?xml version="1.0" encoding="utf-8"?>
+<PlaceOfferRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials><eBayAuthToken>{user_token}</eBayAuthToken></RequesterCredentials>
+  <ItemID>{item_id}</ItemID>
+  <Offer>
+    <Action>Bid</Action>
+    <MaxBid currencyID="USD">{max_bid:.2f}</MaxBid>
+    <Quantity>1</Quantity>
+  </Offer>
+</PlaceOfferRequest>"""
+    headers = {
+        "X-EBAY-API-CALL-NAME": "PlaceOffer",
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
+        "X-EBAY-API-APP-NAME": os.getenv("EBAY_APP_ID", ""),
+        "X-EBAY-API-DEV-NAME": os.getenv("EBAY_DEV_ID", ""),
+        "X-EBAY-API-CERT-NAME": os.getenv("EBAY_CERT_ID", ""),
+        "Content-Type": "text/xml",
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.post("https://api.ebay.com/ws/api.dll", content=xml_body, headers=headers, timeout=15)
+
+    success = "Success" in resp.text or "BidPlaced" in resp.text
+    return {
+        "status": "bid_placed" if success else "bid_failed",
+        "auction_id": auction_id,
+        "item_id": item_id,
+        "max_bid": max_bid,
+        "ebay_response_snippet": resp.text[:300],
+    }
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            from database import SessionLocal
+            db = SessionLocal()
+            try:
+                active = db.query(Auction).filter(Auction.status == "active").order_by(
+                    Auction.snipe_score.desc()
+                ).limit(30).all()
+                now = datetime.utcnow()
+                auctions_data = []
+                for a in active:
+                    time_left = max(0, (a.end_time - now).total_seconds())
+                    auctions_data.append({
+                        "id": a.id,
+                        "title": a.title[:70],
+                        "current_price": a.current_price,
+                        "time_left": int(time_left),
+                        "bid_count": a.bid_count,
+                        "snipe_eligible": a.snipe_eligible,
+                        "snipe_score": a.snipe_score,
+                        "is_real_ebay": a.is_real_ebay,
+                        "ebay_url": a.ebay_url or "",
+                    })
+
+                # Recent snipe alerts — only from the last 2 minutes so the
+                # Layout banner doesn't keep re-showing old alerts every 5s.
+                from database import Alert
+                from datetime import timedelta
+                cutoff = now - timedelta(minutes=2)
+                recent_alerts = db.query(Alert).filter(
+                    Alert.alert_type == "snipe_opportunity",
+                    Alert.triggered == True,
+                    Alert.created_at >= cutoff,
+                ).order_by(Alert.created_at.desc()).limit(5).all()
+
+                await websocket.send_json({
+                    "type": "auction_update",
+                    "data": auctions_data,
+                    "alerts": [{"message": a.message, "urgency": a.urgency} for a in recent_alerts],
+                    "ebay_connected": has_real_credentials(),
+                    "timestamp": now.isoformat(),
+                })
+            finally:
+                db.close()
+            await asyncio.sleep(8)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception:
+        manager.disconnect(websocket)
+
+
+@app.get("/api/dashboard")
+def dashboard_bundle(db: Session = Depends(get_db)):
+    """Return everything the dashboard needs in one DB connection."""
+    from routers.auctions import auction_to_dict
+    from sqlalchemy import func
+    from database import Alert as AlertModel
+
+    # Top 100 active auctions sorted by snipe score
+    auctions = db.query(Auction).filter(Auction.status == "active")\
+        .order_by(Auction.snipe_score.desc()).limit(100).all()
+
+    # Analytics summary
+    total_cards = db.query(func.count(Card.id)).scalar() or 0
+    active_count = db.query(func.count(Auction.id)).filter(Auction.status == "active").scalar() or 0
+    snipe_count = db.query(func.count(Auction.id)).filter(
+        Auction.status == "active", Auction.snipe_eligible == True
+    ).scalar() or 0
+    avg_price = db.query(func.avg(Auction.current_price)).filter(Auction.status == "active").scalar()
+
+    # Recent alerts
+    alerts = db.query(AlertModel).filter(AlertModel.triggered == True)\
+        .order_by(AlertModel.created_at.desc()).limit(5).all()
+
+    return {
+        "auctions": [auction_to_dict(a) for a in auctions],
+        "stats": {
+            "total_cards": total_cards,
+            "active_auctions": active_count,
+            "snipe_targets": snipe_count,
+            "avg_price": float(avg_price) if avg_price else 0,
+        },
+        "alerts": [{"id": a.id, "message": a.message, "urgency": a.urgency, "created_at": a.created_at.isoformat()} for a in alerts],
+        "ebay_connected": has_real_credentials(),
+    }
+
+
+@app.get("/api/cron/sync")
+async def cron_sync(db: Session = Depends(get_db)):
+    """Called by Vercel cron — seeds DB, syncs live listings, batches price history."""
+    from seed_data import seed_all
+    try:
+        seed_all(db)
+    except Exception as e:
+        return {"ok": False, "stage": "seed", "error": str(e)[:200]}
+    if not has_real_credentials():
+        return {"ok": False, "reason": "no_credentials"}
+    from scraper import sync_real_ebay_listings
+    from price_history_sync import sync_price_history_batch
+    added = 0
+    ph = None
+    ebay_error = None
+    ph_error = None
+    try:
+        added = await sync_real_ebay_listings(db)
+    except Exception as e:
+        ebay_error = str(e)[:200]
+    try:
+        ph = await sync_price_history_batch(db)
+    except Exception as e:
+        ph_error = str(e)[:200]
+
+    # Non-blocking sold-card ingest — runs in background, never blocks the cron.
+    sold_error = None
+    try:
+        from sold_ingest import ingest_all_drivers, ingest_finding_api_all
+        asyncio.create_task(ingest_all_drivers())
+        # Aggressive driver x parallel matrix (sold + active via Finding API)
+        asyncio.create_task(ingest_finding_api_all())
+    except Exception as e:
+        sold_error = str(e)[:200]
+
+    # Free scrapers — bypass eBay Browse API entirely
+    scraper_errors = []
+    try:
+        from scrape_130point import ingest_130point
+        asyncio.create_task(ingest_130point())
+    except Exception as e:
+        scraper_errors.append(f"130point: {str(e)[:120]}")
+    try:
+        from scrape_ebay_html import ingest_ebay_html_sold, ingest_ebay_html_auction
+        asyncio.create_task(ingest_ebay_html_sold())
+        asyncio.create_task(ingest_ebay_html_auction())
+    except Exception as e:
+        scraper_errors.append(f"ebay_html: {str(e)[:120]}")
+
+    total = db.query(Auction).filter(Auction.status == "active").count()
+    return {
+        "ok": ebay_error is None,
+        "added": added,
+        "total_active": total,
+        "price_history": ph,
+        "ebay_error": ebay_error,
+        "price_history_error": ph_error,
+        "sold_ingest_started": sold_error is None,
+        "sold_ingest_error": sold_error,
+        "scraper_errors": scraper_errors,
+    }
+
+
+@app.get("/api/debug/ebay")
+async def debug_ebay():
+    """Quota-free diagnostic: reads eBay rate-limit analytics (no search calls)."""
+    from ebay_api import get_oauth_token
+    import httpx as _httpx
+    token = await get_oauth_token()
+    if not token:
+        return {"error": "OAuth failed — credentials rejected by eBay"}
+
+    async with _httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                "https://api.ebay.com/developer/analytics/v1_beta/rate_limit",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if resp.status_code != 200:
+                return {"token_obtained": True, "error": f"HTTP {resp.status_code}",
+                        "body": resp.text[:400]}
+            data = resp.json()
+            limits = []
+            for api in data.get("rateLimits", []):
+                for res in api.get("resources", []):
+                    for rate in res.get("rates", []):
+                        limits.append({
+                            "api": f"{api.get('apiContext','')}.{api.get('apiName','')}",
+                            "resource": res.get("name"),
+                            "used": rate.get("count"),
+                            "limit": rate.get("limit"),
+                            "remaining": rate.get("remaining"),
+                            "reset": rate.get("reset"),
+                        })
+            # Sort most-critical first (lowest remaining %)
+            limits.sort(key=lambda x: (x["remaining"] or 0) / max(x["limit"] or 1, 1))
+            return {"token_obtained": True, "limits": limits[:15]}
+        except Exception as e:
+            return {"token_obtained": True, "error": str(e)[:200]}
+
+
+@app.get("/api/health")
+def health():
+    return {
+        "status": "ok",
+        "service": "F1 Chrome Crest v2",
+        "ebay_connected": has_real_credentials(),
+    }
+
+
+@app.post("/api/sync")
+async def manual_sync(db: Session = Depends(get_db)):
+    """Synchronously fetch live eBay listings. Seeds cards first if needed."""
+    if not has_real_credentials():
+        return {"success": False, "message": "No eBay credentials configured"}
+    from seed_data import seed_all
+    seed_all(db)
+    from scraper import sync_real_ebay_listings
+    added = await sync_real_ebay_listings(db)
+    total = db.query(Auction).filter(Auction.status == "active").count()
+    cards = db.query(Card).count()
+    return {"success": True, "added": added, "total_active": total, "cards_in_db": cards}
+
+
+@app.post("/api/sync/price-history")
+async def manual_price_history_sync(db: Session = Depends(get_db)):
+    """Trigger one batch of price history sync (5 drivers, ~300 sold comps each)."""
+    if not has_real_credentials():
+        return {"success": False, "message": "No eBay credentials"}
+    from price_history_sync import sync_price_history_batch
+    result = await sync_price_history_batch(db)
+    from database import PriceHistory
+    total_ph = db.query(PriceHistory).count()
+    return {"success": True, **result, "total_price_history_records": total_ph}
+
+
+@app.post("/api/admin/seed-all-drivers")
+def seed_all_drivers(db: Session = Depends(get_db)):
+    """Add inline column migrations + seed F2/F3/Legends drivers + tag series on existing F1 drivers."""
+    from sqlalchemy import text
+    # Inline column migrations (safe to run multiple times)
+    for stmt in [
+        "ALTER TABLE cards ADD COLUMN series VARCHAR(20) DEFAULT 'F1'",
+        "ALTER TABLE cards ADD COLUMN is_rookie BOOLEAN DEFAULT FALSE",
+    ]:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(stmt))
+                conn.commit()
+        except Exception:
+            pass
+    from seed_data import seed_missing_drivers
+    added = seed_missing_drivers(db)
+    return {"added": added, "status": "done"}
+
+
+@app.post("/api/admin/seed-auto-variants")
+def seed_auto_variants(db: Session = Depends(get_db)):
+    """Add missing auto variant cards to existing drivers without wiping data."""
+    from seed_data import F1_DRIVERS, GRADE_MULT, BASE_PRICE
+    AUTO_VARIANTS = [
+        {"name": "Auto Blue /150",      "mult": 14.0},
+        {"name": "Auto Green /99",       "mult": 20.0},
+        {"name": "Auto Gold /50",        "mult": 30.0},
+        {"name": "Auto Orange /25",      "mult": 50.0},
+        {"name": "Auto Red /5",          "mult": 100.0},
+        {"name": "Auto SuperFractor 1/1","mult": 250.0},
+        {"name": "Speed Wheels Auto",    "mult": 10.0},
+        {"name": "Neon Nations Auto",    "mult": 10.0},
+        {"name": "Floor It Auto",        "mult": 10.0},
+        {"name": "Vegas at Night Auto",  "mult": 12.0},
+        {"name": "Diamond 75th Auto",    "mult": 11.0},
+    ]
+    added = 0
+    for driver in F1_DRIVERS:
+        for variant in AUTO_VARIANTS:
+            for grade in ["Raw", "PSA 10"]:
+                exists = db.query(Card).filter(
+                    Card.driver_name == driver["name"],
+                    Card.parallel == variant["name"],
+                    Card.grade == grade,
+                ).first()
+                if exists:
+                    continue
+                base_val = round(BASE_PRICE * driver["multiplier"] * variant["mult"] * GRADE_MULT[grade], 2)
+                db.add(Card(
+                    driver_name=driver["name"],
+                    year=2025,
+                    set_name="Topps Chrome F1",
+                    card_number=driver["card_num"],
+                    parallel=variant["name"],
+                    grade=grade,
+                    image_url=f"https://placehold.co/200x280/{driver['team_color'].lstrip('#')}/FFFFFF?text={driver['name'].split()[-1]}",
+                    base_value=base_val,
+                    investment_score=float(driver["score"]),
+                    team=driver["team"],
+                    team_color=driver["team_color"],
+                    nationality=driver["nationality"],
+                    career_wins=driver["wins"],
+                    championships=driver["championships"],
+                ))
+                added += 1
+    db.commit()
+    return {"added": added}
+
+
+@app.post("/api/admin/reset-price-history-sync")
+def reset_price_history_sync(db: Session = Depends(get_db)):
+    """Clear all sync logs so every driver is due on the next cron/sync."""
+    from database import PriceHistorySyncLog
+    deleted = db.query(PriceHistorySyncLog).delete()
+    db.commit()
+    return {"reset": deleted}
+
+
+@app.post("/api/admin/fix-stale-endtimes")
+def fix_stale_endtimes(db: Session = Depends(get_db)):
+    """
+    Repair BIN listings whose synthetic 30-day end_time has rolled off.
+    These were inserted with `utcnow() + 30 days` and now appear as 'ending
+    now' even though they're still active BIN listings on eBay. Push their
+    end_times 1 year into the future so the UI stops auto-expiring them.
+    """
+    from datetime import timedelta as _td
+    now = datetime.utcnow()
+    future = now + _td(days=365)
+    fixed = 0
+    candidates = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.end_time < now + _td(days=2),
+    ).all()
+    for a in candidates:
+        bo = a.buying_options or ""
+        # Only repair non-AUCTION listings (real auctions should expire naturally)
+        if "AUCTION" not in bo:
+            a.end_time = future
+            fixed += 1
+    db.commit()
+    return {"fixed": fixed, "total_candidates": len(candidates)}
+
+
+@app.post("/api/admin/fix-parallel-names")
+def fix_parallel_names(db: Session = Depends(get_db)):
+    """Rename old parallel print-run names to correct 2025 values: Gold /10→/50, Orange /50→/25, Red /25→/5."""
+    renames = {"Gold /10": "Gold /50", "Orange /50": "Orange /25", "Red /25": "Red /5"}
+    card_updated = 0
+    for old, new in renames.items():
+        rows = db.query(Card).filter(Card.parallel == old).all()
+        for c in rows:
+            c.parallel = new
+        card_updated += len(rows)
+    db.commit()
+    return {"card_rows_updated": card_updated}
+
+
+@app.post("/api/admin/seed-missing-parallels")
+def seed_missing_parallels(db: Session = Depends(get_db)):
+    """Add Autograph / Gold /10 / Prism Refractor cards that weren't in original seed."""
+    from seed_data import F1_DRIVERS, PARALLELS, GRADE_MULT, BASE_PRICE
+    added = 0
+    for driver in F1_DRIVERS:
+        for parallel in PARALLELS:
+            for grade in ["Raw", "PSA 10"]:
+                exists = db.query(Card).filter(
+                    Card.driver_name == driver["name"],
+                    Card.parallel == parallel["name"],
+                    Card.grade == grade,
+                ).first()
+                if exists:
+                    continue
+                base_val = round(BASE_PRICE * driver["multiplier"] * parallel["mult"] * GRADE_MULT[grade], 2)
+                db.add(Card(
+                    driver_name=driver["name"],
+                    year=2025,
+                    set_name="Topps Chrome F1",
+                    card_number=driver["card_num"],
+                    parallel=parallel["name"],
+                    grade=grade,
+                    image_url=f"https://placehold.co/200x280/{driver['team_color'].lstrip('#')}/FFFFFF?text={driver['name'].split()[-1]}",
+                    base_value=base_val,
+                    investment_score=float(driver["score"]),
+                    team=driver["team"],
+                    team_color=driver["team_color"],
+                    nationality=driver["nationality"],
+                    career_wins=driver["wins"],
+                    championships=driver["championships"],
+                ))
+                added += 1
+    db.commit()
+    return {"added": added}
+
+
+@app.post("/api/admin/scrape-card-images")
+async def trigger_card_image_scrape_sync(db: Session = Depends(get_db)):
+    """Synchronously scrape eBay public search for card catalog images."""
+    from card_image_scraper import scrape_all_missing
+    updated = await scrape_all_missing(db)
+    return {"status": "done", "updated": updated}
+
+
+@app.post("/api/admin/rebuild")
+async def rebuild_auctions(db: Session = Depends(get_db)):
+    """Delete all active auctions and re-sync from eBay with correct parallel matching."""
+    from seed_data import seed_all
+    seed_all(db)
+    deleted = db.query(Auction).filter(Auction.status == "active").delete()
+    db.commit()
+    from scraper import sync_real_ebay_listings
+    added = await sync_real_ebay_listings(db)
+    total = db.query(Auction).filter(Auction.status == "active").count()
+    return {"deleted": deleted, "added": added, "total_active": total}
+
+
+@app.get("/api/ebay-status")
+def ebay_status():
+    connected = has_real_credentials()
+    return {
+        "connected": connected,
+        "message": "Live eBay Browse API active" if connected else "No credentials — add EBAY_APP_ID + EBAY_APP_SECRET to backend/.env",
+    }
+
+
+# Serve frontend
+frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.exists(frontend_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+
+
+@app.on_event("startup")
+async def startup_event():
+    # Always ensure schema + tables exist (idempotent, fast on subsequent calls)
+    create_tables()
+
+    # Add new columns if missing — handles both SQLite (local) and Postgres (Vercel).
+    try:
+        from database import engine as _engine, DATABASE_URL as _db_url
+        _sa_text = __import__("sqlalchemy").text
+        with _engine.connect() as conn:
+            migrations = [
+                ("auctions", "buying_options", "TEXT"),
+                ("auctions", "extra_images", "TEXT"),
+                ("price_history", "ebay_item_id", "VARCHAR(64)"),
+            ]
+            for table, col, typedef in migrations:
+                try:
+                    conn.execute(_sa_text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
+                    conn.commit()
+                except Exception:
+                    pass  # Column already exists
+    except Exception:
+        pass
+
+    import os
+    is_vercel = bool(os.environ.get("VERCEL"))
+
+    if is_vercel:
+        # On Vercel: seed cards only. Do NOT kick off an eBay sync on every
+        # cold start — each cold start triggered 16 API calls, exhausting the
+        # Browse API daily quota (5,000/day) within hours. The scheduled cron
+        # at /api/cron/sync is the single source of live-data refresh.
+        try:
+            from database import SessionLocal
+            from seed_data import seed_all
+            db = SessionLocal()
+            try:
+                seed_all(db)
+            finally:
+                db.close()
+        except Exception as _e:
+            print(f"startup seed skipped: {_e}")
+    else:
+        # Local dev: full startup including scheduler and initial sync
+        try:
+            from database import SessionLocal
+            from seed_data import seed_all
+            db = SessionLocal()
+            try:
+                seed_all(db)
+            finally:
+                db.close()
+        except Exception:
+            pass
+        start_scheduler()
+        # Scrape real card images from eBay public search (no API key needed)
+        asyncio.create_task(_scrape_card_images())
+        if has_real_credentials():
+            print("F1 Chrome Crest — LIVE eBay API connected. Running initial sync...")
+            asyncio.create_task(_initial_ebay_sync())
+        else:
+            print("F1 Chrome Crest — WARNING: No eBay credentials found.")
+
+
+async def _scrape_card_images():
+    """Scrape eBay public search for real card images and persist to DB."""
+    await asyncio.sleep(2)  # Let startup settle
+    from card_image_scraper import scrape_all_missing
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        updated = await scrape_all_missing(db)
+        print(f"Card images scraped: {updated} cards updated with real photos")
+    except Exception as e:
+        print(f"Card image scrape failed: {e}")
+    finally:
+        db.close()
+
+
+async def _initial_ebay_sync():
+    """Run first eBay sync immediately on startup."""
+    await asyncio.sleep(2)
+    from database import SessionLocal
+    from scraper import sync_real_ebay_listings
+    db = SessionLocal()
+    try:
+        added = await sync_real_ebay_listings(db)
+        print(f"Initial eBay sync complete — {added} listings loaded")
+    except Exception as e:
+        print(f"Initial eBay sync failed: {e}")
+    finally:
+        db.close()

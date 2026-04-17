@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/main.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "15mb"
+      }
+    },
+    {
+      "src": "frontend/dist/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "backend/main.py"
+    },
+    {
+      "src": "/ws",
+      "dest": "backend/main.py"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "frontend/dist/assets/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "frontend/dist/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/sync",
+      "schedule": "*/30 * * * *"
+    }
+  ],
+  "env": {
+    "VERCEL": "1",
+    "DB_PATH": "/tmp/f1cards.db"
+  }
+}
