@@ -221,14 +221,18 @@ export default function Layout() {
         className={`md:hidden fixed top-0 left-0 h-full w-[260px] max-w-[80vw] bg-gray-900 border-r border-gray-800/60 z-50 flex flex-col transition-transform duration-200 ease-out ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <SidebarContent mobile />
       </aside>
 
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Mobile top bar */}
-        <div className="md:hidden flex items-center justify-between px-3 py-2.5 border-b border-gray-800/60 bg-gray-900/95 backdrop-blur-sm shrink-0">
+        {/* Mobile top bar — adds safe-area inset so the hamburger sits below the iOS status bar / Android notch */}
+        <div
+          className="md:hidden flex items-center justify-between px-3 py-2.5 border-b border-gray-800/60 bg-gray-900/95 backdrop-blur-sm shrink-0"
+          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)' }}
+        >
           <button
             onClick={() => setMobileOpen(true)}
             className="p-2 rounded-lg hover:bg-gray-800 text-gray-300 transition-colors"

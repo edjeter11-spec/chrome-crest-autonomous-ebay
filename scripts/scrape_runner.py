@@ -112,6 +112,20 @@ def grade_from_title(title: str):
     return f"{m.group(1).upper()} {m.group(2)}" if m else None
 
 
+TEAMS = [
+    ("Red Bull Racing", ["red bull racing", "red bull"]),
+    ("Ferrari", ["ferrari", "scuderia"]),
+    ("Mercedes", ["mercedes-amg", "mercedes amg", "mercedes"]),
+    ("McLaren", ["mclaren"]),
+    ("Aston Martin", ["aston martin"]),
+    ("Alpine", ["alpine"]),
+    ("Williams", ["atlassian williams", "williams racing", "williams"]),
+    ("Haas", ["haas"]),
+    ("Sauber", ["stake sauber", "kick sauber", "sauber"]),
+    ("Racing Bulls", ["racing bulls", "visa cash app rb", "rb f1"]),
+]
+
+
 def driver_from_title(title: str):
     t = title.lower()
     for d in DRIVERS:
@@ -120,6 +134,10 @@ def driver_from_title(title: str):
         last = d.split()[-1].lower()
         if len(last) > 4 and re.search(rf"\b{re.escape(last)}\b", t):
             return d
+    # No driver found — fall back to team name if title contains a team identifier.
+    for canonical, aliases in TEAMS:
+        if any(a in t for a in aliases):
+            return f"{canonical} (Team)"
     return None
 
 
@@ -384,7 +402,10 @@ def scrape_search_page(page, url: str):
                     '.s-item__caption--signal, .s-item__title--tagblock, .s-item__listingDate, .s-card__caption'
                 );
                 if (!titleEl || !linkEl) return;
-                const title = (titleEl.innerText || titleEl.textContent || '').trim();
+                // Use textContent (NOT innerText) — innerText respects CSS visibility
+                // and eBay sometimes hides characters via .clipped / aria-hidden, which
+                // strips letters like "Topps" → "Topp" or "Mansell" → "Man ell".
+                const title = (titleEl.textContent || titleEl.innerText || '').trim();
                 if (!title || title === 'Shop on eBay' || title.length < 5) return;
                 const url = linkEl.href || '';
                 if (!url.includes('/itm/')) return;
@@ -398,7 +419,7 @@ def scrape_search_page(page, url: str):
                     '.s-item__price, .s-card__price, [data-testid="item-price"], .su-styled-text.positive'
                 );
                 for (const p of priceCandidates) {
-                    const t = (p.innerText || p.textContent || '').trim();
+                    const t = (p.textContent || p.innerText || '').trim();
                     if (t.includes('$')) { priceText = t; break; }
                 }
                 if (!priceText) {
