@@ -146,20 +146,20 @@ export default function SalesDatabase() {
   return (
     <div className="space-y-4 max-w-[1800px]">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3 flex-wrap">
         <div className="w-1 h-7 bg-cyan-600 rounded-full shrink-0" />
-        <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-          <Database size={22} className="text-cyan-400" />
+        <h1 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+          <Database size={20} className="text-cyan-400" />
           Sales Database
         </h1>
         {!loading && (
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-xl bg-gray-800 text-gray-300 border border-gray-700/50">
-            {total.toLocaleString()} sales tracked
+          <span className="text-[10px] md:text-xs font-semibold px-2 md:px-2.5 py-1 rounded-xl bg-gray-800 text-gray-300 border border-gray-700/50">
+            {total.toLocaleString()} sales
           </span>
         )}
         <button onClick={exportCsv}
-          className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-600/40 text-xs font-bold transition-colors">
-          <Download size={12} /> Export CSV
+          className="ml-auto flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-600/40 text-[11px] md:text-xs font-bold transition-colors">
+          <Download size={12} /> <span className="hidden sm:inline">Export </span>CSV
         </button>
         <button onClick={() => load(true)}
           className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
@@ -181,8 +181,8 @@ export default function SalesDatabase() {
       )}
 
       {/* Filter bar */}
-      <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
-        <div className="relative min-w-48">
+      <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-3 md:px-4 py-3 flex items-center gap-2 md:gap-3 flex-wrap">
+        <div className="relative w-full sm:min-w-48 sm:w-auto sm:flex-1 md:flex-none">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search title or driver…"
@@ -224,8 +224,62 @@ export default function SalesDatabase() {
         </button>
       </div>
 
-      {/* Table */}
-      <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden">
+      {/* Mobile card list */}
+      <div className="md:hidden space-y-2">
+        {loading ? (
+          Array(6).fill(0).map((_, i) => (
+            <div key={i} className="bg-gray-900/70 border border-gray-800/60 rounded-2xl p-3 animate-pulse">
+              <div className="h-3 bg-gray-800 rounded w-1/2 mb-2" />
+              <div className="h-3 bg-gray-800 rounded w-3/4" />
+            </div>
+          ))
+        ) : filteredSorted.length === 0 ? (
+          <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl py-12 text-center text-gray-600">
+            <Database size={28} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No sales match these filters yet</p>
+          </div>
+        ) : filteredSorted.map(s => (
+          <div key={s.id} className="bg-gray-900/70 border border-gray-800/60 rounded-2xl p-3 flex gap-3">
+            {s.image_url ? (
+              <img src={s.image_url} alt="" className="w-14 h-18 object-cover rounded border border-gray-800 shrink-0"
+                style={{ height: '72px' }}
+                onError={(e) => { e.target.style.display = 'none' }} />
+            ) : (
+              <div className="w-14 shrink-0 rounded bg-gray-800/50 border border-gray-800 flex items-center justify-center text-[9px] text-gray-600"
+                style={{ height: '72px' }}>No img</div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-sm font-bold text-white truncate">{s.driver_name || '—'}</span>
+                <span className="text-sm font-black text-emerald-400 whitespace-nowrap">${s.sale_price?.toFixed(2)}</span>
+              </div>
+              <div className="text-[11px] text-cyan-300 truncate mb-1">{s.parallel || '—'}</div>
+              <div className="text-[11px] text-gray-400 line-clamp-2 mb-1.5">{s.title}</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {s.grade ? (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-600/15 text-amber-400 border border-amber-600/30 font-bold text-[10px]">
+                    {s.grade}
+                  </span>
+                ) : (
+                  <span className="text-gray-500 text-[10px]">Raw</span>
+                )}
+                <span className="text-[10px] text-gray-500">
+                  {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+                </span>
+                {s.ebay_url && (
+                  <a href={s.ebay_url} target="_blank" rel="noopener noreferrer"
+                    className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 text-gray-400">
+                    <ExternalLink size={11} />
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-900 border-b border-gray-800/70">
@@ -298,27 +352,27 @@ export default function SalesDatabase() {
             </tbody>
           </table>
         </div>
-
-        {/* Pagination */}
-        {total > PAGE_SIZE && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800/60 bg-gray-900/40">
-            <span className="text-xs text-gray-500">
-              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
-            </span>
-            <div className="flex items-center gap-2">
-              <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}
-                className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-gray-300 transition-colors">
-                Previous
-              </button>
-              <span className="text-xs text-gray-500 px-2">Page {page + 1} / {totalPages}</span>
-              <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
-                className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-gray-300 transition-colors">
-                Next
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Pagination (shared) */}
+      {total > PAGE_SIZE && (
+        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl flex items-center justify-between px-3 md:px-4 py-3 flex-wrap gap-2">
+          <span className="text-[11px] md:text-xs text-gray-500">
+            {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
+          </span>
+          <div className="flex items-center gap-2">
+            <button disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}
+              className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-gray-300 transition-colors">
+              Prev
+            </button>
+            <span className="text-xs text-gray-500 px-1">{page + 1} / {totalPages}</span>
+            <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
+              className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-gray-300 transition-colors">
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Breakdown panels */}
       {stats && stats.top_drivers?.length > 0 && (

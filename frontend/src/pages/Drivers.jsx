@@ -74,16 +74,16 @@ export default function Drivers() {
         </div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex flex-col md:flex-row gap-4">
         {/* Driver list */}
-        <div className="w-60 shrink-0 flex flex-col gap-2">
+        <div className="w-full md:w-60 md:shrink-0 flex flex-col gap-2">
           <div className="relative">
             <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search driver…"
               className="input-field w-full pl-8 pr-3 py-2 text-xs" />
           </div>
-          <div className="space-y-0.5 max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
+          <div className="space-y-0.5 max-h-[45vh] md:max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
             {filtered.length === 0 ? (
               <p className="text-xs text-gray-600 px-2 py-4 text-center">No drivers in this series</p>
             ) : filtered.map(d => {
@@ -120,8 +120,8 @@ export default function Drivers() {
 
         {/* Driver detail */}
         {selected ? (
-          <div className="flex-1 panel p-6 min-w-0">
-            <div className="flex items-start gap-5 mb-6">
+          <div className="flex-1 panel p-4 md:p-6 min-w-0">
+            <div className="flex items-start gap-3 md:gap-5 mb-6 flex-wrap">
               <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 shadow-xl border border-gray-700/50">
                 {selected.image_url && !selected.image_url.includes('placehold.co') ? (
                   <img src={`${API}/api/proxy/image?url=${encodeURIComponent(selected.image_url)}`}
@@ -164,7 +164,7 @@ export default function Drivers() {
               <ScoreMeter score={selected.investment_score||0} color={selected.team_color} />
             </div>
 
-            <div className="grid grid-cols-4 gap-3 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               {[
                 { icon: Trophy, val: selected.championships ?? '—', label: 'Championships', color: 'text-yellow-400' },
                 { icon: Star, val: selected.career_wins ?? '—', label: 'Career Wins', color: 'text-blue-400' },

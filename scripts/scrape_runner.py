@@ -76,13 +76,27 @@ PARALLEL_PATTERNS = [
 ]
 
 DRIVERS = [
+    # F1 2025 grid
     "Max Verstappen", "Lewis Hamilton", "Charles Leclerc", "Lando Norris",
     "Fernando Alonso", "Oscar Piastri", "Carlos Sainz", "George Russell",
     "Sergio Perez", "Lance Stroll", "Valtteri Bottas", "Esteban Ocon",
-    "Pierre Gasly", "Yuki Tsunoda", "Sebastian Vettel", "Kimi Raikkonen",
+    "Pierre Gasly", "Yuki Tsunoda", "Daniel Ricciardo",
     "Nico Hulkenberg", "Kevin Magnussen", "Zhou Guanyu", "Alexander Albon",
     "Logan Sargeant", "Oliver Bearman", "Jack Doohan", "Andrea Kimi Antonelli",
     "Isack Hadjar", "Gabriel Bortoleto", "Liam Lawson", "Franco Colapinto",
+    # F2 / F3
+    "Leonardo Fornaroli", "Arvid Lindblad", "Josep Maria Marti", "Richard Verschoor",
+    "Dino Beganovic", "Gabriele Mini", "Jak Crawford", "Victor Martins",
+    "Joshua Durksen", "Luke Browning", "Tuukka Taponen", "Ugo Ugochukwu",
+    "James Wharton", "Louis Sharp", "Noah Stromsted", "Javier Sagrera",
+    "Alexander Dunne", "Cian Shields", "John Bennett", "Kush Maini",
+    "Max Esterson", "Ivan Domingues", "Oliver Goethe", "Amaury Cordeel",
+    # Legends (in 2025 set inserts)
+    "Michael Schumacher", "Ayrton Senna", "Alain Prost", "Nigel Mansell",
+    "Mario Andretti", "Mika Hakkinen", "Damon Hill", "Jacques Villeneuve",
+    "Emerson Fittipaldi", "Juan Pablo Montoya", "Gerhard Berger", "James Hunt",
+    "Sebastian Vettel", "Kimi Raikkonen", "Niki Lauda", "Jackie Stewart",
+    "Jim Clark", "Stirling Moss",
 ]
 
 

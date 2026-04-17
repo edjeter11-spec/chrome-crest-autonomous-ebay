@@ -165,7 +165,7 @@ export default function PriceHistory() {
               </div>
 
               {history.length > 0 && (
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
                     { label: 'Sales', value: history.length, color: 'text-white' },
                     { label: 'Low', value: `$${minPrice.toFixed(2)}`, color: 'text-red-400' },
