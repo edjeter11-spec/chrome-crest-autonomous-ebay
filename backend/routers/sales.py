@@ -19,6 +19,13 @@ def _total_cost(s: SoldCard) -> float:
 
 
 def _sold_to_dict(s: SoldCard) -> dict:
+    try:
+        from lib.parallels import scarcity_for, is_rookie
+        sc = scarcity_for(s.parallel)
+        rookie = is_rookie(s.driver_name)
+    except Exception:
+        sc = {"tier": "-", "count": None, "rank": 99}
+        rookie = False
     return {
         "id": s.id,
         "ebay_item_id": s.ebay_item_id,
@@ -37,6 +44,10 @@ def _sold_to_dict(s: SoldCard) -> dict:
         "is_duplicate": bool(getattr(s, "is_duplicate", False)),
         "series": s.series or "F1",
         "source": getattr(s, "source", None) or "eBay",
+        "scarcity_tier": sc["tier"],
+        "scarcity_count": sc["count"],
+        "scarcity_rank": sc["rank"],
+        "is_rookie": rookie,
         "scraped_at": s.scraped_at.isoformat() if s.scraped_at else None,
     }
 
@@ -252,6 +263,108 @@ def median_for(
         "max_total": round(max(totals), 2) if totals else None,
         "low_confidence": len(totals) < 3,
     }
+
+
+@router.get("/rookie-premium")
+def rookie_premium(days: int = 90, db: Session = Depends(get_db)):
+    """
+    Compare median sale price of 2025 rookies vs comparable non-rookies
+    (same set, last `days` days). Reports premium as a % delta.
+    """
+    from lib.parallels import ROOKIES_2025
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    rows = db.query(SoldCard).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.sale_price > 0,
+        SoldCard.is_duplicate == False,  # noqa: E712
+        SoldCard.driver_name.isnot(None),
+    ).all()
+
+    rookie_vals: list[float] = []
+    rookie_counts: dict[str, int] = {}
+    nonrookie_vals: list[float] = []
+    for r in rows:
+        total = float(r.sale_price or 0) + float(r.shipping_cost or 0)
+        if total <= 0:
+            continue
+        if r.driver_name in ROOKIES_2025:
+            rookie_vals.append(total)
+            rookie_counts[r.driver_name] = rookie_counts.get(r.driver_name, 0) + 1
+        else:
+            nonrookie_vals.append(total)
+
+    rookie_median = _median(rookie_vals)
+    non_median = _median(nonrookie_vals)
+    premium_pct = None
+    if rookie_median and non_median and non_median > 0:
+        premium_pct = round((rookie_median - non_median) / non_median * 100, 1)
+
+    return {
+        "days": days,
+        "rookies": sorted(list(ROOKIES_2025)),
+        "rookie_sample_count": len(rookie_vals),
+        "nonrookie_sample_count": len(nonrookie_vals),
+        "rookie_median_total": round(rookie_median, 2) if rookie_median else None,
+        "nonrookie_median_total": round(non_median, 2) if non_median else None,
+        "premium_pct": premium_pct,
+        "rookie_counts_by_driver": rookie_counts,
+        "low_confidence": len(rookie_vals) < 5 or len(nonrookie_vals) < 5,
+    }
+
+
+@router.get("/momentum")
+def driver_momentum(driver: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    Price trend: median last-7d vs prior-14d.
+    Returns per-driver rows (or a single row if driver= given).
+    """
+    now = datetime.utcnow()
+    recent_cut = now - timedelta(days=7)
+    prior_cut = now - timedelta(days=21)
+
+    q = db.query(SoldCard).filter(
+        SoldCard.sale_date >= prior_cut,
+        SoldCard.sale_price > 0,
+        SoldCard.is_duplicate == False,  # noqa: E712
+        SoldCard.driver_name.isnot(None),
+    )
+    if driver:
+        q = q.filter(SoldCard.driver_name == driver)
+    rows = q.all()
+
+    buckets: dict[str, dict] = {}
+    for r in rows:
+        total = float(r.sale_price or 0) + float(r.shipping_cost or 0)
+        if total <= 0:
+            continue
+        d = r.driver_name
+        b = buckets.setdefault(d, {"recent": [], "prior": []})
+        if r.sale_date >= recent_cut:
+            b["recent"].append(total)
+        else:
+            b["prior"].append(total)
+
+    out = []
+    for d, b in buckets.items():
+        r_med = _median(b["recent"])
+        p_med = _median(b["prior"])
+        delta_pct = None
+        if r_med and p_med and p_med > 0:
+            delta_pct = round((r_med - p_med) / p_med * 100, 1)
+        out.append({
+            "driver": d,
+            "recent_n": len(b["recent"]),
+            "prior_n": len(b["prior"]),
+            "recent_median": round(r_med, 2) if r_med else None,
+            "prior_median": round(p_med, 2) if p_med else None,
+            "delta_pct": delta_pct,
+            "low_confidence": len(b["recent"]) < 2 or len(b["prior"]) < 2,
+        })
+    out.sort(key=lambda x: (x["delta_pct"] or 0), reverse=True)
+    if driver:
+        match = next((r for r in out if r["driver"] == driver), None)
+        return {"driver": driver, "momentum": match}
+    return {"total_drivers": len(out), "rows": out}
 
 
 @router.get("/export.csv")

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
   ExternalLink, Zap, Clock, Tag, BookmarkPlus, BookmarkCheck,
-  ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2
+  ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2,
+  BadgeCheck, Award, RotateCw, X
 } from 'lucide-react'
+import { scarcityBadgeStyle } from '../lib/hooks'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -32,6 +34,115 @@ function formatTimeLeft(seconds) {
   }
   const d = Math.floor(seconds / 86400)
   return { text: `${d}d`, cls: 'text-gray-500' }
+}
+
+function BidIntentModal({ auction, onClose, onSaved }) {
+  const [maxBid, setMaxBid] = useState(String((auction.current_price || 0) + 5))
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const itemId = auction.ebay_listing_id?.includes('|')
+    ? auction.ebay_listing_id.split('|')[1]
+    : auction.ebay_listing_id
+  const bidUrl = itemId ? `https://www.ebay.com/itm/${itemId}?intent=BID` : auction.ebay_url
+
+  const save = async (goToEbay) => {
+    if (!maxBid || Number(maxBid) <= 0) return
+    setSaving(true)
+    try {
+      const r = await fetch(`${API}/api/auctions/${auction.id}/bid-intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_bid: Number(maxBid), notes }),
+      })
+      const data = await r.json()
+      onSaved?.(data)
+      if (goToEbay && bidUrl) window.open(bidUrl, '_blank', 'noopener')
+      onClose()
+    } catch (e) {
+      alert('Save failed: ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-2xl p-5 max-w-md w-full"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h3 className="text-white font-black text-lg">Plan Your Bid</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{auction.card?.driver_name} · {auction.card?.parallel || ''}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-gray-500">Max Bid ($)</label>
+            <input
+              type="number"
+              step="0.5"
+              value={maxBid}
+              onChange={e => setMaxBid(e.target.value)}
+              className="input-field w-full px-3 py-2 text-sm mt-1"
+              autoFocus
+            />
+            <p className="text-[10px] text-gray-500 mt-1">
+              Current: ${auction.current_price?.toFixed(2) || '—'}
+            </p>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-gray-500">Notes (optional)</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Why this one?"
+              className="input-field w-full px-3 py-2 text-sm mt-1"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              disabled={saving}
+              onClick={() => save(false)}
+              className="py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold disabled:opacity-50"
+            >
+              Save Intent
+            </button>
+            <button
+              disabled={saving}
+              onClick={() => save(true)}
+              className="py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-black disabled:opacity-50 flex items-center justify-center gap-1.5"
+            >
+              <Zap size={11} fill="white" /> Save + Bid on eBay
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-600 leading-snug pt-1">
+            Intents are saved to your account. When an eBay user token is configured,
+            we'll auto-execute matching snipes. Until then, "Bid on eBay" deep-links
+            to the bid confirmation page.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ScarcityBadge({ tier, count }) {
+  const style = scarcityBadgeStyle(tier)
+  if (!style) return null
+  return (
+    <span
+      className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${style.color} tabular-nums`}
+      title={`Scarcity tier ${tier}${count ? ` · /${count}` : ''}`}
+    >
+      {style.label}
+    </span>
+  )
 }
 
 function SellerBadge({ feedback }) {
@@ -375,6 +486,20 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   const [shareToast, setShareToast] = useState(false)
   const [expandedPanel, setExpandedPanel] = useState(null)
   const [comp, setComp] = useState(null)
+  const [bidIntentOpen, setBidIntentOpen] = useState(false)
+  const [savedIntent, setSavedIntent] = useState(null)
+
+  // Fetch latest bid intent for this auction (passive — non-blocking)
+  useEffect(() => {
+    if (!auction.id) return
+    fetch(`${API}/api/auctions/${auction.id}/bid-intents`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const latest = d?.intents?.[0]
+        if (latest) setSavedIntent(latest)
+      })
+      .catch(() => {})
+  }, [auction.id])
 
   // Pull median comp for this driver+parallel (+grade if present in title).
   useEffect(() => {
@@ -489,12 +614,30 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
           )}
         </div>
 
-        {/* Live badge */}
-        {!isEnded && (
-          <div className="absolute top-2 right-2 bg-gray-900/80 backdrop-blur-sm text-blue-400 text-[10px] font-bold px-2 py-1 rounded-lg z-10 border border-blue-900/50">
-            LIVE
-          </div>
-        )}
+        {/* Top-right: trust icons + LIVE badge */}
+        <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+          {(auction.seller_feedback || 0) >= 1000 && (
+            <span
+              className="bg-green-900/70 backdrop-blur-sm border border-green-500/50 rounded-lg px-1.5 py-1 text-green-300"
+              title={`Verified seller · ${auction.seller_feedback?.toLocaleString()} feedback`}
+            >
+              <BadgeCheck size={10} />
+            </span>
+          )}
+          {auction.returns_accepted && (
+            <span
+              className="bg-blue-900/70 backdrop-blur-sm border border-blue-500/50 rounded-lg px-1.5 py-1 text-blue-300"
+              title="Returns accepted"
+            >
+              <RotateCw size={10} />
+            </span>
+          )}
+          {!isEnded && (
+            <div className="bg-gray-900/80 backdrop-blur-sm text-blue-400 text-[10px] font-bold px-2 py-1 rounded-lg border border-blue-900/50">
+              LIVE
+            </div>
+          )}
+        </div>
 
         {/* Timer — only on auction listings */}
         {((auction.buying_options || []).includes('AUCTION') || !(auction.buying_options?.length)) && (
@@ -547,16 +690,25 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
           </div>
         </div>
 
-        {/* Parallel + grade tags */}
-        {(parallel || grade) && (
+        {/* Parallel + grade + scarcity + rookie tags */}
+        {(parallel || grade || auction.scarcity_tier || auction.is_rookie) && (
           <div className="flex items-center gap-1.5 flex-wrap">
+            <ScarcityBadge tier={auction.scarcity_tier} count={auction.scarcity_count} />
+            {auction.is_rookie && (
+              <span
+                className="text-[10px] font-black px-1.5 py-0.5 rounded bg-pink-900/40 text-pink-300 border border-pink-700/50 flex items-center gap-1"
+                title="2025 Rookie Card"
+              >
+                <Award size={9} /> RC
+              </span>
+            )}
             {parallel && (
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700/50">
                 {parallel}
               </span>
             )}
             {grade && grade !== 'Raw' && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-yellow-900/30 text-yellow-400 border border-yellow-800/40">
+              <span className="text-xs font-black px-2 py-0.5 rounded bg-yellow-900/40 text-yellow-300 border border-yellow-700/60 shadow-sm">
                 {grade}
               </span>
             )}
@@ -574,35 +726,38 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
         {/* Pricing options */}
         <PricingOptions auction={auction} comp={comp} />
 
+        {/* Saved intent chip */}
+        {savedIntent && (
+          <div className="text-[10px] text-amber-300 bg-amber-900/25 border border-amber-700/40 rounded-lg px-2 py-1 flex items-center gap-1.5">
+            <Zap size={9} fill="currentColor" />
+            <span className="font-bold">Your max bid: ${savedIntent.max_bid?.toFixed(2)}</span>
+            {savedIntent.notes && <span className="text-amber-400/70 truncate">· {savedIntent.notes}</span>}
+          </div>
+        )}
+
         {/* Place Bid (snipe executor) */}
         {auction.snipe_eligible && (
           <button
-            onClick={async (e) => {
-              e.stopPropagation()
-              const maxBid = prompt(`Max bid for ${auction.card?.driver_name || 'this auction'}?\nCurrent: $${auction.current_price?.toFixed(2) || '?'}`)
-              if (!maxBid) return
-              try {
-                const r = await fetch(`${API}/api/auctions/${auction.id}/execute-snipe`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ max_bid: Number(maxBid) }),
-                })
-                const data = await r.json()
-                if (data.status === 'no_credentials') {
-                  alert('eBay user token not configured. See SNIPE_SETUP.md for setup instructions.')
-                } else if (data.status === 'bid_placed') {
-                  alert('Bid placed successfully!')
-                } else {
-                  alert('Bid response: ' + (data.ebay_response_snippet || JSON.stringify(data).slice(0, 200)))
-                }
-              } catch (err) {
-                alert('Bid error: ' + err.message)
-              }
-            }}
+            onClick={(e) => { e.stopPropagation(); setBidIntentOpen(true) }}
             className="w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors"
           >
             <Zap size={11} fill="white" /> Place Snipe Bid
           </button>
+        )}
+
+        {bidIntentOpen && (
+          <BidIntentModal
+            auction={auction}
+            onClose={() => setBidIntentOpen(false)}
+            onSaved={(data) => {
+              setSavedIntent({
+                max_bid: data.max_bid,
+                notes: '',
+                id: data.intent_id,
+                created_at: new Date().toISOString(),
+              })
+            }}
+          />
         )}
 
         {/* Watchlist + share buttons */}

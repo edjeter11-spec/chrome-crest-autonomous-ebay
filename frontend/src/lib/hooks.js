@@ -81,3 +81,51 @@ export function useProgressiveRender(total, initial = 60, batch = 40) {
   return { visibleCount: Math.min(visibleCount, total), sentinelRef, loadMore }
 }
 
+
+/**
+ * useState that persists to localStorage under `key`. Fails silently if
+ * storage is disabled or quota-exceeded.
+ */
+export function usePersistedState(key, initial) {
+  const [state, setState] = useState(() => {
+    try {
+      const raw = typeof window !== 'undefined' && window.localStorage.getItem(key)
+      if (raw == null) return initial
+      return JSON.parse(raw)
+    } catch {
+      return initial
+    }
+  })
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(state))
+    } catch { /* quota / disabled — ignore */ }
+  }, [key, state])
+  return [state, setState]
+}
+
+
+/**
+ * Return a small badge descriptor for a scarcity tier letter.
+ */
+export function scarcityBadgeStyle(tier) {
+  const map = {
+    'S':   { color: 'bg-fuchsia-600 text-white border-fuchsia-400', label: 'S · 1/1' },
+    'A+':  { color: 'bg-red-600 text-white border-red-400', label: 'A+ · /5' },
+    'A':   { color: 'bg-red-500 text-white border-red-400', label: 'A · /10' },
+    'A-':  { color: 'bg-orange-600 text-white border-orange-400', label: 'A-' },
+    'B+':  { color: 'bg-amber-600 text-white border-amber-400', label: 'B+' },
+    'B':   { color: 'bg-amber-500 text-black border-amber-400', label: 'B' },
+    'B-':  { color: 'bg-yellow-600 text-black border-yellow-400', label: 'B-' },
+    'C+':  { color: 'bg-emerald-700 text-white border-emerald-500', label: 'C+' },
+    'C':   { color: 'bg-emerald-600 text-white border-emerald-500', label: 'C' },
+    'C-':  { color: 'bg-teal-700 text-white border-teal-500', label: 'C-' },
+    'D+':  { color: 'bg-cyan-700 text-white border-cyan-500', label: 'D+' },
+    'D':   { color: 'bg-slate-700 text-slate-200 border-slate-500', label: 'D' },
+    'I':   { color: 'bg-purple-700 text-white border-purple-500', label: 'I · insert' },
+    'F':   { color: 'bg-gray-800 text-gray-400 border-gray-700', label: 'F · base' },
+    '-':   null,
+  }
+  return map[tier] || null
+}
+

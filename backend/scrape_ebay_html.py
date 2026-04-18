@@ -239,7 +239,7 @@ async def ingest_ebay_html_sold(db: Optional[Session] = None) -> dict:
     finally:
         if owns:
             db.close()
-    return {
+    result = {
         "source": "ebay_html_sold",
         "rows_scraped": len(rows),
         "added": added,
@@ -247,6 +247,22 @@ async def ingest_ebay_html_sold(db: Optional[Session] = None) -> dict:
         "skipped_base": skipped_base,
         "skipped_dupe": skipped_dupe,
     }
+    try:
+        from lib.telemetry import _write as _telemetry_write
+        _telemetry_write({
+            "source": "eBay",
+            "started_at": datetime.utcnow(),
+            "queries_attempted": len(QUERIES),
+            "queries_succeeded": len(QUERIES) if rows else 0,
+            "rows_seen": len(rows),
+            "rows_inserted": added,
+            "rows_skipped_dup": skipped_dupe,
+            "blocked": (len(rows) == 0),
+            "error_message": None,
+        })
+    except Exception:
+        pass
+    return result
 
 
 async def ingest_ebay_html_auction(db: Optional[Session] = None) -> dict:
@@ -317,7 +333,7 @@ async def ingest_ebay_html_auction(db: Optional[Session] = None) -> dict:
     finally:
         if owns:
             db.close()
-    return {
+    result = {
         "source": "ebay_html_auction",
         "rows_scraped": len(rows),
         "added": added,
@@ -325,3 +341,19 @@ async def ingest_ebay_html_auction(db: Optional[Session] = None) -> dict:
         "skipped_invalid": skipped_invalid,
         "skipped_base": skipped_base,
     }
+    try:
+        from lib.telemetry import _write as _telemetry_write
+        _telemetry_write({
+            "source": "eBay",
+            "started_at": datetime.utcnow(),
+            "queries_attempted": len(QUERIES),
+            "queries_succeeded": len(QUERIES) if rows else 0,
+            "rows_seen": len(rows),
+            "rows_inserted": added,
+            "rows_updated": updated,
+            "blocked": (len(rows) == 0),
+            "error_message": None,
+        })
+    except Exception:
+        pass
+    return result

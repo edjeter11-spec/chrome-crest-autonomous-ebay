@@ -13,6 +13,15 @@ router = APIRouter(prefix="/api/auctions", tags=["auctions"])
 def auction_to_dict(a: Auction) -> dict:
     now = datetime.utcnow()
     time_left = max(0, int((a.end_time - now).total_seconds())) if a.end_time else 0
+    # Scarcity tier — derived from card.parallel (fallback: title-based later)
+    try:
+        from lib.parallels import scarcity_for, is_rookie
+        parallel_label = a.card.parallel if a.card else None
+        sc = scarcity_for(parallel_label)
+        rookie = is_rookie(a.card.driver_name if a.card else None)
+    except Exception:
+        sc = {"tier": "-", "count": None, "rank": 99}
+        rookie = False
     return {
         "id": a.id,
         "card_id": a.card_id,
@@ -35,6 +44,10 @@ def auction_to_dict(a: Auction) -> dict:
         "is_real_ebay": a.is_real_ebay,
         "buying_options": json.loads(a.buying_options) if a.buying_options else [],
         "extra_images": json.loads(a.extra_images) if getattr(a, 'extra_images', None) else [],
+        "scarcity_tier": sc["tier"],
+        "scarcity_count": sc["count"],
+        "scarcity_rank": sc["rank"],
+        "is_rookie": rookie,
         "card": {
             "driver_name": a.card.driver_name,
             "parallel": a.card.parallel,

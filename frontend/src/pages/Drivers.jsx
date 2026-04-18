@@ -2,6 +2,28 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
+import { usePersistedState } from '../lib/hooks'
+
+const ROOKIES_2025 = new Set([
+  'Andrea Kimi Antonelli', 'Gabriel Bortoleto', 'Oliver Bearman',
+  'Isack Hadjar', 'Jack Doohan', 'Liam Lawson', 'Franco Colapinto',
+])
+
+function MomentumChip({ delta, small }) {
+  if (delta == null) {
+    return <span className={`text-gray-500 ${small ? 'text-[10px]' : 'text-xs'} font-semibold`}>—</span>
+  }
+  const up = delta > 0
+  const flat = Math.abs(delta) < 1
+  const color = flat ? 'text-gray-400' : up ? 'text-emerald-400' : 'text-red-400'
+  const arrow = flat ? '→' : up ? '↑' : '↓'
+  return (
+    <span className={`font-bold ${color} ${small ? 'text-[10px]' : 'text-xs'}`}
+          title={`Median last 7d vs prior 14d (${delta.toFixed(1)}%)`}>
+      {arrow} {flat ? 'flat' : `${Math.abs(delta).toFixed(0)}% (7d)`}
+    </span>
+  )
+}
 
 const DriverPriceChart = lazy(() => import('../components/DriverPriceChart'))
 
@@ -36,6 +58,26 @@ export default function Drivers() {
   const [observed, setObserved] = useState(null)
   const [recentSales, setRecentSales] = useState([])
   const [topGraded, setTopGraded] = useState(null)
+  const [momentumMap, setMomentumMap] = useState({})
+  const [rookiePremium, setRookiePremium] = useState(null)
+  const [recentlyViewed, setRecentlyViewed] = usePersistedState('cc_recent_drivers', [])
+
+  // Load all-driver momentum once
+  useEffect(() => {
+    fetch(`${API}/api/sales/momentum`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.rows) return
+        const map = {}
+        for (const row of d.rows) map[row.driver] = row
+        setMomentumMap(map)
+      })
+      .catch(() => {})
+    fetch(`${API}/api/sales/rookie-premium`)
+      .then(r => r.ok ? r.json() : null)
+      .then(setRookiePremium)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     swrFetch(
@@ -60,7 +102,7 @@ export default function Drivers() {
     }
   }, [drivers, searchParams])
 
-  // Sync selected → URL
+  // Sync selected → URL, and record recently viewed
   useEffect(() => {
     if (!selected) return
     const cur = searchParams.get('name')
@@ -69,6 +111,11 @@ export default function Drivers() {
       next.set('name', selected.driver_name)
       setSearchParams(next, { replace: true })
     }
+    setRecentlyViewed(prev => {
+      const name = selected.driver_name
+      const without = (prev || []).filter(n => n !== name)
+      return [name, ...without].slice(0, 5)
+    })
   }, [selected])
 
   // Fetch per-driver detail blocks
@@ -147,6 +194,23 @@ export default function Drivers() {
               placeholder="Search driver…"
               className="input-field w-full pl-8 pr-3 py-2 text-xs" />
           </div>
+          {recentlyViewed?.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              <span className="text-[9px] uppercase font-black text-gray-500 tracking-wider self-center pr-1">Recent</span>
+              {recentlyViewed.map(name => (
+                <button
+                  key={name}
+                  onClick={() => {
+                    const match = drivers.find(d => d.driver_name === name)
+                    if (match) setSelected(match)
+                  }}
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-800/70 hover:bg-gray-700 text-gray-300 border border-gray-700/50"
+                >
+                  {name.split(' ').slice(-1)[0]}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="space-y-0.5 max-h-[45vh] md:max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
             {filtered.length === 0 ? (
               <p className="text-xs text-gray-600 px-2 py-4 text-center">No drivers in this series</p>
@@ -164,7 +228,12 @@ export default function Drivers() {
                     {d.driver_name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">{d.driver_name}</div>
+                    <div className="text-sm font-semibold text-white truncate flex items-center gap-1.5">
+                      {d.driver_name}
+                      {ROOKIES_2025.has(d.driver_name) && (
+                        <span className="text-[9px] font-black px-1 py-0.5 rounded bg-pink-900/40 text-pink-300 border border-pink-700/50">RC</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-[10px] text-gray-500 truncate">{d.team}</span>
                       {dSeries !== 'F1' && (
@@ -173,6 +242,7 @@ export default function Drivers() {
                           {dSeries}
                         </span>
                       )}
+                      <MomentumChip delta={momentumMap[d.driver_name]?.delta_pct} small />
                     </div>
                   </div>
                   <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg border ${TIER_STYLE[tier]}`}>{tier}</span>
@@ -211,9 +281,12 @@ export default function Drivers() {
                       {selected.series}
                     </span>
                   )}
-                  {selected.is_rookie && (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-orange-900/30 text-orange-400 border border-orange-800/40">RC</span>
+                  {(selected.is_rookie || ROOKIES_2025.has(selected.driver_name)) && (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-pink-900/40 text-pink-300 border border-pink-700/60">RC</span>
                   )}
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-gray-800/70 border border-gray-700/50">
+                    <MomentumChip delta={momentumMap[selected.driver_name]?.delta_pct} />
+                  </span>
                 </div>
                 <p className="text-gray-400 text-sm font-medium">{selected.team}</p>
                 <p className="text-gray-600 text-xs mt-0.5">{selected.nationality} · Card #{selected.card_number}</p>
@@ -227,6 +300,19 @@ export default function Drivers() {
             <div className="mb-5">
               <ScoreMeter score={selected.investment_score||0} color={selected.team_color} />
             </div>
+
+            {/* Rookie premium insight */}
+            {ROOKIES_2025.has(selected.driver_name) && rookiePremium?.premium_pct != null && (
+              <div className="mb-5 px-4 py-3 rounded-2xl bg-pink-900/15 border border-pink-700/40 text-sm text-gray-200">
+                <span className="font-black text-pink-300">Rookie Premium: </span>
+                RC median sale <span className="font-black text-white">${rookiePremium.rookie_median_total?.toLocaleString() || '—'}</span>
+                {' '}vs non-RC <span className="text-gray-300">${rookiePremium.nonrookie_median_total?.toLocaleString() || '—'}</span>
+                {' '}= <span className={`font-black ${rookiePremium.premium_pct > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {rookiePremium.premium_pct > 0 ? '+' : ''}{rookiePremium.premium_pct.toFixed(1)}%
+                </span>
+                <span className="text-[10px] text-gray-500 ml-2">(n={rookiePremium.rookie_sample_count} rookie sales, {rookiePremium.days}d)</span>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               {[

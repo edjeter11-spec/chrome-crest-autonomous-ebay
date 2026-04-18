@@ -4,13 +4,14 @@ import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import { swrFetch } from '../lib/cache'
 import { matchesParallel } from '../lib/parallels'
-import { useVisibilityInterval, useProgressiveRender } from '../lib/hooks'
+import { useVisibilityInterval, useProgressiveRender, usePersistedState } from '../lib/hooks'
 import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const SORTS = [
   { value: 'ending', label: 'Ending Soonest' },
+  { value: 'rarest', label: 'Rarest First' },
   { value: 'rarest_ending', label: 'Rarest → Ending' },
   { value: 'snipe_score', label: 'Best Snipe Score' },
   { value: 'price_low', label: 'Price: Low → High' },
@@ -45,16 +46,15 @@ const isBIN = a => { const o = a.buying_options || []; return o.includes('FIXED_
 export default function Auctions() {
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [sortBy, setSortBy] = useState('ending')
-  const [filterParallel, setFilterParallel] = useState('All')
-  const [printRun, setPrintRun] = useState('Any')
-  const [listingType, setListingType] = useState('All')
-  const [filterSnipe, setFilterSnipe] = useState(false)
-  const [filterWatchlist, setFilterWatchlist] = useState(false)
-  const [filterRookie, setFilterRookie] = useState(false)
-  const [formulaType, setFormulaType] = useState('All')
-  const [teamFilter, setTeamFilter] = useState('All')
+  // Persisted filter state (localStorage-backed — fail-gracefully)
+  const [filters, setFilters] = usePersistedState('cc_filters_auctions', {
+    search: '', sortBy: 'ending', filterParallel: 'All', printRun: 'Any',
+    listingType: 'All', filterSnipe: false, filterWatchlist: false,
+    filterRookie: false, formulaType: 'All', teamFilter: 'All',
+  })
+  const setF = (patch) => setFilters(prev => ({ ...prev, ...patch }))
+  const { search, sortBy, filterParallel, printRun, listingType,
+          filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter } = filters
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -96,6 +96,10 @@ export default function Auctions() {
     })
     .sort((a, b) => {
       if (sortBy === 'ending') return a.time_left - b.time_left
+      if (sortBy === 'rarest') {
+        const ra = a.scarcity_rank ?? 99, rb = b.scarcity_rank ?? 99
+        return ra - rb
+      }
       if (sortBy === 'rarest_ending') { const rd = rarityOf(b) - rarityOf(a); return rd !== 0 ? rd : a.time_left - b.time_left }
       if (sortBy === 'snipe_score') return (b.snipe_score || 0) - (a.snipe_score || 0)
       if (sortBy === 'price_low') return a.current_price - b.current_price
@@ -134,7 +138,7 @@ export default function Auctions() {
         {/* Search */}
         <div className="relative min-w-44">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
+          <input value={search} onChange={e => setF({ search: e.target.value })}
             placeholder="Driver, title…"
             className="input-field w-full pl-8 pr-3 py-2 text-xs" />
         </div>
@@ -142,31 +146,31 @@ export default function Auctions() {
         <div className="w-px h-5 bg-gray-700/60 shrink-0" />
 
         {/* Formula type */}
-        <select value={formulaType} onChange={e => setFormulaType(e.target.value)}
+        <select value={formulaType} onChange={e => setF({ formulaType: e.target.value })}
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
         </select>
 
         {/* Team */}
-        <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)}
+        <select value={teamFilter} onChange={e => setF({ teamFilter: e.target.value })}
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
         </select>
 
         {/* Parallel */}
-        <select value={filterParallel} onChange={e => setFilterParallel(e.target.value)}
+        <select value={filterParallel} onChange={e => setF({ filterParallel: e.target.value })}
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {PARALLELS.map(p => <option key={p} value={p}>{p === 'All' ? 'All Parallels' : p === 'No Base' ? 'No Base Cards' : p}</option>)}
         </select>
 
         {/* Print run */}
-        <select value={printRun} onChange={e => setPrintRun(e.target.value)}
+        <select value={printRun} onChange={e => setF({ printRun: e.target.value })}
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {PRINT_RUNS.map(p => <option key={p} value={p}>{p === 'Any' ? 'Any Print Run' : p}</option>)}
         </select>
 
         {/* Sort */}
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+        <select value={sortBy} onChange={e => setF({ sortBy: e.target.value })}
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
@@ -175,11 +179,11 @@ export default function Auctions() {
 
         {/* Toggle pills */}
         {[
-          { label: '⭐ Rookies', active: filterRookie, set: setFilterRookie },
-          { label: '⚡ Snipe Only', active: filterSnipe, set: setFilterSnipe },
-          { label: '🔖 Watchlist', active: filterWatchlist, set: setFilterWatchlist },
-        ].map(({ label, active, set }) => (
-          <button key={label} onClick={() => set(!active)}
+          { label: '⭐ Rookies', active: filterRookie, key: 'filterRookie' },
+          { label: '⚡ Snipe Only', active: filterSnipe, key: 'filterSnipe' },
+          { label: '🔖 Watchlist', active: filterWatchlist, key: 'filterWatchlist' },
+        ].map(({ label, active, key }) => (
+          <button key={label} onClick={() => setF({ [key]: !active })}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
               active ? 'bg-red-600/15 text-red-400 border border-red-600/30' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
             }`}>
@@ -198,7 +202,7 @@ export default function Auctions() {
           <Gavel size={36} className="mb-4 opacity-20" />
           <p className="text-sm font-medium">No live auctions right now</p>
           <p className="text-xs text-gray-600 mt-1">Auction listings sync every hour — check back soon</p>
-          <button onClick={() => { setFilterParallel('All'); setSearch(''); setPrintRun('Any'); setFormulaType('All'); setFilterSnipe(false); setFilterRookie(false); setFilterWatchlist(false) }}
+          <button onClick={() => setF({ filterParallel: 'All', search: '', printRun: 'Any', formulaType: 'All', filterSnipe: false, filterRookie: false, filterWatchlist: false })}
             className="mt-3 text-xs text-red-400 hover:underline">Clear filters</button>
         </div>
       ) : (

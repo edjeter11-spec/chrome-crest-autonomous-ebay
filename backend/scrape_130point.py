@@ -265,7 +265,7 @@ async def ingest_130point(db: Optional[Session] = None) -> dict:
     finally:
         if owns:
             db.close()
-    return {
+    result = {
         "source": "130point",
         "rows_scraped": len(rows),
         "added": added,
@@ -275,3 +275,19 @@ async def ingest_130point(db: Optional[Session] = None) -> dict:
         "skipped_no_ebay_id": skipped_no_id,
         "errors": errors,
     }
+    try:
+        from lib.telemetry import _write as _telemetry_write
+        _telemetry_write({
+            "source": "130point",
+            "started_at": datetime.utcnow(),
+            "queries_attempted": 1,
+            "queries_succeeded": 1 if rows else 0,
+            "rows_seen": len(rows),
+            "rows_inserted": added,
+            "rows_skipped_dup": skipped_dupe,
+            "blocked": (len(rows) == 0),
+            "error_message": None,
+        })
+    except Exception:
+        pass
+    return result

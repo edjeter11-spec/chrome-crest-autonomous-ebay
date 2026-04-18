@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 import asyncio
 import json
 import httpx
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from database import create_tables, get_db, Auction, Card, engine
 from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales, psa_data, push, graded
@@ -39,6 +39,238 @@ app.include_router(sales.router)
 app.include_router(psa_data.router)
 app.include_router(push.router)
 app.include_router(graded.router)
+
+
+@app.post("/api/admin/migrate-bid-intents")
+def migrate_bid_intents():
+    """Create bid_intents table (idempotent)."""
+    from sqlalchemy import text
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS bid_intents (
+            id SERIAL PRIMARY KEY,
+            auction_id INTEGER NOT NULL,
+            ebay_item_id VARCHAR,
+            max_bid FLOAT NOT NULL,
+            executed BOOLEAN DEFAULT FALSE,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_bid_intents_auction_id ON bid_intents (auction_id)",
+        "CREATE INDEX IF NOT EXISTS ix_bid_intents_ebay_item_id ON bid_intents (ebay_item_id)",
+    ]
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"ok": True})
+                except Exception as e:
+                    results.append({"ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
+
+
+@app.post("/api/admin/migrate-scraper-runs")
+def migrate_scraper_runs():
+    """Create scraper_runs table (idempotent)."""
+    from sqlalchemy import text
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS scraper_runs (
+            id SERIAL PRIMARY KEY,
+            source VARCHAR NOT NULL,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP,
+            queries_attempted INTEGER DEFAULT 0,
+            queries_succeeded INTEGER DEFAULT 0,
+            rows_seen INTEGER DEFAULT 0,
+            rows_inserted INTEGER DEFAULT 0,
+            rows_updated INTEGER DEFAULT 0,
+            rows_skipped_dup INTEGER DEFAULT 0,
+            blocked BOOLEAN DEFAULT FALSE,
+            error_message TEXT,
+            run_id VARCHAR
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_scraper_runs_source ON scraper_runs (source)",
+        "CREATE INDEX IF NOT EXISTS ix_scraper_runs_started_at ON scraper_runs (started_at)",
+    ]
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"ok": True})
+                except Exception as e:
+                    results.append({"ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
+
+
+@app.get("/api/admin/scraper-health")
+def scraper_health(db: Session = Depends(get_db)):
+    """Last 14d of scraper_runs per source — success rate, latency, last success."""
+    from database import ScraperRun
+    from sqlalchemy import desc as _desc
+    cutoff = datetime.utcnow() - timedelta(days=14)
+
+    rows = db.query(ScraperRun).filter(ScraperRun.started_at >= cutoff)\
+        .order_by(_desc(ScraperRun.started_at)).all()
+
+    by_source: dict = {}
+    for r in rows:
+        src = r.source or "Unknown"
+        bucket = by_source.setdefault(src, {
+            "source": src,
+            "runs": 0,
+            "succeeded": 0,
+            "blocked": 0,
+            "total_new_rows": 0,
+            "total_rows_seen": 0,
+            "last_started": None,
+            "last_success_at": None,
+            "last_error": None,
+        })
+        bucket["runs"] += 1
+        bucket["total_new_rows"] += int(r.rows_inserted or 0)
+        bucket["total_rows_seen"] += int(r.rows_seen or 0)
+        if r.blocked:
+            bucket["blocked"] += 1
+        if r.error_message and not bucket["last_error"]:
+            bucket["last_error"] = (r.error_message or "")[:160]
+        if not bucket["last_started"] and r.started_at:
+            bucket["last_started"] = r.started_at.isoformat()
+        # "succeeded" = finished without error, inserted >=1 row OR rows_seen>=1
+        if not r.error_message and not r.blocked:
+            bucket["succeeded"] += 1
+            if not bucket["last_success_at"] and r.started_at:
+                bucket["last_success_at"] = r.started_at.isoformat()
+
+    out = []
+    for src, b in by_source.items():
+        runs = b["runs"] or 1
+        b["success_rate"] = round(b["succeeded"] / runs * 100, 1)
+        b["avg_new_rows"] = round(b["total_new_rows"] / runs, 1)
+        # Simple status flag used by the dashboard strip
+        if b["last_success_at"]:
+            hrs = (datetime.utcnow() - datetime.fromisoformat(b["last_success_at"])).total_seconds() / 3600
+            if hrs < 6:
+                b["status"] = "ok"
+            elif hrs < 24:
+                b["status"] = "warn"
+            else:
+                b["status"] = "stale"
+        elif b["blocked"]:
+            b["status"] = "blocked"
+        else:
+            b["status"] = "stale"
+        out.append(b)
+    out.sort(key=lambda x: x["source"])
+    return {"sources": out, "total_runs": len(rows), "window_days": 14}
+
+
+@app.post("/api/auctions/{auction_id}/bid-intent")
+def save_bid_intent(auction_id: int, body: dict, db: Session = Depends(get_db)):
+    """Record a planned max bid even if we can't auto-execute."""
+    from database import BidIntent
+    a = db.query(Auction).filter(Auction.id == auction_id).first()
+    if not a:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Auction not found")
+    max_bid = float(body.get("max_bid", 0))
+    if max_bid <= 0:
+        from fastapi import HTTPException
+        raise HTTPException(400, "max_bid must be > 0")
+    intent = BidIntent(
+        auction_id=auction_id,
+        ebay_item_id=a.ebay_listing_id,
+        max_bid=max_bid,
+        notes=body.get("notes") or "",
+        executed=False,
+    )
+    db.add(intent)
+    db.commit()
+    # Build intent eBay URL
+    item_id = a.ebay_listing_id.split("|")[1] if a.ebay_listing_id and "|" in a.ebay_listing_id else (a.ebay_listing_id or "")
+    bid_url = f"https://www.ebay.com/itm/{item_id}?intent=BID" if item_id else (a.ebay_url or "")
+    return {
+        "status": "saved",
+        "intent_id": intent.id,
+        "auction_id": auction_id,
+        "max_bid": max_bid,
+        "ebay_bid_url": bid_url,
+        "ebay_url": a.ebay_url,
+    }
+
+
+@app.get("/api/auctions/{auction_id}/bid-intents")
+def list_bid_intents(auction_id: int, db: Session = Depends(get_db)):
+    """Return saved bid intents for this auction."""
+    from database import BidIntent
+    rows = db.query(BidIntent).filter(BidIntent.auction_id == auction_id)\
+        .order_by(BidIntent.created_at.desc()).all()
+    return {
+        "auction_id": auction_id,
+        "intents": [
+            {
+                "id": r.id,
+                "max_bid": r.max_bid,
+                "executed": r.executed,
+                "notes": r.notes,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@app.get("/api/watchlist/changes")
+def watchlist_changes(since: str = QueryParam(...), db: Session = Depends(get_db)):
+    """
+    Return watchlist items whose current price differs from the last snapshot
+    before `since` (ISO). Used by dashboard "what's changed" strip.
+    """
+    try:
+        since_dt = datetime.fromisoformat(since.replace("Z", "").replace("+00:00", ""))
+    except Exception:
+        return {"items": [], "error": "bad_since"}
+
+    items = db.query(Auction).filter(Auction.status == "watchlist").all()
+    # Without price snapshots we approximate "changed" via last_updated > since.
+    moved = []
+    for a in items:
+        lu = a.last_updated or a.created_at
+        if not lu or lu < since_dt:
+            continue
+        moved.append({
+            "id": a.id,
+            "title": (a.title or "")[:140],
+            "current_price": a.current_price,
+            "driver": a.card.driver_name if a.card else None,
+            "parallel": a.card.parallel if a.card else None,
+            "last_updated": lu.isoformat() if lu else None,
+        })
+    return {"items": moved, "total_watchlist": len(items)}
 
 
 @app.post("/api/admin/migrate-sold-source")

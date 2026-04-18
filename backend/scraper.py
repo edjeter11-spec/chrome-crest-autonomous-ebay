@@ -503,14 +503,20 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
         end_time = auction.end_time
         mins_left = (end_time - now).total_seconds() / 60 if end_time else 9999
         bid_count = auction.bid_count or 0
-        seller_fb = auction.seller_feedback or 0
+        # `seller_feedback` is often 0/None because the HTML scraper doesn't
+        # extract it — treat that as "unknown" rather than "low reputation".
+        # Only reject when we have a positive but genuinely low count.
+        raw_fb = auction.seller_feedback
+        seller_fb = raw_fb if raw_fb is not None else 0
+        seller_unknown = raw_fb is None or raw_fb == 0
 
         # Hard gates — bail fast on anything that can't qualify.
         if cur_price <= 0 or mins_left <= 0 or mins_left >= 120:
             continue
         if bid_count >= 3:
             continue
-        if seller_fb < 50:
+        # Only reject real low-rep sellers (1 <= fb < 50). Unknown passes.
+        if not seller_unknown and 1 <= seller_fb < 50:
             continue
 
         # Grade-aware median lookup.
@@ -534,7 +540,12 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
 
         # Human-readable message with the full context baked in.
         ship_frag = f" (incl ship)" if shipping > 0 else ""
-        fb_frag = f"{seller_fb // 1000}k" if seller_fb >= 1000 else f"{seller_fb}"
+        if seller_unknown:
+            fb_frag = "unknown"
+        elif seller_fb >= 1000:
+            fb_frag = f"{seller_fb // 1000}k"
+        else:
+            fb_frag = f"{seller_fb}"
         grade_frag = f" {grade}" if grade else ""
         par_frag = f" {parallel}" if parallel else ""
         msg = (

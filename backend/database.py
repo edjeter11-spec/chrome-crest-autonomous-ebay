@@ -239,6 +239,36 @@ class PushSubscription(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class BidIntent(Base):
+    """User-planned max bid on an auction. Saved even when snipe can't auto-execute."""
+    __tablename__ = "bid_intents"
+    id = Column(Integer, primary_key=True, index=True)
+    auction_id = Column(Integer, index=True, nullable=False)
+    ebay_item_id = Column(String, nullable=True, index=True)
+    max_bid = Column(Float, nullable=False)
+    executed = Column(Boolean, default=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ScraperRun(Base):
+    """Per-run telemetry row — one per scraper invocation."""
+    __tablename__ = "scraper_runs"
+    id = Column(Integer, primary_key=True, index=True)
+    source = Column(String, index=True, nullable=False)  # 'eBay', 'Goldin', ...
+    started_at = Column(DateTime, default=datetime.utcnow, index=True)
+    ended_at = Column(DateTime, nullable=True)
+    queries_attempted = Column(Integer, default=0)
+    queries_succeeded = Column(Integer, default=0)
+    rows_seen = Column(Integer, default=0)
+    rows_inserted = Column(Integer, default=0)
+    rows_updated = Column(Integer, default=0)
+    rows_skipped_dup = Column(Integer, default=0)
+    blocked = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+    run_id = Column(String, nullable=True)  # GH Actions run id
+
+
 class SystemState(Base):
     """Key-value store for flags that must survive Vercel cold starts (e.g. eBay rate-limit cooldowns)."""
     __tablename__ = "system_state"

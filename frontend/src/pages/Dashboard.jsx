@@ -64,6 +64,41 @@ export default function Dashboard() {
   const [lastSync, setLastSync] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
+  // "Welcome back" delta strip — computed once on first mount
+  const [welcomeDelta, setWelcomeDelta] = useState(null)
+  const [scraperHealth, setScraperHealth] = useState(null)
+
+  useEffect(() => {
+    let lastVisit = null
+    try { lastVisit = window.localStorage.getItem('cc_last_visit') } catch {}
+    const now = new Date().toISOString()
+    try { window.localStorage.setItem('cc_last_visit', now) } catch {}
+    if (!lastVisit) return  // first visit — skip the strip
+
+    const since = lastVisit
+    Promise.all([
+      fetch(`${API}/api/sales?since=${encodeURIComponent(since)}&limit=500`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${API}/api/alerts`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${API}/api/watchlist/changes?since=${encodeURIComponent(since)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([salesRes, alertsRes, watchRes]) => {
+      // Falls back to client-side filtering if the `since` param isn't honored
+      const sinceMs = new Date(since).getTime()
+      const salesAll = salesRes?.sales || []
+      const newSales = salesAll.filter(s => s.scraped_at && new Date(s.scraped_at).getTime() >= sinceMs).length
+      const alertsAll = alertsRes?.alerts || alertsRes || []
+      const newAlerts = alertsAll.filter(a => a.created_at && new Date(a.created_at).getTime() >= sinceMs).length
+      const movedWatch = watchRes?.items?.length || 0
+      if (newSales + newAlerts + movedWatch > 0) {
+        setWelcomeDelta({ since, newSales, newAlerts, movedWatch })
+      }
+    })
+
+    fetch(`${API}/api/admin/scraper-health`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setScraperHealth(d))
+      .catch(() => {})
+  }, [])
+
   const loadAll = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
 
@@ -194,6 +229,31 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* Welcome-back delta strip */}
+      {welcomeDelta && (
+        <div className="bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-600/40 rounded-2xl px-4 py-2.5 flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-black uppercase tracking-wider text-indigo-300">Welcome back</span>
+          <div className="flex items-center gap-3 text-xs text-gray-300 flex-wrap">
+            {welcomeDelta.newSales > 0 && (
+              <span><span className="font-black text-white">{welcomeDelta.newSales}</span> new sales</span>
+            )}
+            {welcomeDelta.newAlerts > 0 && (
+              <span><span className="font-black text-red-300">{welcomeDelta.newAlerts}</span> new alerts</span>
+            )}
+            {welcomeDelta.movedWatch > 0 && (
+              <span><span className="font-black text-yellow-300">{welcomeDelta.movedWatch}</span> watched moved</span>
+            )}
+            <span className="text-gray-500">since {new Date(welcomeDelta.since).toLocaleString()}</span>
+          </div>
+          <button
+            onClick={() => setWelcomeDelta(null)}
+            className="ml-auto text-xs text-gray-500 hover:text-white"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* NEW: Live ticker strip */}
       {ticker.length > 0 && (
@@ -608,6 +668,25 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Scraper telemetry strip (footer) */}
+      {scraperHealth?.sources?.length > 0 && (
+        <div className="mt-4 bg-gray-900/50 border border-gray-800/50 rounded-2xl px-3 py-2 flex items-center gap-3 flex-wrap text-[10px]">
+          <span className="text-gray-500 uppercase font-black tracking-wider">Scrapers</span>
+          {scraperHealth.sources.map(s => {
+            const sym = s.status === 'ok' ? '✓' : s.status === 'warn' ? '⚠' : s.status === 'blocked' ? '✗' : '–'
+            const color = s.status === 'ok' ? 'text-emerald-400' : s.status === 'warn' ? 'text-amber-400' : s.status === 'blocked' ? 'text-red-400' : 'text-gray-500'
+            const lastLabel = s.last_success_at
+              ? relTime(s.last_success_at)
+              : s.status === 'blocked' ? 'blocked' : 'no data'
+            return (
+              <span key={s.source} className="text-gray-400" title={`${s.runs} runs · ${s.success_rate}% success · avg ${s.avg_new_rows} new rows/run`}>
+                {s.source} <span className={`font-black ${color}`}>{sym}</span> <span className="text-gray-600">{lastLabel}</span>
+              </span>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
