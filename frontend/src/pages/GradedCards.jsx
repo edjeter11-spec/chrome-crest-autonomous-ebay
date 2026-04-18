@@ -41,7 +41,7 @@ export default function GradedCards() {
   const [search, setSearch] = useState('')
   const [grader, setGrader] = useState('All')
   const [grade, setGrade] = useState('All')
-  const [formulaType, setFormulaType] = useState('All')
+  const [formulaType, setFormulaType] = useState('F1')
   const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
 

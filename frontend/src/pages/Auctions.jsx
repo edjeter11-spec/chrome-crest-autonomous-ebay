@@ -47,10 +47,10 @@ export default function Auctions() {
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(true)
   // Persisted filter state (localStorage-backed — fail-gracefully)
-  const [filters, setFilters] = usePersistedState('cc_filters_auctions', {
+  const [filters, setFilters] = usePersistedState('cc_filters_auctions_v2', {
     search: '', sortBy: 'ending', filterParallel: 'All', printRun: 'Any',
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
-    filterRookie: false, formulaType: 'All', teamFilter: 'All',
+    filterRookie: false, formulaType: 'F1', teamFilter: 'All',
   })
   const setF = (patch) => setFilters(prev => ({ ...prev, ...patch }))
   const { search, sortBy, filterParallel, printRun, listingType,
@@ -202,7 +202,7 @@ export default function Auctions() {
           <Gavel size={36} className="mb-4 opacity-20" />
           <p className="text-sm font-medium">No live auctions right now</p>
           <p className="text-xs text-gray-600 mt-1">Auction listings sync every hour — check back soon</p>
-          <button onClick={() => setF({ filterParallel: 'All', search: '', printRun: 'Any', formulaType: 'All', filterSnipe: false, filterRookie: false, filterWatchlist: false })}
+          <button onClick={() => setF({ filterParallel: 'All', search: '', printRun: 'Any', formulaType: 'F1', filterSnipe: false, filterRookie: false, filterWatchlist: false })}
             className="mt-3 text-xs text-red-400 hover:underline">Clear filters</button>
         </div>
       ) : (

@@ -49,7 +49,7 @@ export default function BuyItNow() {
   const [filterWatchlist, setFilterWatchlist] = useState(false)
   const [filterRookie, setFilterRookie] = useState(false)
   const [filterBestOffer, setFilterBestOffer] = useState(false)
-  const [formulaType, setFormulaType] = useState('All')
+  const [formulaType, setFormulaType] = useState('F1')
   const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -189,7 +189,7 @@ export default function BuyItNow() {
         <div className="panel flex flex-col items-center justify-center py-20 text-gray-600">
           <Tag size={36} className="mb-4 opacity-20" />
           <p className="text-sm font-medium">No BIN listings match your filters</p>
-          <button onClick={() => { setFilterParallel('No Base'); setSearch(''); setPrintRun('Any'); setFormulaType('All'); setFilterBestOffer(false); setFilterRookie(false); setFilterWatchlist(false) }}
+          <button onClick={() => { setFilterParallel('No Base'); setSearch(''); setPrintRun('Any'); setFormulaType('F1'); setFilterBestOffer(false); setFilterRookie(false); setFilterWatchlist(false) }}
             className="mt-3 text-xs text-green-400 hover:underline">Clear filters</button>
         </div>
       ) : (
