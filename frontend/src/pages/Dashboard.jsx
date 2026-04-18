@@ -53,8 +53,6 @@ export default function Dashboard() {
   const [snipes, setSnipes] = useState([])
   const [snipesLoading, setSnipesLoading] = useState(true)
 
-  const [heatmap, setHeatmap] = useState(null)
-  const [heatmapLoading, setHeatmapLoading] = useState(true)
 
   const [ebayLimited, setEbayLimited] = useState(false)
 
@@ -83,12 +81,6 @@ export default function Dashboard() {
     swrFetch(
       `${API}/api/auctions/snipe/targets`,
       d => { setSnipes(d.targets || d.auctions || d || []); setSnipesLoading(false) }
-    )
-
-    swrFetch(
-      `${API}/api/sales/heatmap`,
-      d => { setHeatmap(d || null); setHeatmapLoading(false) },
-      () => setHeatmapLoading(false)
     )
 
     fetch(`${API}/api/debug/ebay`)
@@ -208,10 +200,10 @@ export default function Dashboard() {
       </div>
 
       {/* 2 + 3. Sales feed + Market movers */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* 2. What sold today */}
-        <div className="lg:col-span-2 bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden">
+        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800/60">
             <h2 className="text-sm font-black text-white flex items-center gap-2">
               <Flame size={14} className="text-orange-400" />
@@ -378,9 +370,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-
-      {/* 3b. Sales heatmap */}
-      <SalesHeatmap heatmap={heatmap} loading={heatmapLoading} navigate={navigate} />
 
       {/* 4. Ending soonest strip */}
       <div>
