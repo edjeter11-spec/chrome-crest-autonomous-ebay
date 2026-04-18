@@ -655,10 +655,18 @@ async def admin_ingest_finding_api_all():
 
 
 @app.get("/api/drivers/photo")
-async def driver_photo(name: str = QueryParam(...)):
-    """Return cached Wikipedia headshot URL for a driver."""
+async def driver_photo(name: str = QueryParam(...), redirect: bool = True):
+    """Return Wikipedia headshot for a driver. By default 302-redirects to the
+    actual image so <img src=...> works directly. Pass ?redirect=false to get
+    the JSON body instead."""
     from driver_photos import get_photo
+    from fastapi.responses import RedirectResponse, Response
     url = await get_photo(name)
+    if not url:
+        # 1x1 transparent pixel so <img onError> still fires sensibly
+        return Response(status_code=404)
+    if redirect:
+        return RedirectResponse(url=url, status_code=302)
     return {"driver": name, "photo_url": url}
 
 
