@@ -51,17 +51,19 @@ export default function Auctions() {
     search: '', sortBy: 'ending', filterParallel: 'All', printRun: 'Any',
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
     filterRookie: false, formulaType: 'F1', teamFilter: 'All',
+    filterStrongBuy: false,
   })
   const setF = (patch) => setFilters(prev => ({ ...prev, ...patch }))
   const { search, sortBy, filterParallel, printRun, listingType,
-          filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter } = filters
+          filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter,
+          filterStrongBuy } = filters
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
   const load = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
     swrFetch(
-      `${API}/api/auctions?limit=500&status=active&buying=auction`,
+      `${API}/api/auctions/with-verdicts?limit=500&status=active&buying=auction`,
       d => { setAuctions(d.auctions || d || []); setLoading(false) },
       () => setRefreshing(false)
     )
@@ -88,6 +90,7 @@ export default function Auctions() {
       if (filterSnipe && !a.snipe_eligible) return false
       if (filterWatchlist && a.status !== 'watchlist') return false
       if (filterRookie && !ROOKIES.has(a.card?.driver_name)) return false
+      if (filterStrongBuy && !(a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')) return false
       if (search) {
         const q = search.toLowerCase()
         return a.title?.toLowerCase().includes(q) || a.card?.driver_name?.toLowerCase().includes(q)
@@ -108,6 +111,7 @@ export default function Auctions() {
     })
 
   const snipeCount = filtered.filter(a => a.snipe_eligible).length
+  const strongBuyCount = auctions.filter(a => a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY').length
   const { visibleCount, sentinelRef } = useProgressiveRender(filtered.length, 60, 40)
 
   return (
@@ -124,6 +128,11 @@ export default function Auctions() {
             {snipeCount > 0 && (
               <span className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl bg-red-600/15 text-red-400 border border-red-600/30">
                 <Zap size={10} fill="currentColor" /> {snipeCount} snipeable
+              </span>
+            )}
+            {strongBuyCount > 0 && (
+              <span className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl bg-green-600/15 text-green-400 border border-green-600/30">
+                🔥 {strongBuyCount} strong buys
               </span>
             )}
           </>
@@ -179,13 +188,14 @@ export default function Auctions() {
 
         {/* Toggle pills */}
         {[
+          { label: '🔥 Strong Buys', active: filterStrongBuy, key: 'filterStrongBuy', activeCls: 'bg-green-600/20 text-green-400 border border-green-600/40' },
           { label: '⭐ Rookies', active: filterRookie, key: 'filterRookie' },
           { label: '⚡ Snipe Only', active: filterSnipe, key: 'filterSnipe' },
           { label: '🔖 Watchlist', active: filterWatchlist, key: 'filterWatchlist' },
-        ].map(({ label, active, key }) => (
+        ].map(({ label, active, key, activeCls }) => (
           <button key={label} onClick={() => setF({ [key]: !active })}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-              active ? 'bg-red-600/15 text-red-400 border border-red-600/30' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+              active ? (activeCls || 'bg-red-600/15 text-red-400 border border-red-600/30') : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
             }`}>
             {label}
           </button>

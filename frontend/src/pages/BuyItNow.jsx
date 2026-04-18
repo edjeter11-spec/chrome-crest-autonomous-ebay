@@ -69,6 +69,7 @@ export default function BuyItNow() {
   const [filterWatchlist, setFilterWatchlist] = useState(false)
   const [filterRookie, setFilterRookie] = useState(false)
   const [filterBestOffer, setFilterBestOffer] = useState(false)
+  const [filterStrongBuy, setFilterStrongBuy] = useState(false)
   const [formulaType, setFormulaType] = useState('F1')
   const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
@@ -77,7 +78,7 @@ export default function BuyItNow() {
   const load = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
     swrFetch(
-      `${API}/api/auctions?limit=500&status=active&buying=bin`,
+      `${API}/api/auctions/with-verdicts?limit=500&status=active&buying=bin`,
       d => { setAuctions(d.auctions || d || []); setLoading(false) },
       () => setRefreshing(false)
     )
@@ -102,6 +103,7 @@ export default function BuyItNow() {
       if (filterWatchlist && a.status !== 'watchlist') return false
       if (filterRookie && !ROOKIES.has(a.card?.driver_name)) return false
       if (filterBestOffer && !(a.buying_options || []).includes('BEST_OFFER')) return false
+      if (filterStrongBuy && !(a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')) return false
       if (search) {
         const q = search.toLowerCase()
         return a.title?.toLowerCase().includes(q) || a.card?.driver_name?.toLowerCase().includes(q)
@@ -122,6 +124,7 @@ export default function BuyItNow() {
     })
 
   const bestOfferCount = filtered.filter(a => (a.buying_options || []).includes('BEST_OFFER')).length
+  const strongBuyCount = auctions.filter(a => a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY').length
   const { visibleCount, sentinelRef } = useProgressiveRender(filtered.length, 60, 40)
 
   return (
@@ -138,6 +141,11 @@ export default function BuyItNow() {
             {bestOfferCount > 0 && (
               <span className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl bg-blue-600/15 text-blue-400 border border-blue-600/30">
                 <MessageSquare size={10} /> {bestOfferCount} accepting offers
+              </span>
+            )}
+            {strongBuyCount > 0 && (
+              <span className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl bg-green-600/15 text-green-400 border border-green-600/30">
+                🔥 {strongBuyCount} strong buys
               </span>
             )}
           </>
@@ -188,13 +196,14 @@ export default function BuyItNow() {
         <div className="w-px h-5 bg-gray-700/60 shrink-0" />
 
         {[
+          { label: '🔥 Strong Buys', active: filterStrongBuy, set: setFilterStrongBuy, activeCls: 'bg-green-600/25 text-green-400 border border-green-600/50' },
           { label: '💬 Best Offer Only', active: filterBestOffer, set: setFilterBestOffer },
           { label: '⭐ Rookies', active: filterRookie, set: setFilterRookie },
           { label: '🔖 Watchlist', active: filterWatchlist, set: setFilterWatchlist },
-        ].map(({ label, active, set }) => (
+        ].map(({ label, active, set, activeCls }) => (
           <button key={label} onClick={() => set(!active)}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-              active ? 'bg-green-600/15 text-green-400 border border-green-600/30' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+              active ? (activeCls || 'bg-green-600/15 text-green-400 border border-green-600/30') : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
             }`}>
             {label}
           </button>

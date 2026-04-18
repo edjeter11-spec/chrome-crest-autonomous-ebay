@@ -5,6 +5,7 @@ import {
   BadgeCheck, Award, RotateCw, X
 } from 'lucide-react'
 import { scarcityBadgeStyle } from '../lib/hooks'
+import { verdictFor } from '../lib/verdict'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -241,27 +242,21 @@ function PricingOptions({ auction, comp }) {
         </span>
       )
     } else if (comp.median_total) {
-      const ratio = totalCost / comp.median_total
-      const pct = Math.round((1 - ratio) * 100)
-      const color = ratio <= 0.7 ? 'text-green-400' : ratio <= 0.9 ? 'text-emerald-400' : ratio <= 1.1 ? 'text-gray-400' : 'text-orange-400'
-      medianPill = (
-        <span className={`text-[10px] ${color} font-semibold`} title={`Median total over last 90d (n=${comp.n})`}>
-          {pct > 0 ? `${pct}% below` : `${-pct}% above`} median ${Math.round(comp.median_total)} · n={comp.n}
-        </span>
-      )
-      // Buy/pass verdict
-      let label, cls
-      if (ratio <= 0.6) { label = 'STRONG BUY'; cls = 'bg-green-600 text-white' }
-      else if (ratio <= 0.8) { label = 'GOOD BUY'; cls = 'bg-emerald-600 text-white' }
-      else if (ratio <= 1.05) { label = 'FAIR'; cls = 'bg-gray-700 text-gray-300' }
-      else if (ratio <= 1.25) { label = 'OVERPRICED'; cls = 'bg-orange-700/80 text-orange-100' }
-      else { label = 'PASS'; cls = 'bg-red-800/80 text-red-200' }
-      verdict = (
-        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${cls} tracking-wider`}
-              title={`Total $${totalCost.toFixed(2)} vs $${Math.round(comp.median_total)} median (n=${comp.n})`}>
-          {label}
-        </span>
-      )
+      const v = verdictFor(totalCost, comp.median_total, comp.n)
+      if (v) {
+        const pct = v.pctVsMedian
+        medianPill = (
+          <span className={`text-[10px] ${v.text} font-semibold`} title={`Median total over last 90d (n=${comp.n})`}>
+            {pct > 0 ? `${pct}% below` : `${-pct}% above`} median ${Math.round(comp.median_total)} · n={comp.n}
+          </span>
+        )
+        verdict = (
+          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
+                title={`Total $${totalCost.toFixed(2)} vs $${Math.round(comp.median_total)} median (n=${comp.n})`}>
+            {v.label}
+          </span>
+        )
+      }
     }
   }
 
@@ -521,7 +516,11 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   }, [auction.id])
 
   // Pull median comp for this driver+parallel (+grade if present in title).
+  // Server-side prefetch: when the parent already supplied verdict_comp on the
+  // auction row (Feature 2 — /api/auctions/with-verdicts), skip the per-card
+  // network round-trip entirely.
   useEffect(() => {
+    if (auction.verdict_comp) { setComp(auction.verdict_comp); return }
     const driver = auction.card?.driver_name
     const parallel = auction.card?.parallel
     if (!driver) return
@@ -534,7 +533,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
       .then(r => r.ok ? r.json() : null)
       .then(setComp)
       .catch(() => {})
-  }, [auction.id, auction.card?.driver_name, auction.card?.parallel, auction.title])
+  }, [auction.id, auction.card?.driver_name, auction.card?.parallel, auction.title, auction.verdict_comp])
 
   // Priority: extra_images → listing image_url → card catalog image
   const [images, setImages] = useState(() => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Bell, Zap, AlertCircle, X, Trash2 } from 'lucide-react'
+import { Bell, Zap, AlertCircle, X, Trash2, Heart, Flame } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 
@@ -107,10 +107,21 @@ export default function AlertsPage() {
       ) : (
         <div className="space-y-1.5">
           {filtered.map(alert => {
-            const s = URGENCY[alert.urgency] || URGENCY.normal
+            // Strong-buy & wishlist-match get distinct green/pink coloring so
+            // they don't blend in with snipe alerts.
+            const isStrongBuy = alert.alert_type === 'strong_buy'
+            const isWishMatch = alert.alert_type === 'wishlist_match'
+            let s = URGENCY[alert.urgency] || URGENCY.normal
+            if (isStrongBuy) {
+              s = { border: 'border-green-500/40', bg: 'bg-green-900/10', badge: 'bg-green-600 text-white', icon: 'text-green-400' }
+            } else if (isWishMatch) {
+              s = { border: 'border-pink-500/40', bg: 'bg-pink-900/10', badge: 'bg-pink-600 text-white', icon: 'text-pink-400' }
+            }
+            const Icon = isStrongBuy ? Flame : isWishMatch ? Heart : Zap
+            const typeBadge = isStrongBuy ? 'STRONG BUY' : isWishMatch ? 'WISHLIST' : alert.urgency
             return (
               <div key={alert.id} className={`flex items-center gap-4 px-4 py-3 rounded-2xl border ${s.border} ${s.bg} group`}>
-                <Zap size={13} className={`shrink-0 ${s.icon}`} />
+                <Icon size={13} className={`shrink-0 ${s.icon}`} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-200 truncate font-medium">{alert.message}</p>
                   <p className="text-[10px] text-gray-600 mt-0.5">
@@ -118,7 +129,7 @@ export default function AlertsPage() {
                   </p>
                 </div>
                 <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg uppercase shrink-0 ${s.badge}`}>
-                  {alert.urgency}
+                  {typeBadge}
                 </span>
                 <button
                   onClick={() => dismiss(alert.id)}

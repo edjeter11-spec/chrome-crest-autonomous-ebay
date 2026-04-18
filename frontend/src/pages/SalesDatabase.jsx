@@ -19,6 +19,7 @@ async function shareSale(e, sale) {
   try { await navigator.clipboard.writeText(url) } catch {}
 }
 import { swrFetch } from '../lib/cache'
+import { verdictFor, VERDICT_STYLES } from '../lib/verdict'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -131,6 +132,73 @@ export default function SalesDatabase() {
     })
   }, [sales, search, sortField, sortDir])
 
+  // Bucket sales by (driver|parallel|grade) and pre-sort each bucket so we can
+  // do leave-one-out medians in O(1). Falls back to (driver|parallel) and then
+  // (driver) when a tighter bucket has too few comps.
+  const buckets = useMemo(() => {
+    const out = { full: new Map(), dp: new Map(), d: new Map() }
+    for (const s of sales) {
+      if (!s.driver_name) continue
+      const total = (s.total_cost ?? s.sale_price)
+      if (!total || total <= 0) continue
+      const par = s.parallel || ''
+      const gr = s.grade || ''
+      const fullK = `${s.driver_name}|${par}|${gr}`
+      const dpK = `${s.driver_name}|${par}`
+      const dK = s.driver_name
+      ;(out.full.get(fullK) || out.full.set(fullK, []).get(fullK)).push(total)
+      ;(out.dp.get(dpK)   || out.dp.set(dpK, []).get(dpK)).push(total)
+      ;(out.d.get(dK)     || out.d.set(dK, []).get(dK)).push(total)
+    }
+    for (const m of [out.full, out.dp, out.d]) {
+      for (const arr of m.values()) arr.sort((a, b) => a - b)
+    }
+    return out
+  }, [sales])
+
+  // Median of `arr` excluding `excludeVal` (one occurrence). arr is pre-sorted.
+  const medianExcluding = (arr, excludeVal) => {
+    if (!arr || !arr.length) return null
+    let removed = false
+    const filtered = arr.filter(x => {
+      if (!removed && x === excludeVal) { removed = true; return false }
+      return true
+    })
+    if (!filtered.length) return null
+    const n = filtered.length
+    return n % 2 ? filtered[n >> 1] : (filtered[n / 2 - 1] + filtered[n / 2]) / 2
+  }
+
+  const verdictForSale = (s) => {
+    const total = s.total_cost ?? s.sale_price
+    if (!total || !s.driver_name) return null
+    const par = s.parallel || ''
+    const gr = s.grade || ''
+    // Try most-specific bucket first
+    let arr = buckets.full.get(`${s.driver_name}|${par}|${gr}`)
+    let n = arr ? arr.length : 0
+    if (n < 4) { arr = buckets.dp.get(`${s.driver_name}|${par}`); n = arr ? arr.length : 0 }
+    if (n < 4) { arr = buckets.d.get(s.driver_name);              n = arr ? arr.length : 0 }
+    if (!arr || arr.length < 4) return null  // need >=4 so leave-one-out has >=3
+    const med = medianExcluding(arr, total)
+    if (!med) return null
+    return verdictFor(total, med, arr.length - 1)
+  }
+
+  // KPI: % of sales that would have been STRONG_BUY territory at listing time.
+  const strongBuyPct = useMemo(() => {
+    if (!sales.length) return null
+    let strong = 0, scored = 0
+    for (const s of sales) {
+      const v = verdictForSale(s)
+      if (!v) continue
+      scored++
+      if (v.key === 'STRONG_BUY') strong++
+    }
+    if (!scored) return null
+    return { pct: Math.round((strong / scored) * 100), strong, scored }
+  }, [sales, buckets])
+
   const toggleSort = (field) => {
     if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     else { setSortField(field); setSortDir('desc') }
@@ -184,7 +252,7 @@ export default function SalesDatabase() {
 
       {/* Stats strip */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <StatBox icon={Package} label="Total Sales" value={stats.total_count?.toLocaleString() ?? 0} color="cyan" />
           <StatBox icon={DollarSign} label="Total Value" value={`$${(stats.total_value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} color="emerald" />
           <StatBox icon={Calendar} label="This Week" value={(stats.week_count || 0).toLocaleString()} color="yellow" />
@@ -192,6 +260,10 @@ export default function SalesDatabase() {
             value={stats.by_parallel?.[0]?.parallel ?? '—'}
             sub={stats.by_parallel?.[0] ? `${stats.by_parallel[0].count} sold · median $${Math.round(stats.by_parallel[0].median_price ?? stats.by_parallel[0].avg_price)}` : ''}
             color="violet" />
+          <StatBox icon={TrendingUp} label="STRONG BUY %"
+            value={strongBuyPct ? `${strongBuyPct.pct}%` : '—'}
+            sub={strongBuyPct ? `${strongBuyPct.strong} of ${strongBuyPct.scored} scored` : 'building backtest…'}
+            color="green" />
         </div>
       )}
 
@@ -284,6 +356,20 @@ export default function SalesDatabase() {
                 ) : (
                   <span className="text-gray-500 text-[10px]">Raw</span>
                 )}
+                {(() => {
+                  const v = verdictForSale(s)
+                  if (!v) return null
+                  const total = s.total_cost ?? s.sale_price
+                  const med = total / v.ratio
+                  return (
+                    <span
+                      className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
+                      title={`Sold for $${total.toFixed(2)} vs $${Math.round(med)} median`}
+                    >
+                      {v.label}
+                    </span>
+                  )
+                })()}
                 <span className="text-[10px] text-gray-500">
                   {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
                 </span>
@@ -319,6 +405,7 @@ export default function SalesDatabase() {
                 <SortHeader field="grade">Grade</SortHeader>
                 <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-left">Title</th>
                 <SortHeader field="sale_price" align="right">Price</SortHeader>
+                <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-center">Verdict</th>
                 <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-center">eBay</th>
               </tr>
             </thead>
@@ -326,14 +413,14 @@ export default function SalesDatabase() {
               {loading ? (
                 Array(12).fill(0).map((_, i) => (
                   <tr key={i} className="border-b border-gray-800/40 animate-pulse">
-                    {Array(8).fill(0).map((_, j) => (
+                    {Array(9).fill(0).map((_, j) => (
                       <td key={j} className="px-3 py-3"><div className="h-3 bg-gray-800 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : filteredSorted.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-16 text-center text-gray-600">
+                  <td colSpan={9} className="py-16 text-center text-gray-600">
                     <Database size={32} className="mx-auto mb-3 opacity-30" />
                     <p className="text-sm">No sales match these filters yet</p>
                     <p className="text-xs mt-1 opacity-60">The database grows with each cron run (every 30 min).</p>
@@ -370,6 +457,22 @@ export default function SalesDatabase() {
                     {s.shipping_cost > 0 && (
                       <div className="text-[9px] text-gray-500 font-medium">+${s.shipping_cost?.toFixed(2)} ship</div>
                     )}
+                  </td>
+                  <td className="px-3 py-2 text-center whitespace-nowrap">
+                    {(() => {
+                      const v = verdictForSale(s)
+                      if (!v) return <span className="text-[9px] text-gray-600 italic">thin</span>
+                      const total = s.total_cost ?? s.sale_price
+                      const med = total / v.ratio
+                      return (
+                        <span
+                          className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
+                          title={`Sold for $${total.toFixed(2)} vs $${Math.round(med)} median`}
+                        >
+                          {v.label}
+                        </span>
+                      )
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-center">
                     <div className="inline-flex items-center gap-1">
@@ -442,6 +545,7 @@ function StatBox({ icon: Icon, label, value, sub, color }) {
     emerald: 'text-emerald-400 bg-emerald-600/10 border-emerald-600/30',
     yellow: 'text-yellow-400 bg-yellow-600/10 border-yellow-600/30',
     violet: 'text-violet-400 bg-violet-600/10 border-violet-600/30',
+    green: 'text-green-400 bg-green-600/10 border-green-600/30',
   }
   return (
     <div className={`rounded-2xl border p-4 ${colors[color]}`}>

@@ -373,6 +373,143 @@ async def sync_real_ebay_listings(db: Session) -> int:
     return added
 
 
+def run_strong_buy_alerts(db: Session) -> list:
+    """
+    Detect NEW listings that qualify as STRONG BUY (ratio <= 0.6 vs median, n>=5).
+
+    Mirrors the frontend `verdictFor` logic so backend + UI agree on what's a
+    STRONG BUY. Only fires once per auction (deduped on (auction_id, alert_type)).
+    Also auto-adds matching wishlist hits to the watchlist (Feature 4).
+    """
+    from database import SoldCard, Wishlist, Card as _Card
+    now = datetime.utcnow()
+    alerts_created: list = []
+
+    # Existing auctions we've already alerted on — skip them.
+    existing = set(
+        (aid,) for (aid,) in db.query(Alert.auction_id).filter(
+            Alert.alert_type == "strong_buy",
+            Alert.auction_id.isnot(None),
+        ).all()
+    )
+
+    candidates = db.query(Auction).filter(
+        Auction.status.in_(["active", "watchlist"]),
+    ).all()
+
+    med_cache: dict = {}
+    wishlist_alerts: list = []
+    auto_added = 0
+
+    for auction in candidates:
+        if (auction.id,) in existing:
+            continue
+        card = db.query(Card).filter(Card.id == auction.card_id).first()
+        if not card or not card.driver_name:
+            continue
+        cur_price = auction.current_price or 0
+        shipping = auction.shipping_cost or 0
+        cur_total = cur_price + shipping
+        if cur_total <= 0:
+            continue
+
+        driver = card.driver_name
+        parallel = card.parallel or ""
+        grade = _extract_grade_from_title(auction.title or "")
+        ck = (driver, parallel, grade)
+        if ck not in med_cache:
+            med_cache[ck] = median_comp_price(db, driver, parallel, grade)
+        median, n_comps = med_cache[ck]
+
+        # STRONG BUY threshold (matches frontend verdict.js): ratio <= 0.6,
+        # require >=5 comps so we don't fire on noise.
+        if not median or n_comps < 5:
+            continue
+        ratio = cur_total / median
+        if ratio > 0.6:
+            continue
+
+        pct_under = round((1 - ratio) * 100)
+        par_frag = f" {parallel}" if parallel else ""
+        grade_frag = f" {grade}" if grade else ""
+        msg = (
+            f"STRONG BUY: {driver}{par_frag}{grade_frag} — "
+            f"${cur_total:.0f} vs ${median:.0f} median ({pct_under}% under, n={n_comps} comps)"
+        )
+
+        alert = Alert(
+            card_id=auction.card_id,
+            alert_type="strong_buy",
+            threshold_price=cur_price,
+            triggered=True,
+            triggered_at=now,
+            auction_id=auction.id,
+            urgency="high",
+            message=msg,
+        )
+        db.add(alert)
+        alerts_created.append(alert)
+        existing.add((auction.id,))
+
+        # ---- Feature 4: wishlist auto-add ----
+        # Pull every active wishlist row that matches driver+parallel and has
+        # max_price >= cur_total. Fire ONCE per (auction, wishlist) pair.
+        wishlist_hits = db.query(Wishlist).filter(
+            Wishlist.card_id.isnot(None),
+        ).all()
+        for wi in wishlist_hits:
+            wcard = db.query(_Card).filter(_Card.id == wi.card_id).first()
+            if not wcard or wcard.driver_name != driver:
+                continue
+            # Match parallel when set on wishlist (treat empty as wildcard).
+            if wcard.parallel and parallel and wcard.parallel != parallel:
+                continue
+            if not wi.max_price or wi.max_price <= 0:
+                continue
+            if cur_total > wi.max_price:
+                continue
+            # Conservative: high-confidence comps only.
+            if n_comps < 5:
+                continue
+            # Auto-add to watchlist if not already there
+            if auction.status != "watchlist":
+                auction.status = "watchlist"
+                auto_added += 1
+            # Wishlist match alert (deduped via separate flag below)
+            wm_existing = db.query(Alert).filter(
+                Alert.alert_type == "wishlist_match",
+                Alert.auction_id == auction.id,
+                Alert.card_id == wcard.id,
+            ).first()
+            if wm_existing:
+                continue
+            wm_msg = (
+                f"WISHLIST MATCH: {driver}{par_frag}{grade_frag} — "
+                f"${cur_total:.0f} ≤ your max ${wi.max_price:.0f}. "
+                f"Added to watchlist."
+            )
+            wm_alert = Alert(
+                card_id=wcard.id,
+                alert_type="wishlist_match",
+                threshold_price=cur_price,
+                triggered=True,
+                triggered_at=now,
+                auction_id=auction.id,
+                urgency="high",
+                message=wm_msg,
+            )
+            db.add(wm_alert)
+            wishlist_alerts.append(wm_alert)
+
+    if alerts_created or wishlist_alerts:
+        db.commit()
+    return {
+        "strong_buy_alerts": alerts_created,
+        "wishlist_alerts": wishlist_alerts,
+        "auto_added_to_watchlist": auto_added,
+    }
+
+
 def run_snipe_alerts(db: Session) -> list:
     """Create snipe opportunity alerts for high-score auctions ending soon."""
     now = datetime.utcnow()

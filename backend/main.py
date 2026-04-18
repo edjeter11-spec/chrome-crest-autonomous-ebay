@@ -1032,14 +1032,26 @@ async def cron_sync(db: Session = Depends(get_db)):
     snipe_alerts_created = 0
     snipe_alert_error = None
     push_sent = 0
+    strong_buy_created = 0
+    wishlist_match_created = 0
+    auto_watchlisted = 0
     try:
-        from scraper import run_enhanced_snipe_alerts
+        from scraper import run_enhanced_snipe_alerts, run_strong_buy_alerts
         created = run_enhanced_snipe_alerts(db)
         snipe_alerts_created = len(created)
 
-        # Web Push fan-out: notify subscribers for critical alerts OR snipe_score>=90
+        # Strong-buy + wishlist auto-add (Features 3 & 4)
+        sb_result = run_strong_buy_alerts(db)
+        sb_alerts = sb_result["strong_buy_alerts"]
+        wm_alerts = sb_result["wishlist_alerts"]
+        strong_buy_created = len(sb_alerts)
+        wishlist_match_created = len(wm_alerts)
+        auto_watchlisted = sb_result["auto_added_to_watchlist"]
+
+        # Web Push fan-out
         try:
             from routers.push import send_push_to_all
+            # Snipe alerts (existing behaviour: critical OR snipe_score>=90)
             for al in created:
                 au = db.query(Auction).filter(Auction.id == al.auction_id).first() if al.auction_id else None
                 is_critical = al.urgency == "critical"
@@ -1054,6 +1066,28 @@ async def cron_sync(db: Session = Depends(get_db)):
                         url=url,
                         tag=f"snipe-{al.auction_id}",
                     )
+            # Strong-buy alerts always push (high-value, low-frequency)
+            for al in sb_alerts:
+                au = db.query(Auction).filter(Auction.id == al.auction_id).first() if al.auction_id else None
+                url = (au.ebay_url if au else "/") or "/"
+                push_sent += send_push_to_all(
+                    db,
+                    title="STRONG BUY",
+                    body=(al.message or "")[:180],
+                    url=url,
+                    tag=f"strongbuy-{al.auction_id}",
+                )
+            # Wishlist matches always push
+            for al in wm_alerts:
+                au = db.query(Auction).filter(Auction.id == al.auction_id).first() if al.auction_id else None
+                url = (au.ebay_url if au else "/wishlist") or "/wishlist"
+                push_sent += send_push_to_all(
+                    db,
+                    title="WISHLIST MATCH",
+                    body=(al.message or "")[:180],
+                    url=url,
+                    tag=f"wish-{al.auction_id}-{al.card_id}",
+                )
         except Exception as _pe:
             import logging as _log
             _log.getLogger("push").warning(f"push fanout failed: {_pe}")
@@ -1074,6 +1108,9 @@ async def cron_sync(db: Session = Depends(get_db)):
         "snipe_alerts_created": snipe_alerts_created,
         "snipe_alert_error": snipe_alert_error,
         "push_sent": push_sent,
+        "strong_buy_alerts_created": strong_buy_created,
+        "wishlist_match_alerts_created": wishlist_match_created,
+        "auto_watchlisted": auto_watchlisted,
     }
 
 

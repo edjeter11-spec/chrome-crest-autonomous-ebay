@@ -92,6 +92,92 @@ def list_auctions(
     return {"total": total, "auctions": [auction_to_dict(a) for a in auctions]}
 
 
+@router.get("/with-verdicts")
+def list_with_verdicts(
+    status: Optional[str] = "active",
+    buying: Optional[str] = None,
+    snipe_only: bool = False,
+    driver: Optional[str] = None,
+    limit: int = Query(500, le=1000),
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    """
+    Same shape as GET /api/auctions, but each auction row also carries a
+    `verdict_comp` block (median, n, low_confidence) and a `verdict` string
+    (STRONG_BUY / GOOD_BUY / FAIR / OVERPRICED / PASS / null) computed
+    server-side. Lets the frontend filter by verdict without N round-trips
+    to /api/sales/median.
+
+    Median lookup is keyed by (driver, parallel, grade-extracted-from-title)
+    and cached in-process for the duration of the request — so a page of
+    500 listings only does ~30-50 DB queries, not 500.
+    """
+    from scraper import median_comp_price, _extract_grade_from_title
+
+    q = db.query(Auction).options(joinedload(Auction.card))
+    if status:
+        q = q.filter(Auction.status == status)
+    if driver:
+        q = q.join(Card).filter(Card.driver_name.ilike(f"%{driver}%"))
+    if snipe_only:
+        q = q.filter(Auction.snipe_eligible == True)
+    if buying == "auction":
+        q = q.filter(Auction.buying_options.like('%AUCTION%'))
+    elif buying == "bin":
+        q = q.filter((Auction.buying_options == None) | (~Auction.buying_options.like('%AUCTION%')))
+    total = q.count()
+    rows = q.order_by(Auction.end_time.asc()).offset(offset).limit(limit).all()
+
+    med_cache: dict = {}
+    out = []
+    strong_buy = good_buy = 0
+    for a in rows:
+        d = auction_to_dict(a)
+        driver_name = a.card.driver_name if a.card else None
+        parallel = a.card.parallel if a.card else None
+        grade = _extract_grade_from_title(a.title or "")
+        verdict_key = None
+        comp_block = None
+        if driver_name:
+            ck = (driver_name, parallel, grade)
+            if ck not in med_cache:
+                med_cache[ck] = median_comp_price(db, driver_name, parallel, grade)
+            median, n_comps = med_cache[ck]
+            if median and n_comps >= 3:
+                cur_total = (a.current_price or 0) + (a.shipping_cost or 0)
+                ratio = cur_total / median
+                if ratio <= 0.6: verdict_key = "STRONG_BUY"; strong_buy += 1
+                elif ratio <= 0.8: verdict_key = "GOOD_BUY"; good_buy += 1
+                elif ratio <= 1.05: verdict_key = "FAIR"
+                elif ratio <= 1.25: verdict_key = "OVERPRICED"
+                else: verdict_key = "PASS"
+                comp_block = {
+                    "median_total": round(median, 2),
+                    "n": n_comps,
+                    "low_confidence": n_comps < 5,
+                }
+            elif median:
+                comp_block = {
+                    "median_total": round(median, 2),
+                    "n": n_comps,
+                    "low_confidence": True,
+                }
+        d["verdict"] = verdict_key
+        d["verdict_comp"] = comp_block
+        out.append(d)
+
+    return {
+        "total": total,
+        "auctions": out,
+        "verdict_counts": {
+            "STRONG_BUY": strong_buy,
+            "GOOD_BUY": good_buy,
+            "with_comps": sum(1 for x in out if x["verdict_comp"]),
+        },
+    }
+
+
 @router.get("/snipe/targets")
 def snipe_targets(db: Session = Depends(get_db)):
     now = datetime.utcnow()
