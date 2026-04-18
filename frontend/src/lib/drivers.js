@@ -13,16 +13,27 @@ export const DRIVERS_F1 = [
 ]
 
 export const DRIVERS_F2 = [
-  'Leonardo Fornaroli', 'Arvid Lindblad', 'Josep Maria Marti', 'Richard Verschoor',
-  'Dino Beganovic', 'Gabriele Mini', 'Jak Crawford', 'Victor Martins',
-  'Joshua Durksen', 'Luke Browning', 'Alexander Dunne', 'Cian Shields',
-  'John Bennett', 'Kush Maini', 'Max Esterson', 'Ivan Domingues',
-  'Oliver Goethe', 'Amaury Cordeel',
+  // F2 2024-25 full grid
+  'Leonardo Fornaroli', 'Arvid Lindblad', 'Josep Maria Marti', 'Pepe Marti',
+  'Richard Verschoor', 'Dino Beganovic', 'Gabriele Mini', 'Jak Crawford',
+  'Victor Martins', 'Joshua Durksen', 'Joshua Dürksen', 'Luke Browning',
+  'Alexander Dunne', 'Cian Shields', 'John Bennett', 'Kush Maini',
+  'Max Esterson', 'Ivan Domingues', 'Oliver Goethe', 'Amaury Cordeel',
+  'Zak O\'Sullivan', 'Taylor Barnard', 'Enzo Fittipaldi', 'Ritomo Miyata',
+  'Juan Manuel Correa', 'Roman Stanek', 'Paul Aron', 'Dennis Hauger',
+  'Arthur Leclerc', 'Ayumu Iwasa', 'Zane Maloney', 'Sami Meguetounif',
+  'Sebastian Montoya', 'Rafael Camara',
 ]
 
 export const DRIVERS_F3 = [
+  // F3 2024-25 full grid
   'Tuukka Taponen', 'Ugo Ugochukwu', 'James Wharton', 'Louis Sharp',
-  'Noah Stromsted', 'Javier Sagrera',
+  'Noah Stromsted', 'Javier Sagrera', 'Callum Voisin', 'Nikita Bedrin',
+  'Nikola Tsolov', 'Rafael Villagomez', 'Charlie Wurz', 'Tasanapol Inthraphuvasak',
+  'Christian Mansell', 'Joshua Dufek', 'Noel Leon', 'Tommy Smith',
+  'Mari Boya', 'Martinius Stenshorne', 'Sophia Floersch', 'Alex Dunne',
+  'Bruno del Pino', 'Piotr Wisnicki', 'Charlie Eastwood', 'Alfio Spina',
+  'Nicola Lacorte', 'Santiago Ramos', 'Matias Zagazeta',
 ]
 
 export const DRIVERS_LEGENDS = [
@@ -101,28 +112,37 @@ function driverInTitle(title) {
 }
 
 export function seriesOf(auction) {
-  // 1. Trust the linked card's series first
+  // Driver-name-in-title is authoritative. The eBay title routinely says "F1"
+  // even for F2/F3 drivers in the Sapphire set, so we trust the roster map.
+  const driverSeries = driverSeriesFromTitle(auction?.title)
+  if (driverSeries) return driverSeries
+
+  // No known driver in title → trust the linked card's series if it's there
   const cardSeries = auction?.card?.series
-  if (cardSeries) {
-    // but if the card was mapped to default id=1 (F1) and the title actually names
-    // a legend/F2/F3 driver, trust the driver name over the card. We detect that
-    // by checking if the driver name in the title matches a non-F1 series.
-    const driverSeries = driverSeriesFromTitle(auction.title)
-    if (driverSeries && driverSeries !== cardSeries) return driverSeries
-    return cardSeries
+  if (cardSeries) return cardSeries
+
+  // Last resort: title text markers. Return null if nothing matches
+  // so unknown drivers DON'T pollute the F1 filter.
+  const t = (auction?.title || '').toLowerCase()
+  if (t.includes('legends') || t.includes('legend ')) return 'Legends'
+  if (/\bf3\b|formula 3/.test(t)) return 'F3'
+  if (/\bf2\b|formula 2/.test(t)) return 'F2'
+
+  // Team logo cards with no driver → F1 (all current teams are F1)
+  const teamMatched = TEAMS.some(team =>
+    team.aliases.some(a => t.includes(a))
+  )
+  if (teamMatched && (t.includes('team') || t.includes('logo') || t.includes('paddock'))) {
+    return 'F1'
   }
-  return driverSeriesFromTitle(auction.title) || 'F1'
+
+  // Unknown driver, no series markers → null, excluded from every series filter
+  return null
 }
 
 function driverSeriesFromTitle(title) {
   const d = driverInTitle(title)
-  if (d) return SERIES_MAP.get(d.toLowerCase())
-  // Fallback to title text
-  const t = (title || '').toLowerCase()
-  if (t.includes('legends') || t.includes('legend ')) return 'Legends'
-  if (/\bf3\b|formula 3/.test(t)) return 'F3'
-  if (/\bf2\b|formula 2/.test(t)) return 'F2'
-  return null
+  return d ? SERIES_MAP.get(d.toLowerCase()) : null
 }
 
 export function teamOf(auction) {
