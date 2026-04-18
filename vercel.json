@@ -36,6 +36,21 @@
       "headers": { "Content-Type": "application/manifest+json" }
     },
     {
+      "src": "/robots.txt",
+      "dest": "frontend/dist/robots.txt",
+      "headers": { "Content-Type": "text/plain" }
+    },
+    {
+      "src": "/sitemap.xml",
+      "dest": "frontend/dist/sitemap.xml",
+      "headers": { "Content-Type": "application/xml" }
+    },
+    {
+      "src": "/og-image.png",
+      "dest": "frontend/dist/og-image.png",
+      "headers": { "Content-Type": "image/png" }
+    },
+    {
       "src": "/(.*)",
       "dest": "frontend/dist/index.html"
     }

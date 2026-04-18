@@ -1,8 +1,23 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   Database, Download, Search, RefreshCw, ExternalLink,
-  DollarSign, Package, Calendar, TrendingUp, ChevronDown, ChevronUp
+  DollarSign, Package, Calendar, TrendingUp, ChevronDown, ChevronUp, Share2
 } from 'lucide-react'
+
+async function shareSale(e, sale) {
+  e.stopPropagation()
+  e.preventDefault()
+  const url = `${window.location.origin}/sales?id=${sale.id}`
+  const shareData = {
+    title: 'F1 Card Hub — sale',
+    text: `${sale.driver_name || 'F1 card'} sold for $${sale.sale_price?.toFixed(2) ?? ''}`,
+    url,
+  }
+  try {
+    if (navigator.share) { await navigator.share(shareData); return }
+  } catch { return }
+  try { await navigator.clipboard.writeText(url) } catch {}
+}
 import { swrFetch } from '../lib/cache'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -266,9 +281,16 @@ export default function SalesDatabase() {
                 <span className="text-[10px] text-gray-500">
                   {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
                 </span>
+                <button
+                  onClick={(e) => shareSale(e, s)}
+                  title="Share sale"
+                  className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200"
+                >
+                  <Share2 size={11} />
+                </button>
                 {s.ebay_url && (
                   <a href={s.ebay_url} target="_blank" rel="noopener noreferrer"
-                    className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 text-gray-400">
+                    className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 text-gray-400">
                     <ExternalLink size={11} />
                   </a>
                 )}
@@ -340,12 +362,21 @@ export default function SalesDatabase() {
                     ${s.sale_price?.toFixed(2)}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    {s.ebay_url && (
-                      <a href={s.ebay_url} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800 hover:bg-cyan-600/20 text-gray-400 hover:text-cyan-400 transition-colors">
-                        <ExternalLink size={12} />
-                      </a>
-                    )}
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        onClick={(e) => shareSale(e, s)}
+                        title="Share sale"
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
+                      >
+                        <Share2 size={12} />
+                      </button>
+                      {s.ebay_url && (
+                        <a href={s.ebay_url} target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800 hover:bg-cyan-600/20 text-gray-400 hover:text-cyan-400 transition-colors">
+                          <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

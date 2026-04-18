@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   ExternalLink, Zap, Clock, Tag, BookmarkPlus, BookmarkCheck,
-  ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare
+  ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -349,6 +349,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   const [timeLeft, setTimeLeft] = useState(auction.time_left || 0)
   const [watching, setWatching] = useState(auction.status === 'watchlist')
   const [watchLoading, setWatchLoading] = useState(false)
+  const [shareToast, setShareToast] = useState(false)
   const [expandedPanel, setExpandedPanel] = useState(null)
   // Priority: extra_images → listing image_url → card catalog image
   const [images, setImages] = useState(() => {
@@ -384,6 +385,28 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   }
 
   const togglePanel = (panel, e) => { e?.stopPropagation(); setExpandedPanel(p => p === panel ? null : panel) }
+
+  const shareListing = async (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const url = `${window.location.origin}/auctions?id=${auction.id}`
+    const shareData = {
+      title: auction.title || 'F1 Card Hub',
+      text: `${auction.card?.driver_name || 'F1 card'} — $${auction.current_price?.toFixed(2) ?? ''} on F1 Card Hub`,
+      url,
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData)
+        return
+      }
+    } catch { /* user cancelled */ return }
+    try {
+      await navigator.clipboard.writeText(url)
+      setShareToast(true)
+      setTimeout(() => setShareToast(false), 2000)
+    } catch {}
+  }
 
   // Parallel/grade badge from card data
   const parallel = auction.card?.parallel
@@ -541,18 +564,33 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
           </button>
         )}
 
-        {/* Watchlist button */}
-        <button
-          onClick={toggleWatchlist}
-          disabled={watchLoading}
-          className={`w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
-            watching
-              ? 'bg-yellow-700/25 text-yellow-400 hover:bg-yellow-700/40 border border-yellow-700/30'
-              : 'bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700/30'
-          }`}
-        >
-          {watching ? <><BookmarkCheck size={11} /> Watching</> : <><BookmarkPlus size={11} /> Watch</>}
-        </button>
+        {/* Watchlist + share buttons */}
+        <div className="flex gap-1.5">
+          <button
+            onClick={toggleWatchlist}
+            disabled={watchLoading}
+            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+              watching
+                ? 'bg-yellow-700/25 text-yellow-400 hover:bg-yellow-700/40 border border-yellow-700/30'
+                : 'bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700/30'
+            }`}
+          >
+            {watching ? <><BookmarkCheck size={11} /> Watching</> : <><BookmarkPlus size={11} /> Watch</>}
+          </button>
+          <button
+            onClick={shareListing}
+            title="Share listing"
+            aria-label="Share listing"
+            className="relative shrink-0 py-1.5 px-2.5 rounded-lg bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-200 border border-gray-700/30 transition-colors"
+          >
+            <Share2 size={11} />
+            {shareToast && (
+              <span className="absolute -top-8 right-0 text-[10px] bg-emerald-600 text-white font-bold px-2 py-1 rounded whitespace-nowrap shadow-lg">
+                Link copied!
+              </span>
+            )}
+          </button>
+        </div>
 
         {/* Expandable panel toggles */}
         <div className="flex gap-1 border-t border-gray-800/60 pt-2 mt-auto">

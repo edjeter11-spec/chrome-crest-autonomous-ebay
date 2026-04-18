@@ -147,8 +147,8 @@ export default function Layout() {
               <span className="text-white text-xs font-black tracking-tight">F1</span>
             </div>
             <div>
-              <div className="font-black text-white text-sm leading-none tracking-tight">Chrome Crest</div>
-              <div className="text-[10px] text-gray-500 mt-0.5 font-medium">eBay Sniping Platform</div>
+              <div className="font-black text-white text-sm leading-none tracking-tight">F1 Card Hub</div>
+              <div className="text-[10px] text-gray-500 mt-0.5 font-medium">Topps Chrome F1 Tracker</div>
             </div>
           </div>
         )}
@@ -297,7 +297,7 @@ export default function Layout() {
             <div className="w-6 h-6 bg-red-600 rounded-lg flex items-center justify-center">
               <span className="text-white text-[10px] font-black">F1</span>
             </div>
-            <span className="font-black text-white text-sm tracking-tight">Chrome Crest</span>
+            <span className="font-black text-white text-sm tracking-tight">F1 Card Hub</span>
           </div>
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-800/60">
             <div className={`w-1.5 h-1.5 rounded-full ${wsColor} ${wsStatus !== 'disconnected' ? 'animate-pulse' : ''}`} />

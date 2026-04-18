@@ -1,7 +1,7 @@
 {
-  "name": "Chrome Crest",
-  "short_name": "ChromeCrest",
-  "description": "Autonomous F1 trading card eBay sniping platform",
+  "name": "F1 Card Hub",
+  "short_name": "F1 Card Hub",
+  "description": "2025 Topps Chrome Formula 1 card tracker — live auctions, sold comps, graded pop",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

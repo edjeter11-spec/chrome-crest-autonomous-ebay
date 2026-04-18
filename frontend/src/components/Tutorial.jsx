@@ -17,7 +17,7 @@ export default function Tutorial({ onClose }) {
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800/60">
           <div>
-            <h2 className="text-white font-black text-lg tracking-tight">Welcome to Chrome Crest</h2>
+            <h2 className="text-white font-black text-lg tracking-tight">Welcome to F1 Card Hub</h2>
             <p className="text-xs text-gray-500 mt-0.5">Four quick spots to know</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white">
