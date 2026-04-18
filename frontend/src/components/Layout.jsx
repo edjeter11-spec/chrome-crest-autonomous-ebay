@@ -3,18 +3,20 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
-  Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert
+  Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Sunrise
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/today', label: 'Today', icon: Sunrise },
   { to: '/graded', label: 'Graded Tracker', icon: Shield },
   { to: '/auctions', label: 'Live Auctions', icon: Gavel },
   { to: '/bin', label: 'Buy It Now', icon: Tag },
   { to: '/sales', label: 'Sales Database', icon: Database },
   { to: '/drivers', label: 'Drivers', icon: Users },
+  { to: '/compare', label: 'Compare', icon: Scale },
   { to: '/sellers', label: 'Sellers', icon: User },
   { to: '/graded-cards', label: 'Card Catalog', icon: Shield },
   { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
@@ -35,6 +37,7 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [snipeCount, setSnipeCount] = useState(0)
+  const [todayCount, setTodayCount] = useState(0)
   const [pushState, setPushState] = useState('idle') // idle | subscribed | busy | unsupported
   const [showTutorial, setShowTutorial] = useState(false)
   const location = useLocation()
@@ -50,6 +53,28 @@ export default function Layout() {
     try {
       if (!localStorage.getItem('cc_tutorial_seen')) setShowTutorial(true)
     } catch {}
+  }, [])
+
+  // Today unread count — polls every 2 minutes
+  useEffect(() => {
+    const apiUrl = import.meta.env.VITE_API_URL || ''
+    const fetchCount = () => {
+      let since
+      try {
+        since = localStorage.getItem('cc_last_today_visit') || new Date(Date.now() - 24 * 3600 * 1000).toISOString()
+      } catch {
+        since = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
+      }
+      fetch(`${apiUrl}/api/today/count?since=${encodeURIComponent(since)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.total != null) setTodayCount(d.total) })
+        .catch(() => {})
+    }
+    fetchCount()
+    const onRead = () => setTodayCount(0)
+    window.addEventListener('cc-today-read', onRead)
+    const id = setInterval(fetchCount, 120_000)
+    return () => { clearInterval(id); window.removeEventListener('cc-today-read', onRead) }
   }, [])
 
   const togglePush = async () => {
@@ -215,6 +240,11 @@ export default function Layout() {
                 {(!collapsed || mobile) && label === 'Live Auctions' && snipeCount > 0 && (
                   <span className="bg-red-600 text-white text-[10px] rounded-full px-1.5 py-0.5 font-black flex items-center gap-0.5">
                     <Zap size={8} fill="white" />{snipeCount}
+                  </span>
+                )}
+                {(!collapsed || mobile) && label === 'Today' && todayCount > 0 && (
+                  <span className="bg-red-600 text-white text-[10px] rounded-full px-1.5 py-0.5 font-black flex items-center gap-0.5">
+                    🔔 {todayCount > 99 ? '99+' : todayCount}
                   </span>
                 )}
               </>

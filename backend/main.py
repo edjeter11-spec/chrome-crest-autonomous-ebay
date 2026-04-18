@@ -19,6 +19,7 @@ from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sal
 from routers import race_calendar, shared_watchlists, watch_rules, checklist, sealed
 from routers import ai_grader, discord as discord_router
 from routers import verdict_accuracy, sellers as sellers_router, snapshots, ai_advisor
+from routers import today as today_router
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -53,6 +54,7 @@ app.include_router(verdict_accuracy.router)
 app.include_router(sellers_router.router)
 app.include_router(snapshots.router)
 app.include_router(ai_advisor.router)
+app.include_router(today_router.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")
@@ -1484,6 +1486,77 @@ def ebay_status():
         "connected": connected,
         "message": "Live eBay Browse API active" if connected else "No credentials — add EBAY_APP_ID + EBAY_APP_SECRET to backend/.env",
     }
+
+
+@app.get("/feed.xml")
+def rss_strong_buys(db: Session = Depends(get_db)):
+    """RSS 2.0 feed of the 20 most recent STRONG BUY active listings."""
+    from scraper import median_comp_price, _extract_grade_from_title
+    from xml.sax.saxutils import escape as _xe
+
+    SITE = "https://chrome-crest-autonomous-ebay.vercel.app"
+    now = datetime.utcnow()
+
+    rows = db.query(Auction).filter(
+        Auction.status == "active",
+    ).order_by(Auction.id.desc()).limit(300).all()
+
+    items_xml = []
+    cache: dict = {}
+    count = 0
+    for a in rows:
+        if count >= 20:
+            break
+        if not a.card:
+            continue
+        driver = a.card.driver_name or ""
+        parallel = a.card.parallel or ""
+        grade = _extract_grade_from_title(a.title or "")
+        key = (driver, parallel, grade)
+        if key not in cache:
+            cache[key] = median_comp_price(db, driver, parallel, grade)
+        median, n = cache[key]
+        if not (median and n >= 3):
+            continue
+        total = (a.current_price or 0) + (a.shipping_cost or 0)
+        if median <= 0 or total / median > 0.6:
+            continue
+
+        title = f"STRONG BUY: {driver} {parallel} — ${total:.0f} (vs ${median:.0f} median)"
+        link = a.ebay_url or f"{SITE}/auctions"
+        desc = (
+            f"<p><b>{_xe(driver)} {_xe(parallel)}</b> listed at "
+            f"<b>${total:.2f}</b> vs {n}-sale median <b>${median:.2f}</b> "
+            f"({(total / median * 100):.0f}% of median — {((median - total) / median * 100):.0f}% discount).</p>"
+            f"<p>{_xe((a.title or '')[:180])}</p>"
+        )
+        pub = (a.last_updated or a.created_at or now)
+        pub_str = pub.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        guid = f"{SITE}/auction/{a.id}"
+        items_xml.append(
+            f"<item>"
+            f"<title>{_xe(title)}</title>"
+            f"<link>{_xe(link)}</link>"
+            f"<guid isPermaLink=\"false\">{_xe(guid)}</guid>"
+            f"<description>{_xe(desc)}</description>"
+            f"<pubDate>{pub_str}</pubDate>"
+            f"</item>"
+        )
+        count += 1
+
+    build_date = now.strftime("%a, %d %b %Y %H:%M:%S GMT")
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0"><channel>'
+        '<title>F1 Card Hub — Strong Buys</title>'
+        f'<link>{SITE}</link>'
+        '<description>Active eBay listings priced ≤60% of their 90-day sold median. 2025 Topps Chrome Formula 1.</description>'
+        '<language>en-us</language>'
+        f'<lastBuildDate>{build_date}</lastBuildDate>'
+        + "".join(items_xml) +
+        '</channel></rss>'
+    )
+    return Response(content=xml, media_type="application/rss+xml; charset=utf-8")
 
 
 # Serve frontend

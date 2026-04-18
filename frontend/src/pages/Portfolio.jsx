@@ -93,14 +93,22 @@ const PARALLELS = [
 ]
 const GRADES = ['Raw', 'PSA 10', 'PSA 9', 'PSA 8', 'BGS 9.5', 'BGS 10', 'SGC 10']
 
-function PnlCell({ value, pct, has }) {
+function PnlCell({ value, pct, has, realisticPnl, realisticPct }) {
   if (!has) return <div className="text-right text-gray-600 text-xs italic">n/a</div>
   const positive = value >= 0
   const color = positive ? 'text-green-400' : 'text-red-400'
+  const rpositive = (realisticPnl ?? 0) >= 0
+  const rcolor = rpositive ? 'text-green-500/80' : 'text-red-500/80'
   return (
     <div className={`text-right ${color}`}>
       <div className="font-semibold">{positive ? '+' : ''}${value.toFixed(2)}</div>
       <div className="text-[10px] opacity-70">{positive ? '+' : ''}{pct.toFixed(1)}%</div>
+      {realisticPnl != null && (
+        <div className={`text-[10px] ${rcolor} mt-0.5`}
+          title="Realistic P&L after 13% eBay fee + $4 shipping. Excludes sales tax.">
+          net {rpositive ? '+' : ''}${realisticPnl.toFixed(0)} ({realisticPct?.toFixed(1)}%)
+        </div>
+      )}
     </div>
   )
 }
@@ -269,6 +277,9 @@ export default function Portfolio() {
   const totalPnl = totalValue - totalCost
   const pnlPct = totalCost > 0 ? (totalPnl / totalCost * 100) : 0
   const totalCards = items.reduce((s, i) => s + (i.quantity || 1), 0)
+  const totalRealisticValue = items.reduce((s, i) => s + (i.realistic_value || 0), 0)
+  const totalRealisticPnl = totalRealisticValue - totalCost
+  const realisticPnlPct = totalCost > 0 ? (totalRealisticPnl / totalCost * 100) : 0
 
   // Top gainer / worst loser (by pnl_pct, excluding no-valuation)
   const scored = items.filter(i => i.has_valuation)
@@ -298,9 +309,18 @@ export default function Portfolio() {
 
       <AIAdvisorSection />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Total Cost" value={loading ? null : `$${totalCost.toFixed(0)}`} icon={DollarSign} color="blue" />
         <StatCard label="Current Value" value={loading ? null : `$${totalValue.toFixed(0)}`} icon={TrendingUp} color="green" />
+        <div title="Assumes 13% eBay final value fee + $4 shipping cost. Excludes sales tax.">
+          <StatCard
+            label="Net Realistic Value"
+            value={loading ? null : `$${totalRealisticValue.toFixed(0)}`}
+            sub={totalRealisticPnl >= 0 ? `+${realisticPnlPct.toFixed(1)}%` : `${realisticPnlPct.toFixed(1)}%`}
+            icon={DollarSign}
+            color={totalRealisticPnl >= 0 ? 'green' : 'red'}
+          />
+        </div>
         <StatCard
           label="Total P&L"
           value={loading ? null : `${totalPnl >= 0 ? '+' : ''}$${Math.abs(totalPnl).toFixed(0)}`}
@@ -398,7 +418,7 @@ export default function Portfolio() {
                           ? <span className="text-green-400">${(item.current_value || 0).toFixed(2)}</span>
                           : <span className="text-gray-600 text-xs italic">no data</span>}
                       </td>
-                      <td><PnlCell value={pnl} pct={pct} has={item.has_valuation} /></td>
+                      <td><PnlCell value={pnl} pct={pct} has={item.has_valuation} realisticPnl={item.realistic_pnl} realisticPct={item.realistic_pnl_pct} /></td>
                       <td>
                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setEditing(item.id)} className="p-1.5 text-gray-500 hover:text-blue-400 transition-colors">

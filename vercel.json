@@ -23,6 +23,11 @@
       "dest": "backend/main.py"
     },
     {
+      "src": "/feed.xml",
+      "dest": "backend/main.py",
+      "headers": { "Content-Type": "application/rss+xml; charset=utf-8" }
+    },
+    {
       "src": "/assets/(.*)",
       "dest": "frontend/dist/assets/$1"
     },

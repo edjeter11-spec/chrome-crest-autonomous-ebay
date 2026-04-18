@@ -33,6 +33,10 @@ def _latest_avg_value(db: Session, driver: str | None, parallel: str | None, gra
     return float(val) if val is not None else None
 
 
+EBAY_FEE_PCT = 0.13
+EST_SHIPPING = 4.0
+
+
 def item_to_dict(p: Portfolio, db: Session) -> dict:
     card = p.card
     live_val = None
@@ -45,12 +49,20 @@ def item_to_dict(p: Portfolio, db: Session) -> dict:
     value = (live_val or 0) * qty
     pnl = value - cost
     pnl_pct = (pnl / cost * 100) if cost > 0 else 0
+    # Realistic (net-of-fees) P&L: 13% eBay final value fee + $4 shipping cost per card
+    realistic_per_card = (live_val or 0) * (1 - EBAY_FEE_PCT) - EST_SHIPPING
+    realistic_value = realistic_per_card * qty
+    realistic_pnl = realistic_value - cost
+    realistic_pnl_pct = (realistic_pnl / cost * 100) if cost > 0 else 0
     return {
         "id": p.id,
         "card_id": p.card_id,
         "purchase_price": p.purchase_price,
         "purchase_date": p.purchase_date.isoformat() if p.purchase_date else None,
         "current_value": round(live_val or 0, 2),
+        "realistic_value": round(realistic_value, 2),
+        "realistic_pnl": round(realistic_pnl, 2),
+        "realistic_pnl_pct": round(realistic_pnl_pct, 2),
         "pnl": round(pnl, 2),
         "pnl_pct": round(pnl_pct, 2),
         "has_valuation": live_val is not None and live_val > 0,

@@ -23,6 +23,9 @@ const SharedWatchlist = lazy(() => import('./pages/SharedWatchlist'))
 const EmbedPrice = lazy(() => import('./pages/EmbedPrice'))
 const Sellers = lazy(() => import('./pages/Sellers'))
 const ScoreListing = lazy(() => import('./pages/ScoreListing'))
+const CardPage = lazy(() => import('./pages/CardPage'))
+const Compare = lazy(() => import('./pages/Compare'))
+const Today = lazy(() => import('./pages/Today'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -55,6 +58,9 @@ export default function App() {
           <Route path="grade" element={<Suspense fallback={<PageFallback />}><GradePredictor /></Suspense>} />
           <Route path="sellers" element={<Suspense fallback={<PageFallback />}><Sellers /></Suspense>} />
           <Route path="score-listing" element={<Suspense fallback={<PageFallback />}><ScoreListing /></Suspense>} />
+          <Route path="card/:slug" element={<Suspense fallback={<PageFallback />}><CardPage /></Suspense>} />
+          <Route path="compare" element={<Suspense fallback={<PageFallback />}><Compare /></Suspense>} />
+          <Route path="today" element={<Suspense fallback={<PageFallback />}><Today /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

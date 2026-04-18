@@ -1,0 +1,289 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, Link } from 'react-router-dom'
+import { TrendingUp, TrendingDown, ExternalLink, Tag, Award, Users, ArrowLeft } from 'lucide-react'
+import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const SITE = 'https://chrome-crest-autonomous-ebay.vercel.app'
+
+const ALL_DRIVERS = [...DRIVERS_F1, ...DRIVERS_F2, ...DRIVERS_F3, ...DRIVERS_LEGENDS]
+
+// Top parallels that power slug resolution and sitemap generation.
+export const TOP_PARALLELS = [
+  'Refractor', 'Prism Refractor', 'Aqua /199', 'Blue /150',
+  'Green /99', 'Gold /50', 'Orange /25', 'Autograph',
+]
+
+function kebab(s) {
+  return (s || '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function parseSlug(slug) {
+  const clean = kebab(slug)
+  // Longest-match driver first so two-word names like 'max-verstappen' beat 'max'
+  const sorted = [...ALL_DRIVERS].sort((a, b) => b.length - a.length)
+  for (const d of sorted) {
+    const dk = kebab(d)
+    if (clean === dk || clean.startsWith(dk + '-')) {
+      const rest = clean.slice(dk.length).replace(/^-+/, '')
+      // Match parallel by trying longest first too
+      const sortedP = [...TOP_PARALLELS].sort((a, b) => b.length - a.length)
+      for (const p of sortedP) {
+        const pk = kebab(p)
+        if (rest === pk || rest.startsWith(pk)) {
+          return { driver: d, parallel: p }
+        }
+      }
+      return { driver: d, parallel: rest.split('-').map(w => w[0]?.toUpperCase() + w.slice(1)).join(' ') }
+    }
+  }
+  return { driver: null, parallel: null }
+}
+
+function useSeo({ title, description }) {
+  useEffect(() => {
+    if (title) document.title = title
+    if (description) {
+      let m = document.querySelector('meta[name="description"]')
+      if (!m) {
+        m = document.createElement('meta')
+        m.setAttribute('name', 'description')
+        document.head.appendChild(m)
+      }
+      m.setAttribute('content', description)
+    }
+    // Canonical
+    let c = document.querySelector('link[rel="canonical"]')
+    if (!c) {
+      c = document.createElement('link')
+      c.setAttribute('rel', 'canonical')
+      document.head.appendChild(c)
+    }
+    c.setAttribute('href', window.location.href)
+  }, [title, description])
+}
+
+function ScarcityBadge({ tier }) {
+  if (!tier || tier === '-') return null
+  const color = tier === 'S' ? 'bg-yellow-500 text-black' :
+                tier === 'A' ? 'bg-blue-600 text-white' :
+                tier === 'B' ? 'bg-green-700 text-white' : 'bg-gray-700 text-gray-300'
+  return <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${color}`}>Tier {tier}</span>
+}
+
+function VerdictBadge({ verdict }) {
+  if (!verdict) return null
+  const map = {
+    STRONG_BUY: 'bg-emerald-500 text-black',
+    GOOD_BUY: 'bg-green-700 text-white',
+    FAIR: 'bg-gray-700 text-gray-200',
+    OVERPRICED: 'bg-orange-700 text-white',
+    PASS: 'bg-red-700 text-white',
+  }
+  return <span className={`text-[11px] font-black px-2 py-1 rounded-md uppercase tracking-wide ${map[verdict] || 'bg-gray-700 text-gray-300'}`}>{verdict.replace('_', ' ')}</span>
+}
+
+export default function CardPage() {
+  const { slug } = useParams()
+  const { driver, parallel } = useMemo(() => parseSlug(slug || ''), [slug])
+
+  const [median, setMedian] = useState(null)
+  const [recent, setRecent] = useState([])
+  const [listings, setListings] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useSeo({
+    title: driver && parallel ? `${driver} ${parallel} — 2025 Topps Chrome F1 Prices · F1 Card Hub` : 'Card — F1 Card Hub',
+    description: median?.n
+      ? `${driver} ${parallel} median sold price: $${median.median_total?.toFixed(0)} across ${median.n} recent sales. Live eBay listings + 90-day trend.`
+      : `Live 2025 Topps Chrome Formula 1 card prices for ${driver || ''} ${parallel || ''}.`,
+  })
+
+  useEffect(() => {
+    if (!driver || !parallel) { setLoading(false); return }
+    let mounted = true
+    setLoading(true)
+    const qs = new URLSearchParams({ driver, parallel })
+    Promise.all([
+      fetch(`${API}/api/sales/median?${qs}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${API}/api/sales?${qs}&limit=20`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${API}/api/auctions?driver=${encodeURIComponent(driver)}&limit=100`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([m, s, a]) => {
+      if (!mounted) return
+      setMedian(m)
+      setRecent(s?.sales || [])
+      // Filter client-side to this parallel
+      const all = a?.auctions || []
+      const pl = (parallel || '').toLowerCase()
+      const matched = all.filter(x =>
+        (x.card?.parallel || '').toLowerCase() === pl ||
+        (x.title || '').toLowerCase().includes(pl)
+      )
+      setListings(matched.slice(0, 6))
+      setLoading(false)
+    })
+    return () => { mounted = false }
+  }, [driver, parallel])
+
+  if (!driver || !parallel) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4 p-4">
+        <Link to="/" className="text-xs text-gray-400 hover:text-white flex items-center gap-1"><ArrowLeft size={12} /> Home</Link>
+        <div className="panel p-8 text-center">
+          <h1 className="text-xl font-black text-white mb-2">Card not found</h1>
+          <p className="text-gray-400 text-sm">Couldn't resolve slug "{slug}".</p>
+        </div>
+      </div>
+    )
+  }
+
+  const medianPrice = median?.median_total
+  const nComps = median?.n || 0
+  const verdict = null
+
+  return (
+    <div className="space-y-5 max-w-6xl mx-auto">
+      <Link to="/" className="text-xs text-gray-400 hover:text-white flex items-center gap-1 w-fit"><ArrowLeft size={12} /> Home</Link>
+
+      {/* Hero */}
+      <div className="panel p-5 md:p-6 flex flex-col md:flex-row gap-5 items-start">
+        <img
+          src={`${API}/api/drivers/photo?name=${encodeURIComponent(driver)}`}
+          alt={driver}
+          className="w-28 h-28 md:w-36 md:h-36 rounded-2xl object-cover border-2 border-gray-800 bg-gray-900"
+          onError={(e) => { e.currentTarget.style.display = 'none' }}
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <ScarcityBadge tier="A" />
+            <VerdictBadge verdict={verdict} />
+          </div>
+          <h1 className="text-2xl md:text-4xl font-black text-white leading-tight">{driver}</h1>
+          <p className="text-sm text-gray-400 mt-0.5">2025 Topps Chrome F1 · <span className="text-red-400 font-bold">{parallel}</span></p>
+
+          <div className="mt-4 flex flex-wrap items-baseline gap-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Currently</div>
+              <div className="text-3xl md:text-4xl font-black text-green-400 leading-none">
+                {medianPrice ? `$${medianPrice.toFixed(0)}` : <span className="text-gray-600 text-xl">no data</span>}
+              </div>
+              <div className="text-[11px] text-gray-500 mt-0.5">
+                {nComps > 0 ? `median across ${nComps} sales (90d)` : 'not enough sales'}
+                {median?.low_confidence && nComps > 0 && <span className="text-yellow-500"> · low confidence</span>}
+              </div>
+            </div>
+            {median?.max_total && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Highest</div>
+                <div className="text-xl font-bold text-yellow-400">${median.max_total.toFixed(0)}</div>
+              </div>
+            )}
+            {median?.min_total && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Lowest</div>
+                <div className="text-xl font-bold text-gray-300">${median.min_total.toFixed(0)}</div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 flex gap-2 flex-wrap">
+            <Link to={`/compare?a=${slug}`} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg">Compare</Link>
+            <Link to={`/drivers?name=${encodeURIComponent(driver)}`} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg">Driver page</Link>
+            <Link to={`/sales?driver=${encodeURIComponent(driver)}&parallel=${encodeURIComponent(parallel)}`} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg">All sales</Link>
+          </div>
+        </div>
+      </div>
+
+      {/* Live listings */}
+      <div className="panel p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-bold text-white text-sm flex items-center gap-2"><Tag size={14} className="text-red-400" /> Live Listings</h2>
+          <span className="text-[11px] text-gray-500">{listings.length} shown</span>
+        </div>
+        {loading ? (
+          <div className="h-32 animate-pulse bg-gray-800/40 rounded-lg" />
+        ) : listings.length === 0 ? (
+          <p className="text-xs text-gray-500 italic py-4">No active listings right now — check back later.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {listings.map(a => {
+              const total = (a.current_price || 0) + (a.shipping_cost || 0)
+              const pctOfMed = medianPrice ? total / medianPrice : null
+              const isDeal = pctOfMed != null && pctOfMed <= 0.8
+              return (
+                <a key={a.id} href={a.ebay_url} target="_blank" rel="noopener noreferrer"
+                  className={`bg-gray-800/60 hover:bg-gray-800 rounded-xl p-3 border transition-colors ${isDeal ? 'border-green-700/50' : 'border-gray-700/40'}`}>
+                  <div className="flex gap-3">
+                    {a.image_url && <img src={a.image_url} alt="" className="w-14 h-16 rounded object-cover bg-gray-900" />}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs text-white font-semibold line-clamp-2 leading-tight">{a.title}</div>
+                      <div className="flex items-baseline gap-2 mt-1.5">
+                        <span className="text-base font-black text-green-400">${(a.current_price || 0).toFixed(0)}</span>
+                        {pctOfMed != null && (
+                          <span className={`text-[10px] font-bold ${isDeal ? 'text-green-400' : 'text-gray-500'}`}>
+                            {(pctOfMed * 100).toFixed(0)}% of median
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                        <ExternalLink size={9} /> view on eBay
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Recent sales */}
+      <div className="panel p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-bold text-white text-sm flex items-center gap-2"><TrendingUp size={14} className="text-green-400" /> Recent Sales</h2>
+          <span className="text-[11px] text-gray-500">last {recent.length}</span>
+        </div>
+        {loading ? (
+          <div className="h-32 animate-pulse bg-gray-800/40 rounded-lg" />
+        ) : recent.length === 0 ? (
+          <p className="text-xs text-gray-500 italic py-4">No recent sales on record for this combo yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Grade</th>
+                  <th className="text-right">Price</th>
+                  <th className="text-right">Total</th>
+                  <th>Type</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map(s => (
+                  <tr key={s.id}>
+                    <td className="text-gray-400 text-xs">{s.sale_date ? new Date(s.sale_date).toLocaleDateString() : '—'}</td>
+                    <td className="text-xs">{s.grade || <span className="text-gray-600">Raw</span>}</td>
+                    <td className="text-right text-white font-semibold">${(s.sale_price || 0).toFixed(0)}</td>
+                    <td className="text-right text-green-400 font-semibold">${(s.total_cost || 0).toFixed(0)}</td>
+                    <td className="text-[10px] text-gray-500">{s.is_auction ? 'auction' : 'bin'}</td>
+                    <td className="text-right">
+                      {s.ebay_url && (
+                        <a href={s.ebay_url} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-white">
+                          <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
