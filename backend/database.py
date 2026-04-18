@@ -226,6 +226,17 @@ class Wishlist(Base):
     card = relationship("Card", back_populates="wishlist_items")
 
 
+class PushSubscription(Base):
+    """Browser Web Push subscription — one row per subscribed device."""
+    __tablename__ = "push_subscriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    endpoint = Column(String, unique=True, index=True, nullable=False)
+    p256dh = Column(String, nullable=False)
+    auth = Column(String, nullable=False)
+    user_agent = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class SystemState(Base):
     """Key-value store for flags that must survive Vercel cold starts (e.g. eBay rate-limit cooldowns)."""
     __tablename__ = "system_state"

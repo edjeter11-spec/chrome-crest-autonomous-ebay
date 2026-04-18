@@ -1,11 +1,21 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle } from 'lucide-react'
 import StatCard from '../components/StatCard'
 import { swrFetch } from '../lib/cache'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-function PnlCell({ value, pct }) {
+const PARALLELS = [
+  'Base', 'Refractor', 'Prism Refractor', 'Aqua /199', 'Blue /150',
+  'Green /99', 'Gold /50', 'Orange /25', 'Red /5', 'SuperFractor 1/1',
+  'Autograph', 'Auto Blue /150', 'Auto Green /99', 'Auto Gold /50',
+  'Auto Orange /25', 'Auto Red /5', 'Auto SuperFractor 1/1',
+  'Speed Wheels', 'Neon Nations', 'Floor It', 'Vegas at Night', 'Diamond 75th',
+]
+const GRADES = ['Raw', 'PSA 10', 'PSA 9', 'PSA 8', 'BGS 9.5', 'BGS 10', 'SGC 10']
+
+function PnlCell({ value, pct, has }) {
+  if (!has) return <div className="text-right text-gray-600 text-xs italic">n/a</div>
   const positive = value >= 0
   const color = positive ? 'text-green-400' : 'text-red-400'
   return (
@@ -13,6 +23,100 @@ function PnlCell({ value, pct }) {
       <div className="font-semibold">{positive ? '+' : ''}${value.toFixed(2)}</div>
       <div className="text-[10px] opacity-70">{positive ? '+' : ''}{pct.toFixed(1)}%</div>
     </div>
+  )
+}
+
+function AddCardForm({ onAdd, onCancel, drivers }) {
+  const [form, setForm] = useState({
+    driver: '', parallel: 'Base', grade: 'Raw',
+    purchase_price: '', purchase_date: new Date().toISOString().slice(0, 10),
+    quantity: 1, notes: '',
+  })
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!form.driver || !form.purchase_price) return
+    setBusy(true)
+    try {
+      await fetch(`${API}/api/portfolio`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          driver: form.driver,
+          parallel: form.parallel,
+          grade: form.grade,
+          purchase_price: Number(form.purchase_price),
+          purchase_date: new Date(form.purchase_date).toISOString(),
+          quantity: Number(form.quantity),
+          notes: form.notes || null,
+        }),
+      })
+      onAdd()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="panel p-4 mb-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-white text-sm">Add Card</h3>
+        <button type="button" onClick={onCancel} className="text-gray-500 hover:text-white"><X size={14} /></button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <div>
+          <label className="text-[10px] text-gray-500 uppercase font-bold">Driver</label>
+          <input list="driver-list" value={form.driver} onChange={e => setForm({ ...form, driver: e.target.value })}
+            required placeholder="e.g. Max Verstappen"
+            className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700" />
+          <datalist id="driver-list">
+            {drivers.map(d => <option key={d} value={d} />)}
+          </datalist>
+        </div>
+        <div>
+          <label className="text-[10px] text-gray-500 uppercase font-bold">Parallel</label>
+          <select value={form.parallel} onChange={e => setForm({ ...form, parallel: e.target.value })}
+            className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700">
+            {PARALLELS.map(p => <option key={p}>{p}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-gray-500 uppercase font-bold">Grade</label>
+          <select value={form.grade} onChange={e => setForm({ ...form, grade: e.target.value })}
+            className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700">
+            {GRADES.map(g => <option key={g}>{g}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-[10px] text-gray-500 uppercase font-bold">Paid ($)</label>
+          <input type="number" step="0.01" min="0" required value={form.purchase_price}
+            onChange={e => setForm({ ...form, purchase_price: e.target.value })}
+            className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700" />
+        </div>
+        <div>
+          <label className="text-[10px] text-gray-500 uppercase font-bold">Date</label>
+          <input type="date" value={form.purchase_date} onChange={e => setForm({ ...form, purchase_date: e.target.value })}
+            className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700" />
+        </div>
+        <div>
+          <label className="text-[10px] text-gray-500 uppercase font-bold">Qty</label>
+          <input type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })}
+            className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700" />
+        </div>
+      </div>
+      <div>
+        <label className="text-[10px] text-gray-500 uppercase font-bold">Notes</label>
+        <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
+          className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700" />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white">Cancel</button>
+        <button disabled={busy} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg">
+          {busy ? 'Adding…' : 'Add to Portfolio'}
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -60,10 +164,19 @@ export default function Portfolio() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
+  const [adding, setAdding] = useState(false)
+  const [drivers, setDrivers] = useState([])
 
   const load = () => swrFetch(`${API}/api/portfolio`, d => { setItems(d.items || d || []); setLoading(false) })
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    fetch(`${API}/api/cards/drivers-summary`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setDrivers((d || []).map(x => x.driver_name).filter(Boolean)))
+      .catch(() => {})
+  }, [])
 
   const deleteItem = async (id) => {
     if (!confirm('Remove this holding?')) return
@@ -71,17 +184,32 @@ export default function Portfolio() {
     await fetch(`${API}/api/portfolio/${id}`, { method: 'DELETE' }).catch(() => {})
   }
 
-  const totalCost = items.reduce((s, i) => s + (i.purchase_price * (i.quantity || 1)), 0)
-  const totalValue = items.reduce((s, i) => s + (i.current_value * (i.quantity || 1)), 0)
+  const totalCost = items.reduce((s, i) => s + ((i.purchase_price || 0) * (i.quantity || 1)), 0)
+  const totalValue = items.reduce((s, i) => s + ((i.current_value || 0) * (i.quantity || 1)), 0)
   const totalPnl = totalValue - totalCost
   const pnlPct = totalCost > 0 ? (totalPnl / totalCost * 100) : 0
   const totalCards = items.reduce((s, i) => s + (i.quantity || 1), 0)
 
+  // Top gainer / worst loser (by pnl_pct, excluding no-valuation)
+  const scored = items.filter(i => i.has_valuation)
+  const topGainer = scored.reduce((best, i) => (i.pnl_pct > (best?.pnl_pct ?? -Infinity) ? i : best), null)
+  const worstLoser = scored.reduce((worst, i) => (i.pnl_pct < (worst?.pnl_pct ?? Infinity) ? i : worst), null)
+
   return (
     <div className="space-y-5 max-w-5xl">
-      <h1 className="page-title">Portfolio</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="page-title">Portfolio</h1>
+        {!adding && (
+          <button onClick={() => setAdding(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg">
+            <Plus size={14} /> Add Card
+          </button>
+        )}
+      </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      {adding && <AddCardForm drivers={drivers} onAdd={() => { setAdding(false); load() }} onCancel={() => setAdding(false)} />}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Total Cost" value={loading ? null : `$${totalCost.toFixed(0)}`} icon={DollarSign} color="blue" />
         <StatCard label="Current Value" value={loading ? null : `$${totalValue.toFixed(0)}`} icon={TrendingUp} color="green" />
         <StatCard
@@ -94,19 +222,44 @@ export default function Portfolio() {
         <StatCard label="Cards Owned" value={loading ? null : totalCards} icon={Package} color="purple" />
       </div>
 
+      {(topGainer || worstLoser) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {topGainer && (
+            <div className="panel p-3 flex items-center gap-3 border-green-800/30">
+              <Award className="text-green-400 shrink-0" size={20} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] text-gray-500 uppercase tracking-wide">Top Gainer</div>
+                <div className="text-sm text-white font-bold truncate">{topGainer.card?.driver_name} · {topGainer.card?.parallel}</div>
+              </div>
+              <div className="text-green-400 font-black text-lg">+{topGainer.pnl_pct.toFixed(1)}%</div>
+            </div>
+          )}
+          {worstLoser && worstLoser.id !== topGainer?.id && (
+            <div className="panel p-3 flex items-center gap-3 border-red-800/30">
+              <AlertTriangle className="text-red-400 shrink-0" size={20} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] text-gray-500 uppercase tracking-wide">Worst Loser</div>
+                <div className="text-sm text-white font-bold truncate">{worstLoser.card?.driver_name} · {worstLoser.card?.parallel}</div>
+              </div>
+              <div className="text-red-400 font-black text-lg">{worstLoser.pnl_pct.toFixed(1)}%</div>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="panel h-64 animate-pulse" />
       ) : items.length === 0 ? (
         <div className="panel flex flex-col items-center justify-center py-20 text-gray-600">
           <Package size={36} className="mb-4 opacity-20" />
           <p className="text-sm font-medium">No holdings yet</p>
-          <p className="text-xs mt-1 text-gray-700">Add cards from the Auctions page</p>
+          <p className="text-xs mt-1 text-gray-700">Click "Add Card" to track your first purchase</p>
         </div>
       ) : (
         <div className="panel overflow-hidden">
           <div className="px-5 py-3.5 border-b border-gray-800/60 flex items-center justify-between">
             <h2 className="font-bold text-white text-sm">Holdings</h2>
-            <span className="text-xs text-gray-500">{items.length} positions · {totalCards} cards</span>
+            <span className="text-xs text-gray-500">{items.length} positions · {totalCards} cards · sorted by P&L %</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full data-table">
@@ -128,8 +281,8 @@ export default function Portfolio() {
                   if (editing === item.id) {
                     return <EditRow key={item.id} item={item} onSave={() => { setEditing(null); load() }} onCancel={() => setEditing(null)} />
                   }
-                  const cost = item.purchase_price * (item.quantity || 1)
-                  const val = item.current_value * (item.quantity || 1)
+                  const cost = (item.purchase_price || 0) * (item.quantity || 1)
+                  const val = (item.current_value || 0) * (item.quantity || 1)
                   const pnl = val - cost
                   const pct = cost > 0 ? pnl / cost * 100 : 0
                   return (
@@ -150,9 +303,13 @@ export default function Portfolio() {
                         ) : <span className="text-xs text-gray-600">{item.card?.grade || '—'}</span>}
                       </td>
                       <td className="text-right font-medium">{item.quantity || 1}</td>
-                      <td className="text-right text-gray-300">${item.purchase_price?.toFixed(2)}</td>
-                      <td className="text-right text-green-400 font-medium">${item.current_value?.toFixed(2)}</td>
-                      <td><PnlCell value={pnl} pct={pct} /></td>
+                      <td className="text-right text-gray-300">${(item.purchase_price || 0).toFixed(2)}</td>
+                      <td className="text-right font-medium">
+                        {item.has_valuation
+                          ? <span className="text-green-400">${(item.current_value || 0).toFixed(2)}</span>
+                          : <span className="text-gray-600 text-xs italic">no data</span>}
+                      </td>
+                      <td><PnlCell value={pnl} pct={pct} has={item.has_valuation} /></td>
                       <td>
                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => setEditing(item.id)} className="p-1.5 text-gray-500 hover:text-blue-400 transition-colors">

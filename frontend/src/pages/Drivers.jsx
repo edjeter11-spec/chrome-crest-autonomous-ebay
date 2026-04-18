@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink } from 'lucide-react'
+import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
+
+const DriverPriceChart = lazy(() => import('../components/DriverPriceChart'))
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -285,6 +287,16 @@ export default function Drivers() {
                 </a>
               </div>
             )}
+
+            {/* 90-day price chart */}
+            <div className="mb-6">
+              <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest flex items-center gap-2">
+                <LineChartIcon size={12} className="text-cyan-400" /> Price Trend (90 days)
+              </h3>
+              <Suspense fallback={<div className="h-56 skeleton rounded-xl" />}>
+                <DriverPriceChart driver={selected.driver_name} days={90} />
+              </Suspense>
+            </div>
 
             {/* Last 10 sales */}
             {recentSales.length > 0 && (

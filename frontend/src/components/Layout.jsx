@@ -3,8 +3,10 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
-  Database
+  Database, BellRing, HelpCircle
 } from 'lucide-react'
+import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
+import Tutorial from './Tutorial'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -28,7 +30,43 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [snipeCount, setSnipeCount] = useState(0)
+  const [pushState, setPushState] = useState('idle') // idle | subscribed | busy | unsupported
+  const [showTutorial, setShowTutorial] = useState(false)
   const location = useLocation()
+
+  // Push subscription state
+  useEffect(() => {
+    if (!pushSupported()) { setPushState('unsupported'); return }
+    isSubscribed().then(on => setPushState(on ? 'subscribed' : 'idle')).catch(() => setPushState('idle'))
+  }, [])
+
+  // First-visit tutorial
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('cc_tutorial_seen')) setShowTutorial(true)
+    } catch {}
+  }, [])
+
+  const togglePush = async () => {
+    setPushState('busy')
+    try {
+      if (await isSubscribed()) {
+        await unsubscribePush()
+        setPushState('idle')
+      } else {
+        await subscribePush()
+        setPushState('subscribed')
+      }
+    } catch (e) {
+      alert('Push notification error: ' + (e?.message || 'unknown'))
+      setPushState('idle')
+    }
+  }
+
+  const dismissTutorial = () => {
+    try { localStorage.setItem('cc_tutorial_seen', '1') } catch {}
+    setShowTutorial(false)
+  }
 
   // Close mobile drawer on route change
   useEffect(() => { setMobileOpen(false) }, [location.pathname])
@@ -182,6 +220,21 @@ export default function Layout() {
 
       {/* WS + collapse toggle at bottom */}
       <div className="px-3 py-3 border-t border-gray-800/60 space-y-2">
+        {/* Push notifications button */}
+        {pushState !== 'unsupported' && (!collapsed || mobile) && (
+          <button
+            onClick={togglePush}
+            disabled={pushState === 'busy'}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+              pushState === 'subscribed'
+                ? 'bg-green-900/30 text-green-400 border border-green-800/40 hover:bg-green-900/50'
+                : 'bg-gray-800/60 text-gray-400 hover:text-white border border-gray-700/40 hover:bg-gray-800'
+            }`}
+          >
+            <BellRing size={12} />
+            {pushState === 'subscribed' ? 'Push enabled' : pushState === 'busy' ? '…' : 'Enable push alerts'}
+          </button>
+        )}
         {(!collapsed || mobile) && (
           <div className="flex items-center gap-2 px-1">
             <div className={`w-1.5 h-1.5 rounded-full ${wsColor} ${wsStatus !== 'disconnected' ? 'animate-pulse' : ''}`} />
@@ -271,6 +324,19 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {showTutorial && <Tutorial onClose={dismissTutorial} />}
+
+      {!showTutorial && (
+        <button
+          onClick={() => setShowTutorial(true)}
+          className="fixed top-3 right-3 md:top-4 md:right-4 z-40 w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
+          aria-label="Help"
+          title="Show tutorial"
+        >
+          <HelpCircle size={16} />
+        </button>
+      )}
     </div>
   )
 }

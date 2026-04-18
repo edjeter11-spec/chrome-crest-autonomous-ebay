@@ -11,3 +11,4 @@ frontend/dist/
 *.sqlite3
 .DS_Store
 *.log
+VAPID_KEYS.md

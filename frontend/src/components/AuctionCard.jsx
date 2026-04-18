@@ -510,6 +510,37 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
         {/* Pricing options */}
         <PricingOptions auction={auction} />
 
+        {/* Place Bid (snipe executor) */}
+        {auction.snipe_eligible && (
+          <button
+            onClick={async (e) => {
+              e.stopPropagation()
+              const maxBid = prompt(`Max bid for ${auction.card?.driver_name || 'this auction'}?\nCurrent: $${auction.current_price?.toFixed(2) || '?'}`)
+              if (!maxBid) return
+              try {
+                const r = await fetch(`${API}/api/auctions/${auction.id}/execute-snipe`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ max_bid: Number(maxBid) }),
+                })
+                const data = await r.json()
+                if (data.status === 'no_credentials') {
+                  alert('eBay user token not configured. See SNIPE_SETUP.md for setup instructions.')
+                } else if (data.status === 'bid_placed') {
+                  alert('Bid placed successfully!')
+                } else {
+                  alert('Bid response: ' + (data.ebay_response_snippet || JSON.stringify(data).slice(0, 200)))
+                }
+              } catch (err) {
+                alert('Bid error: ' + err.message)
+              }
+            }}
+            className="w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors"
+          >
+            <Zap size={11} fill="white" /> Place Snipe Bid
+          </button>
+        )}
+
         {/* Watchlist button */}
         <button
           onClick={toggleWatchlist}

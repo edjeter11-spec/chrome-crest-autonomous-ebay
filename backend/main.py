@@ -15,7 +15,7 @@ import httpx
 from datetime import datetime
 
 from database import create_tables, get_db, Auction, Card, engine
-from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales, psa_data
+from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales, psa_data, push
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -37,6 +37,95 @@ app.include_router(analytics.router)
 app.include_router(wishlist.router)
 app.include_router(sales.router)
 app.include_router(psa_data.router)
+app.include_router(push.router)
+
+
+@app.post("/api/admin/migrate-push-subscriptions")
+def migrate_push_subscriptions():
+    """Create push_subscriptions table on Neon Postgres (idempotent)."""
+    from sqlalchemy import text
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY,
+            endpoint VARCHAR NOT NULL UNIQUE,
+            p256dh VARCHAR NOT NULL,
+            auth VARCHAR NOT NULL,
+            user_agent VARCHAR,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_push_subscriptions_endpoint ON push_subscriptions (endpoint)",
+    ]
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"ok": True})
+                except Exception as e:
+                    results.append({"ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
+
+
+@app.get("/api/psa/timeseries")
+def psa_timeseries(driver: str, days: int = 90, db: Session = Depends(get_db)):
+    """Graded sales grouped by week for the given driver. Returns lines per grade."""
+    from database import SoldCard
+    from sqlalchemy import func
+    from datetime import timedelta
+    since = datetime.utcnow() - timedelta(days=days)
+    rows = db.query(SoldCard).filter(
+        SoldCard.driver_name == driver,
+        SoldCard.sale_date >= since,
+        SoldCard.sale_price > 0,
+    ).all()
+
+    # Group by (week_start, grade)
+    buckets: dict = {}
+    for r in rows:
+        if not r.sale_date:
+            continue
+        # Normalize grade bucket
+        g = (r.grade or "").strip().upper()
+        if g.startswith("PSA 10"):
+            grade = "PSA 10"
+        elif g.startswith("PSA 9"):
+            grade = "PSA 9"
+        elif g.startswith("PSA 8"):
+            grade = "PSA 8"
+        elif g.startswith("BGS") or g.startswith("SGC"):
+            grade = g.split()[0] if g else "Other"
+        else:
+            grade = "Raw"
+        # Week start = Monday of that week
+        week_start = (r.sale_date - timedelta(days=r.sale_date.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        key = (week_start.isoformat(), grade)
+        b = buckets.setdefault(key, {"sum": 0.0, "count": 0})
+        b["sum"] += float(r.sale_price or 0)
+        b["count"] += 1
+
+    out = [
+        {
+            "week_start": week,
+            "grade": grade,
+            "count": b["count"],
+            "avg_price": round(b["sum"] / b["count"], 2) if b["count"] else 0,
+        }
+        for (week, grade), b in buckets.items()
+    ]
+    out.sort(key=lambda x: (x["week_start"], x["grade"]))
+    return {"driver": driver, "days": days, "total_points": len(rows), "series": out}
 
 
 @app.post("/api/admin/migrate-sold-cards")
@@ -630,10 +719,32 @@ async def cron_sync(db: Session = Depends(get_db)):
     # Feature 1: enhanced snipe alert generation — never blocks sync
     snipe_alerts_created = 0
     snipe_alert_error = None
+    push_sent = 0
     try:
         from scraper import run_enhanced_snipe_alerts
         created = run_enhanced_snipe_alerts(db)
         snipe_alerts_created = len(created)
+
+        # Web Push fan-out: notify subscribers for critical alerts OR snipe_score>=90
+        try:
+            from routers.push import send_push_to_all
+            for al in created:
+                au = db.query(Auction).filter(Auction.id == al.auction_id).first() if al.auction_id else None
+                is_critical = al.urgency == "critical"
+                high_score = au and (au.snipe_score or 0) >= 90
+                if is_critical or high_score:
+                    url = (au.ebay_url if au else "/") or "/"
+                    title = "SNIPE" + ("" if al.urgency == "normal" else f" · {al.urgency.upper()}")
+                    push_sent += send_push_to_all(
+                        db,
+                        title=title,
+                        body=(al.message or "")[:180],
+                        url=url,
+                        tag=f"snipe-{al.auction_id}",
+                    )
+        except Exception as _pe:
+            import logging as _log
+            _log.getLogger("push").warning(f"push fanout failed: {_pe}")
     except Exception as e:
         snipe_alert_error = str(e)[:200]
 
@@ -650,6 +761,7 @@ async def cron_sync(db: Session = Depends(get_db)):
         "scraper_errors": scraper_errors,
         "snipe_alerts_created": snipe_alerts_created,
         "snipe_alert_error": snipe_alert_error,
+        "push_sent": push_sent,
     }
 
 

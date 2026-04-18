@@ -348,25 +348,46 @@ def run_snipe_alerts(db: Session) -> list:
 
 def run_enhanced_snipe_alerts(db: Session) -> list:
     """
-    Expanded snipe alert generator. Creates Alert rows for auctions matching
-    any of three criteria (dedupes by auction_id+alert_type so existing rows
-    are never duplicated).
-      1. Auction ending in <1h with bid_count<3 and current_price < DB median
-         sold price for that driver+parallel.
-      2. Any auction with snipe_score >= 85.
-      3. Any auction with snipe_eligible=True AND current_price < 0.60 * avg
-         sold price (driver+parallel) — i.e. 40%+ below market.
+    Expanded snipe alert generator with severity tiers, dedup, and expiry.
+
+    Severity tiers:
+      - critical: ends <30 min OR snipe_score >=90 OR price 70%+ below avg
+      - high:     ends <2h  OR snipe_score >=80 OR price 50%+ below avg
+      - normal:   everything else snipe-eligible
+
+    Dedup: skip if an ACTIVE (non-triggered) alert for same auction exists.
+    Expiry: alerts whose auction ended OR is no longer a snipe get
+    `triggered=True` (treated as resolved) before new alerts are created.
     """
     from database import SoldCard
-    from sqlalchemy import func as _func
 
     now = datetime.utcnow()
     alerts_created: list = []
 
-    # Existing alert keys so we don't re-alert the same auction
+    # ---- Expiry pass: mark resolved alerts whose auction no longer qualifies ----
+    open_alerts = db.query(Alert).filter(
+        Alert.alert_type == "snipe_opportunity",
+        Alert.triggered == False,
+        Alert.auction_id.isnot(None),
+    ).all()
+    for al in open_alerts:
+        au = db.query(Auction).filter(Auction.id == al.auction_id).first()
+        if not au:
+            al.triggered = True
+            al.triggered_at = now
+            continue
+        ended = (au.status == "ended") or (au.end_time and au.end_time < now)
+        bid_too_high = al.threshold_price and au.current_price and au.current_price > (al.threshold_price * 1.25)
+        if ended or bid_too_high:
+            al.triggered = True
+            al.triggered_at = now
+    db.commit()
+
+    # Existing ACTIVE alert keys — don't double-alert
     existing_keys = set(
         (aid,) for (aid,) in db.query(Alert.auction_id).filter(
             Alert.alert_type == "snipe_opportunity",
+            Alert.triggered == False,
             Alert.auction_id.isnot(None),
         ).all()
     )
@@ -413,7 +434,6 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
         median, avg, n_sold = get_stats(driver, parallel)
 
         reason = None
-        urgency = "high"
 
         # Criterion 1: ending <1h, low bids, below median
         if (
@@ -422,12 +442,10 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
             and median and cur_price > 0 and cur_price < median
         ):
             reason = f"Ending {int(mins_left)}m, {auction.bid_count or 0} bids, ${cur_price:.0f} < median ${median:.0f}"
-            urgency = "critical" if mins_left < 15 else "high"
 
         # Criterion 2: very high snipe score
-        elif (auction.snipe_score or 0) >= 85:
+        elif (auction.snipe_score or 0) >= 80:
             reason = f"Snipe score {auction.snipe_score:.0f} · ${cur_price:.0f}"
-            urgency = "critical" if (auction.snipe_score or 0) >= 92 else "high"
 
         # Criterion 3: 40%+ below avg and snipe_eligible
         elif (
@@ -436,10 +454,29 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
         ):
             pct = int((1 - cur_price / avg) * 100)
             reason = f"{pct}% below avg (${cur_price:.0f} vs ${avg:.0f}, n={n_sold})"
-            urgency = "high"
 
         if not reason:
             continue
+
+        # Severity tiers
+        pct_below = 0.0
+        if avg and cur_price > 0:
+            pct_below = max(0.0, 1 - cur_price / avg)
+
+        if (
+            (end_time and 0 < mins_left < 30)
+            or (auction.snipe_score or 0) >= 90
+            or pct_below >= 0.70
+        ):
+            urgency = "critical"
+        elif (
+            (end_time and 0 < mins_left < 120)
+            or (auction.snipe_score or 0) >= 80
+            or pct_below >= 0.50
+        ):
+            urgency = "high"
+        else:
+            urgency = "normal"
 
         msg = f"SNIPE: {driver} {parallel} — {reason}"
         alert = Alert(
