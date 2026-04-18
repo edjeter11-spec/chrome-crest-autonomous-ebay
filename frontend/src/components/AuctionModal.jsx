@@ -6,7 +6,11 @@ import {
 } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const proxyImg = url => url ? `${API}/api/proxy/image?url=${encodeURIComponent(url)}` : ''
+const proxyImg = url => {
+  if (!url) return ''
+  if (url.includes('i.ebayimg.com')) return url
+  return `${API}/api/proxy/image?url=${encodeURIComponent(url)}`
+}
 
 const EBAY_BUYER_PROTECTION = 0.0345 // 3.45%
 

@@ -32,22 +32,29 @@
 }
 
 @layer components {
-  /* Card hover effect */
+  /* Card hover effect — desktop only (transforms kill mobile scroll perf) */
   .card-hover {
-    @apply transition-all duration-200;
+    @apply transition-colors duration-200;
   }
-  .card-hover:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px -4px rgba(0,0,0,0.5);
+  @media (min-width: 768px) {
+    .card-hover {
+      @apply transition-all duration-200;
+    }
+    .card-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px -4px rgba(0,0,0,0.5);
+    }
   }
 
-  /* Snipe pulse border animation */
-  .snipe-pulse {
-    animation: snipe-pulse 2s ease-in-out infinite;
-  }
-  @keyframes snipe-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3), 0 0 0 0 rgba(239,68,68,0.1); }
-    50% { box-shadow: 0 0 0 4px rgba(239,68,68,0), 0 0 0 8px rgba(239,68,68,0); }
+  /* Snipe pulse border animation — desktop only. Mobile keeps the static red border. */
+  @media (min-width: 768px) {
+    .snipe-pulse {
+      animation: snipe-pulse 2s ease-in-out infinite;
+    }
+    @keyframes snipe-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3), 0 0 0 0 rgba(239,68,68,0.1); }
+      50% { box-shadow: 0 0 0 4px rgba(239,68,68,0), 0 0 0 8px rgba(239,68,68,0); }
+    }
   }
 
   /* Countdown styles */

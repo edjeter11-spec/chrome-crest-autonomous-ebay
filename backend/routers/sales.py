@@ -208,6 +208,79 @@ def export_csv(
     )
 
 
+@router.get("/heatmap")
+def sales_heatmap(
+    days: int = 30,
+    top_drivers: int = 15,
+    top_parallels: int = 8,
+    db: Session = Depends(get_db),
+):
+    """
+    Driver x Parallel 30-day sale count grid for the Dashboard heatmap.
+    Returns pre-computed rows/cols/cells so the frontend doesn't have to
+    aggregate thousands of rows client-side.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    base = db.query(SoldCard).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.driver_name.isnot(None),
+        SoldCard.parallel.isnot(None),
+    )
+
+    # Top drivers by volume within window
+    driver_rows = db.query(
+        SoldCard.driver_name,
+        func.count(SoldCard.id).label("cnt"),
+    ).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.driver_name.isnot(None),
+    ).group_by(SoldCard.driver_name)\
+     .order_by(desc("cnt")).limit(top_drivers).all()
+    drivers = [r[0] for r in driver_rows]
+
+    parallel_rows = db.query(
+        SoldCard.parallel,
+        func.count(SoldCard.id).label("cnt"),
+    ).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.parallel.isnot(None),
+    ).group_by(SoldCard.parallel)\
+     .order_by(desc("cnt")).limit(top_parallels).all()
+    parallels = [r[0] for r in parallel_rows]
+
+    if not drivers or not parallels:
+        return {"drivers": drivers, "parallels": parallels, "cells": [], "days": days}
+
+    # Single aggregate query for all cells
+    cell_rows = db.query(
+        SoldCard.driver_name,
+        SoldCard.parallel,
+        func.count(SoldCard.id).label("cnt"),
+        func.avg(SoldCard.sale_price).label("avg_price"),
+    ).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.driver_name.in_(drivers),
+        SoldCard.parallel.in_(parallels),
+    ).group_by(SoldCard.driver_name, SoldCard.parallel).all()
+
+    cells = [
+        {
+            "driver": r[0],
+            "parallel": r[1],
+            "count": int(r[2] or 0),
+            "avg_price": round(float(r[3] or 0), 2),
+        }
+        for r in cell_rows
+    ]
+
+    return {
+        "drivers": drivers,
+        "parallels": parallels,
+        "cells": cells,
+        "days": days,
+    }
+
+
 @router.post("/backfill-from-price-history")
 def backfill_from_price_history(db: Session = Depends(get_db)):
     """

@@ -1,17 +1,24 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Auctions from './pages/Auctions'
-import Portfolio from './pages/Portfolio'
-import Wishlist from './pages/Wishlist'
-import PriceHistory from './pages/PriceHistory'
-import AlertsPage from './pages/Alerts'
-import Analytics from './pages/Analytics'
-import Drivers from './pages/Drivers'
-import PSA from './pages/PSA'
 import BuyItNow from './pages/BuyItNow'
-import GradedCards from './pages/GradedCards'
-import SalesDatabase from './pages/SalesDatabase'
+
+// Lazy-loaded pages (code-split to keep initial bundle lean)
+const Portfolio = lazy(() => import('./pages/Portfolio'))
+const Wishlist = lazy(() => import('./pages/Wishlist'))
+const PriceHistory = lazy(() => import('./pages/PriceHistory'))
+const AlertsPage = lazy(() => import('./pages/Alerts'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const Drivers = lazy(() => import('./pages/Drivers'))
+const PSA = lazy(() => import('./pages/PSA'))
+const GradedCards = lazy(() => import('./pages/GradedCards'))
+const SalesDatabase = lazy(() => import('./pages/SalesDatabase'))
+
+const PageFallback = () => (
+  <div className="p-6 text-gray-500 text-sm">Loading…</div>
+)
 
 export default function App() {
   return (
@@ -20,16 +27,16 @@ export default function App() {
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="auctions" element={<Auctions />} />
-          <Route path="drivers" element={<Drivers />} />
-          <Route path="portfolio" element={<Portfolio />} />
-          <Route path="wishlist" element={<Wishlist />} />
-          <Route path="price-history" element={<PriceHistory />} />
-          <Route path="alerts" element={<AlertsPage />} />
-          <Route path="analytics" element={<Analytics />} />
-          <Route path="psa" element={<PSA />} />
           <Route path="bin" element={<BuyItNow />} />
-          <Route path="graded" element={<GradedCards />} />
-          <Route path="sales" element={<SalesDatabase />} />
+          <Route path="drivers" element={<Suspense fallback={<PageFallback />}><Drivers /></Suspense>} />
+          <Route path="portfolio" element={<Suspense fallback={<PageFallback />}><Portfolio /></Suspense>} />
+          <Route path="wishlist" element={<Suspense fallback={<PageFallback />}><Wishlist /></Suspense>} />
+          <Route path="price-history" element={<Suspense fallback={<PageFallback />}><PriceHistory /></Suspense>} />
+          <Route path="alerts" element={<Suspense fallback={<PageFallback />}><AlertsPage /></Suspense>} />
+          <Route path="analytics" element={<Suspense fallback={<PageFallback />}><Analytics /></Suspense>} />
+          <Route path="psa" element={<Suspense fallback={<PageFallback />}><PSA /></Suspense>} />
+          <Route path="graded" element={<Suspense fallback={<PageFallback />}><GradedCards /></Suspense>} />
+          <Route path="sales" element={<Suspense fallback={<PageFallback />}><SalesDatabase /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

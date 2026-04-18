@@ -230,7 +230,7 @@ export default function Layout() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Mobile top bar — adds safe-area inset so the hamburger sits below the iOS status bar / Android notch */}
         <div
-          className="md:hidden flex items-center justify-between px-3 py-2.5 border-b border-gray-800/60 bg-gray-900/95 backdrop-blur-sm shrink-0"
+          className="md:hidden flex items-center justify-between px-3 py-2.5 border-b border-gray-800/60 bg-gray-900 shrink-0"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)' }}
         >
           <button
@@ -256,7 +256,7 @@ export default function Layout() {
 
         {/* Snipe alert banner */}
         {liveAlerts.length > 0 && wsStatus === 'connected' && (
-          <div className="bg-red-600/95 backdrop-blur-sm px-3 md:px-4 py-2.5 flex items-center gap-2 md:gap-3 border-b border-red-500/50 z-30 shadow-lg">
+          <div className="bg-red-600 px-3 md:px-4 py-2.5 flex items-center gap-2 md:gap-3 border-b border-red-500/50 z-30 shadow-lg">
             <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">
               <AlertCircle size={12} className="text-white" />
             </div>

@@ -627,6 +627,16 @@ async def cron_sync(db: Session = Depends(get_db)):
     except Exception as e:
         scraper_errors.append(f"ebay_html: {str(e)[:120]}")
 
+    # Feature 1: enhanced snipe alert generation — never blocks sync
+    snipe_alerts_created = 0
+    snipe_alert_error = None
+    try:
+        from scraper import run_enhanced_snipe_alerts
+        created = run_enhanced_snipe_alerts(db)
+        snipe_alerts_created = len(created)
+    except Exception as e:
+        snipe_alert_error = str(e)[:200]
+
     total = db.query(Auction).filter(Auction.status == "active").count()
     return {
         "ok": ebay_error is None,
@@ -638,6 +648,8 @@ async def cron_sync(db: Session = Depends(get_db)):
         "sold_ingest_started": sold_error is None,
         "sold_ingest_error": sold_error,
         "scraper_errors": scraper_errors,
+        "snipe_alerts_created": snipe_alerts_created,
+        "snipe_alert_error": snipe_alert_error,
     }
 
 

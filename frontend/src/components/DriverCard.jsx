@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react'
 import { Trophy } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const proxyImg = (url) => url ? `${API}/api/proxy/image?url=${encodeURIComponent(url)}` : ''
+const proxyImg = (url) => {
+  if (!url) return ''
+  if (url.includes('i.ebayimg.com')) return url
+  return `${API}/api/proxy/image?url=${encodeURIComponent(url)}`
+}
 
 const TIER_STYLES = {
   S: 'bg-yellow-500 text-black',

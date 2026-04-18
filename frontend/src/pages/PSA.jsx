@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Search, Shield, ExternalLink, TrendingUp, Award, BarChart2, ChevronRight } from 'lucide-react'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -11,6 +12,7 @@ const RARITY = {
 const GRADE_ORDER = ['PSA 10', 'PSA 9', 'PSA 8', 'PSA 7', 'PSA 6', 'PSA 5', 'PSA 4', 'PSA 3', 'PSA 2', 'PSA 1']
 
 export default function PSA() {
+  const navigate = useNavigate()
   const [cards, setCards] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -160,7 +162,13 @@ export default function PSA() {
                 }`}
               >
                 <span className="font-semibold truncate">{d.driver_name}</span>
-                <ChevronRight size={12} className="shrink-0 opacity-40" />
+                <span
+                  onClick={e => { e.stopPropagation(); navigate(`/drivers?name=${encodeURIComponent(d.driver_name)}`) }}
+                  className="shrink-0 text-gray-600 hover:text-red-400 transition-colors"
+                  title="Open driver profile"
+                >
+                  <ExternalLink size={10} />
+                </span>
               </button>
             ))}
           </div>

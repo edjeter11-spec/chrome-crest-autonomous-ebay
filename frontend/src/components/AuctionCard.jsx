@@ -6,8 +6,12 @@ import {
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-const proxyImg = (url) =>
-  url ? `${API}/api/proxy/image?url=${encodeURIComponent(url)}` : ''
+const proxyImg = (url) => {
+  if (!url) return ''
+  // eBay CDN is CORS-friendly — skip the proxy for 1 less network hop
+  if (url.includes('i.ebayimg.com')) return url
+  return `${API}/api/proxy/image?url=${encodeURIComponent(url)}`
+}
 
 function formatTimeLeft(seconds) {
   if (seconds <= 0) return { text: 'ENDED', cls: 'text-gray-500' }

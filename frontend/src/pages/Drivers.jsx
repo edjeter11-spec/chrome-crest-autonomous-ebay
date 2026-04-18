@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Trophy, TrendingUp, Zap, Star, Search } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -24,11 +25,15 @@ function ScoreMeter({ score, color }) {
 }
 
 export default function Drivers() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [drivers, setDrivers] = useState([])
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(true)
   const [series, setSeries] = useState('F1')
   const [search, setSearch] = useState('')
+  const [observed, setObserved] = useState(null)
+  const [recentSales, setRecentSales] = useState([])
+  const [topGraded, setTopGraded] = useState(null)
 
   useEffect(() => {
     swrFetch(
@@ -37,6 +42,63 @@ export default function Drivers() {
       () => setLoading(false)
     )
   }, [])
+
+  // Apply ?name= deep-link after drivers load
+  useEffect(() => {
+    if (!drivers.length) return
+    const urlName = searchParams.get('name')
+    if (urlName) {
+      const match = drivers.find(d => d.driver_name?.toLowerCase() === urlName.toLowerCase())
+        || drivers.find(d => d.driver_name?.toLowerCase().includes(urlName.toLowerCase()))
+      if (match) {
+        const s = match.series || 'F1'
+        if (series !== 'All' && s !== series) setSeries(s)
+        setSelected(match)
+      }
+    }
+  }, [drivers, searchParams])
+
+  // Sync selected → URL
+  useEffect(() => {
+    if (!selected) return
+    const cur = searchParams.get('name')
+    if (cur !== selected.driver_name) {
+      const next = new URLSearchParams(searchParams)
+      next.set('name', selected.driver_name)
+      setSearchParams(next, { replace: true })
+    }
+  }, [selected])
+
+  // Fetch per-driver detail blocks
+  useEffect(() => {
+    if (!selected?.driver_name) return
+    const drv = selected.driver_name
+    setObserved(null); setRecentSales([]); setTopGraded(null)
+
+    fetch(`${API}/api/psa/observed?driver=${encodeURIComponent(drv)}`)
+      .then(r => r.ok ? r.json() : null).then(d => setObserved(d)).catch(() => {})
+
+    fetch(`${API}/api/sales?driver=${encodeURIComponent(drv)}&limit=10`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const list = d?.sales || []
+        setRecentSales(list)
+        const graded = list.filter(s => s.grade)
+        // The api-limited list may not surface the all-time top graded; call a second
+        // query sorted by price via a bigger pull.
+      }).catch(() => {})
+
+    // Top graded sale: pull larger sample filtered to graded-only
+    fetch(`${API}/api/sales?driver=${encodeURIComponent(drv)}&grade=graded&limit=100`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const list = d?.sales || []
+        if (list.length) {
+          const top = list.reduce((best, s) => (s.sale_price > (best?.sale_price || 0) ? s : best), null)
+          setTopGraded(top)
+        }
+      }).catch(() => {})
+  }, [selected?.driver_name])
 
   const filtered = drivers.filter(d => {
     if (series !== 'All' && (d.series || 'F1') !== series) return false
@@ -124,7 +186,7 @@ export default function Drivers() {
             <div className="flex items-start gap-3 md:gap-5 mb-6 flex-wrap">
               <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 shadow-xl border border-gray-700/50">
                 {selected.image_url && !selected.image_url.includes('placehold.co') ? (
-                  <img src={`${API}/api/proxy/image?url=${encodeURIComponent(selected.image_url)}`}
+                  <img src={selected.image_url.includes('i.ebayimg.com') ? selected.image_url : `${API}/api/proxy/image?url=${encodeURIComponent(selected.image_url)}`}
                     alt={selected.driver_name}
                     className="w-full h-full object-cover object-top"
                     onError={e => { e.target.style.display='none'; e.target.parentNode.style.backgroundColor = selected.team_color||'#333' }} />
@@ -178,6 +240,72 @@ export default function Drivers() {
                 </div>
               ))}
             </div>
+
+            {/* Observed graded breakdown */}
+            {observed?.grades?.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest flex items-center gap-2">
+                  <Award size={12} className="text-yellow-400" /> Observed Graded Breakdown
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {observed.grades.slice(0, 8).map(g => (
+                    <div key={g.grade} className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/30">
+                      <div className="text-[10px] text-gray-500 uppercase tracking-wide">{g.grade}</div>
+                      <div className="text-lg font-black text-white mt-0.5">{g.count}</div>
+                      <div className="text-[10px] text-emerald-400 font-semibold">avg ${Math.round(g.avg_price || 0).toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Top graded sale */}
+            {topGraded && (
+              <div className="mb-6">
+                <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest flex items-center gap-2">
+                  <Trophy size={12} className="text-amber-400" /> Top Graded Sale Ever
+                </h3>
+                <a href={topGraded.ebay_url || '#'} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-3 bg-gradient-to-r from-amber-900/20 to-transparent border border-amber-800/30 rounded-2xl p-3 hover:from-amber-900/30 transition-colors">
+                  {topGraded.image_url && (
+                    <img src={topGraded.image_url} alt="" className="w-12 h-16 rounded object-cover shrink-0" onError={e => e.target.style.display='none'} />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-white truncate">{topGraded.title}</div>
+                    <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                      <span className="text-amber-400 font-bold">{topGraded.grade}</span>
+                      {topGraded.parallel && <span>· {topGraded.parallel}</span>}
+                      <span>· {new Date(topGraded.sale_date).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xl font-black text-amber-400">${(topGraded.sale_price || 0).toLocaleString()}</div>
+                    <ExternalLink size={10} className="text-gray-500 ml-auto mt-0.5" />
+                  </div>
+                </a>
+              </div>
+            )}
+
+            {/* Last 10 sales */}
+            {recentSales.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest flex items-center gap-2">
+                  <TrendingUp size={12} className="text-emerald-400" /> Last 10 Sales
+                </h3>
+                <div className="space-y-1 bg-gray-800/30 rounded-xl p-1 border border-gray-800/40">
+                  {recentSales.slice(0, 10).map(s => (
+                    <a key={s.id} href={s.ebay_url || '#'} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-800/60 transition-colors text-xs">
+                      <span className="text-gray-300 flex-1 truncate">{s.title}</span>
+                      {s.grade && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 font-bold shrink-0">{s.grade}</span>}
+                      {s.parallel && <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/30 text-cyan-300 shrink-0">{s.parallel}</span>}
+                      <span className="text-emerald-400 font-bold shrink-0">${(s.sale_price || 0).toFixed(0)}</span>
+                      <span className="text-gray-600 text-[10px] shrink-0 w-16 text-right">{s.sale_date ? new Date(s.sale_date).toLocaleDateString() : ''}</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {selected.parallels?.length > 0 && (
               <div>

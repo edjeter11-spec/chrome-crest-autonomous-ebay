@@ -4,6 +4,7 @@ import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import { swrFetch } from '../lib/cache'
 import { matchesParallel } from '../lib/parallels'
+import { useVisibilityInterval, useProgressiveRender } from '../lib/hooks'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -67,11 +68,8 @@ export default function BuyItNow() {
     )
   }, [])
 
-  useEffect(() => {
-    load()
-    const t = setInterval(() => load(), 30_000)
-    return () => clearInterval(t)
-  }, [load])
+  useEffect(() => { load() }, [load])
+  useVisibilityInterval(() => load(), 30_000)
 
   const handleWatchlist = (id, w) =>
     setAuctions(prev => prev.map(a => a.id === id ? { ...a, status: w ? 'watchlist' : 'active' } : a))
@@ -107,6 +105,7 @@ export default function BuyItNow() {
     })
 
   const bestOfferCount = filtered.filter(a => (a.buying_options || []).includes('BEST_OFFER')).length
+  const { visibleCount, sentinelRef } = useProgressiveRender(filtered.length, 60, 40)
 
   return (
     <div className="space-y-4 max-w-[1700px]">
@@ -192,11 +191,18 @@ export default function BuyItNow() {
             className="mt-3 text-xs text-green-400 hover:underline">Clear filters</button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-          {filtered.map(a => (
-            <AuctionCard key={a.id} auction={a} onWatchlistChange={handleWatchlist} onClick={() => setSelected(a)} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+            {filtered.slice(0, visibleCount).map(a => (
+              <AuctionCard key={a.id} auction={a} onWatchlistChange={handleWatchlist} onClick={() => setSelected(a)} />
+            ))}
+          </div>
+          {visibleCount < filtered.length && (
+            <div ref={sentinelRef} className="py-6 text-center text-xs text-gray-600">
+              Loading more… ({visibleCount} / {filtered.length})
+            </div>
+          )}
+        </>
       )}
 
       {selected && <AuctionModal auction={selected} onClose={() => setSelected(null)} onWatchlistChange={handleWatchlist} />}

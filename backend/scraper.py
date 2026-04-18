@@ -344,3 +344,117 @@ def run_snipe_alerts(db: Session) -> list:
     if alerts_created:
         db.commit()
     return alerts_created
+
+
+def run_enhanced_snipe_alerts(db: Session) -> list:
+    """
+    Expanded snipe alert generator. Creates Alert rows for auctions matching
+    any of three criteria (dedupes by auction_id+alert_type so existing rows
+    are never duplicated).
+      1. Auction ending in <1h with bid_count<3 and current_price < DB median
+         sold price for that driver+parallel.
+      2. Any auction with snipe_score >= 85.
+      3. Any auction with snipe_eligible=True AND current_price < 0.60 * avg
+         sold price (driver+parallel) — i.e. 40%+ below market.
+    """
+    from database import SoldCard
+    from sqlalchemy import func as _func
+
+    now = datetime.utcnow()
+    alerts_created: list = []
+
+    # Existing alert keys so we don't re-alert the same auction
+    existing_keys = set(
+        (aid,) for (aid,) in db.query(Alert.auction_id).filter(
+            Alert.alert_type == "snipe_opportunity",
+            Alert.auction_id.isnot(None),
+        ).all()
+    )
+
+    # Candidate pool: every active auction (filtered in-python to stay cheap)
+    candidates = db.query(Auction).filter(Auction.status == "active").all()
+
+    # Per-(driver,parallel) median + avg cache — one DB trip per pair
+    stat_cache: dict = {}
+
+    def get_stats(driver: str, parallel: str):
+        key = (driver, parallel)
+        if key in stat_cache:
+            return stat_cache[key]
+        q = db.query(SoldCard.sale_price).filter(
+            SoldCard.driver_name == driver,
+            SoldCard.parallel == parallel,
+            SoldCard.sale_price > 0,
+        )
+        prices = sorted(p[0] for p in q.all() if p[0] is not None)
+        if not prices:
+            stat_cache[key] = (None, None, 0)
+            return stat_cache[key]
+        n = len(prices)
+        median = prices[n // 2] if n % 2 else (prices[n // 2 - 1] + prices[n // 2]) / 2
+        avg = sum(prices) / n
+        stat_cache[key] = (median, avg, n)
+        return stat_cache[key]
+
+    for auction in candidates:
+        if (auction.id,) in existing_keys:
+            continue
+
+        card = db.query(Card).filter(Card.id == auction.card_id).first()
+        if not card or not card.driver_name:
+            continue
+
+        driver = card.driver_name
+        parallel = card.parallel or ""
+        cur_price = auction.current_price or 0
+        end_time = auction.end_time
+        mins_left = (end_time - now).total_seconds() / 60 if end_time else 9999
+
+        median, avg, n_sold = get_stats(driver, parallel)
+
+        reason = None
+        urgency = "high"
+
+        # Criterion 1: ending <1h, low bids, below median
+        if (
+            end_time and 0 < mins_left < 60
+            and (auction.bid_count or 0) < 3
+            and median and cur_price > 0 and cur_price < median
+        ):
+            reason = f"Ending {int(mins_left)}m, {auction.bid_count or 0} bids, ${cur_price:.0f} < median ${median:.0f}"
+            urgency = "critical" if mins_left < 15 else "high"
+
+        # Criterion 2: very high snipe score
+        elif (auction.snipe_score or 0) >= 85:
+            reason = f"Snipe score {auction.snipe_score:.0f} · ${cur_price:.0f}"
+            urgency = "critical" if (auction.snipe_score or 0) >= 92 else "high"
+
+        # Criterion 3: 40%+ below avg and snipe_eligible
+        elif (
+            auction.snipe_eligible and avg and cur_price > 0
+            and cur_price < avg * 0.60
+        ):
+            pct = int((1 - cur_price / avg) * 100)
+            reason = f"{pct}% below avg (${cur_price:.0f} vs ${avg:.0f}, n={n_sold})"
+            urgency = "high"
+
+        if not reason:
+            continue
+
+        msg = f"SNIPE: {driver} {parallel} — {reason}"
+        alert = Alert(
+            card_id=auction.card_id,
+            alert_type="snipe_opportunity",
+            threshold_price=cur_price,
+            triggered=False,
+            auction_id=auction.id,
+            urgency=urgency,
+            message=msg,
+        )
+        db.add(alert)
+        alerts_created.append(alert)
+        existing_keys.add((auction.id,))
+
+    if alerts_created:
+        db.commit()
+    return alerts_created

@@ -3,6 +3,7 @@ import { Search, Shield, Gavel, Tag, RefreshCw } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import { swrFetch } from '../lib/cache'
+import { useVisibilityInterval, useProgressiveRender } from '../lib/hooks'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -58,11 +59,8 @@ export default function GradedCards() {
       () => setRefreshing(false)
     )
   }, [])
-  useEffect(() => {
-    load()
-    const t = setInterval(() => load(), 30_000)
-    return () => clearInterval(t)
-  }, [load])
+  useEffect(() => { load() }, [load])
+  useVisibilityInterval(() => load(), 30_000)
 
   const graded = useMemo(() => {
     return auctions.filter(a => {
@@ -87,6 +85,9 @@ export default function GradedCards() {
                 .sort((a, b) => a.time_left - b.time_left),
     [graded]
   )
+
+  const auctionsRender = useProgressiveRender(auctionsList.length, 48, 36)
+  const binsRender = useProgressiveRender(bins.length, 48, 36)
 
   if (loading) return (
     <div className="p-6">
@@ -154,11 +155,18 @@ export default function GradedCards() {
             <p className="text-sm text-gray-500">No live graded auctions right now</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-            {auctionsList.map(a => (
-              <AuctionCard key={a.id} auction={a} onClick={() => setSelected(a)} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+              {auctionsList.slice(0, auctionsRender.visibleCount).map(a => (
+                <AuctionCard key={a.id} auction={a} onClick={() => setSelected(a)} />
+              ))}
+            </div>
+            {auctionsRender.visibleCount < auctionsList.length && (
+              <div ref={auctionsRender.sentinelRef} className="py-6 text-center text-xs text-gray-600">
+                Loading more… ({auctionsRender.visibleCount} / {auctionsList.length})
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -175,11 +183,18 @@ export default function GradedCards() {
             <p className="text-sm text-gray-500">No graded BIN listings right now</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-            {bins.map(a => (
-              <AuctionCard key={a.id} auction={a} onClick={() => setSelected(a)} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+              {bins.slice(0, binsRender.visibleCount).map(a => (
+                <AuctionCard key={a.id} auction={a} onClick={() => setSelected(a)} />
+              ))}
+            </div>
+            {binsRender.visibleCount < bins.length && (
+              <div ref={binsRender.sentinelRef} className="py-6 text-center text-xs text-gray-600">
+                Loading more… ({binsRender.visibleCount} / {bins.length})
+              </div>
+            )}
+          </>
         )}
       </section>
 

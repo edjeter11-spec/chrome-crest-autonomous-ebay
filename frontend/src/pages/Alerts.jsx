@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Bell, Zap, AlertCircle, X, Trash2 } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
+import { useVisibilityInterval } from '../lib/hooks'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -18,11 +19,8 @@ export default function AlertsPage() {
 
   const load = () => swrFetch(`${API}/api/alerts?limit=100`, d => { setAlerts(d.alerts || d || []); setLoading(false) }, () => setLoading(false))
 
-  useEffect(() => {
-    load()
-    const interval = setInterval(load, 15000)
-    return () => clearInterval(interval)
-  }, [])
+  useEffect(() => { load() }, [])
+  useVisibilityInterval(load, 15000)
 
   const dismiss = async (id) => {
     setAlerts(prev => prev.filter(a => a.id !== id))

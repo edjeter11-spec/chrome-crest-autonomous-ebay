@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import { swrFetch } from '../lib/cache'
+import { useVisibilityInterval } from '../lib/hooks'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -38,6 +39,9 @@ export default function Dashboard() {
   const [snipes, setSnipes] = useState([])
   const [snipesLoading, setSnipesLoading] = useState(true)
 
+  const [heatmap, setHeatmap] = useState(null)
+  const [heatmapLoading, setHeatmapLoading] = useState(true)
+
   const [ebayLimited, setEbayLimited] = useState(false)
 
   const [moverTab, setMoverTab] = useState('parallel')
@@ -67,17 +71,20 @@ export default function Dashboard() {
       d => { setSnipes(d.targets || d.auctions || d || []); setSnipesLoading(false) }
     )
 
+    swrFetch(
+      `${API}/api/sales/heatmap`,
+      d => { setHeatmap(d || null); setHeatmapLoading(false) },
+      () => setHeatmapLoading(false)
+    )
+
     fetch(`${API}/api/debug/ebay`)
       .then(r => { if (r.status === 429) { setEbayLimited(true); return null } return r.ok ? r.json() : null })
       .catch(() => setEbayLimited(true))
       .finally(() => { setRefreshing(false); setLastSync(new Date()) })
   }, [])
 
-  useEffect(() => {
-    loadAll()
-    const t = setInterval(loadAll, 60_000)
-    return () => clearInterval(t)
-  }, [loadAll])
+  useEffect(() => { loadAll() }, [loadAll])
+  useVisibilityInterval(loadAll, 60_000)
 
   // --- KPI derivations ---
   const liveAuctionsCount = useMemo(
@@ -331,7 +338,7 @@ export default function Dashboard() {
               (stats?.top_drivers?.length > 0 ? stats.top_drivers : []).slice(0, 12).map((d, i) => (
                 <div
                   key={i}
-                  onClick={() => navigate(`/sales?driver=${encodeURIComponent(d.driver)}`)}
+                  onClick={() => navigate(`/drivers?name=${encodeURIComponent(d.driver)}`)}
                   className="px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors flex items-center justify-between gap-3"
                 >
                   <div className="min-w-0 flex-1">
@@ -357,6 +364,9 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* 3b. Sales heatmap */}
+      <SalesHeatmap heatmap={heatmap} loading={heatmapLoading} navigate={navigate} />
 
       {/* 4. Ending soonest strip */}
       <div>
@@ -462,6 +472,96 @@ function KpiTile({ icon: Icon, label, value, sub, color = 'gray', onClick }) {
       )}
       {sub && <div className="text-[10px] text-gray-500 mt-0.5 truncate">{sub}</div>}
     </Cmp>
+  )
+}
+
+function heatColor(count) {
+  if (!count) return 'bg-gray-800/60 text-gray-600'
+  if (count <= 3) return 'bg-yellow-600/30 text-yellow-200'
+  if (count <= 10) return 'bg-orange-600/40 text-orange-100'
+  if (count <= 20) return 'bg-red-600/50 text-red-50'
+  return 'bg-red-500 text-white'
+}
+
+function SalesHeatmap({ heatmap, loading, navigate }) {
+  const cellMap = useMemo(() => {
+    const m = {}
+    for (const c of heatmap?.cells || []) {
+      m[`${c.driver}||${c.parallel}`] = c
+    }
+    return m
+  }, [heatmap])
+
+  const drivers = heatmap?.drivers || []
+  const parallels = heatmap?.parallels || []
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-black text-white flex items-center gap-2">
+          <Flame size={14} className="text-fuchsia-400" />
+          Sales Heatmap <span className="text-[10px] text-gray-500 font-mono">(30d · driver × parallel)</span>
+        </h2>
+      </div>
+      {loading ? (
+        <div className="h-64 bg-gray-900/50 border border-gray-800/60 rounded-2xl animate-pulse" />
+      ) : !drivers.length || !parallels.length ? (
+        <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl py-10 text-center">
+          <p className="text-sm text-gray-400 font-medium">Not enough data for heatmap yet</p>
+          <p className="text-xs text-gray-600 mt-1">Needs 30d of sold_cards coverage</p>
+        </div>
+      ) : (
+        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl p-3 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-[10px] border-separate border-spacing-1">
+            <thead>
+              <tr>
+                <th className="text-left text-gray-500 font-bold uppercase tracking-wide pl-2 pr-3 py-1 sticky left-0 bg-gray-900/90 z-10">Driver</th>
+                {parallels.map(p => (
+                  <th key={p} className="text-center text-gray-500 font-bold uppercase tracking-wide px-1 py-1 min-w-[64px]">
+                    <div className="truncate max-w-[72px] mx-auto" title={p}>{p}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {drivers.map(d => (
+                <tr key={d}>
+                  <td className="text-gray-300 font-semibold pr-3 pl-2 py-0.5 whitespace-nowrap sticky left-0 bg-gray-900/90 z-10 text-xs">
+                    <button
+                      onClick={() => navigate(`/drivers?name=${encodeURIComponent(d)}`)}
+                      className="hover:text-white hover:underline"
+                    >{d}</button>
+                  </td>
+                  {parallels.map(p => {
+                    const c = cellMap[`${d}||${p}`]
+                    const cnt = c?.count || 0
+                    return (
+                      <td key={p} className="p-0">
+                        <button
+                          onClick={() => navigate(`/sales?driver=${encodeURIComponent(d)}&parallel=${encodeURIComponent(p)}`)}
+                          title={c ? `${cnt} sales · avg $${Math.round(c.avg_price || 0)}` : '0 sales'}
+                          className={`w-full h-9 rounded ${heatColor(cnt)} font-bold text-center hover:brightness-125 transition-all`}
+                        >
+                          {cnt || ''}
+                        </button>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex items-center gap-3 mt-3 text-[10px] text-gray-500 px-2">
+            <span>Legend:</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-800/60 inline-block" />0</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-600/30 inline-block" />1-3</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-600/40 inline-block" />4-10</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-600/50 inline-block" />11-20</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500 inline-block" />21+</span>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
