@@ -44,7 +44,7 @@ if not DB_URL:
     log.error("DATABASE_URL not set — exiting")
     sys.exit(1)
 
-MAX_LISTINGS = 200
+MAX_LISTINGS = int(os.environ.get("MAX_URLS", "200"))
 
 # We skip the sitemap XML walk (it's huge and mostly non-F1) and instead use
 # eBay's search-sold endpoint in "newest first" order, which effectively gives
