@@ -6,6 +6,7 @@ import {
   AlertTriangle, ChevronRight, Shield, BellRing
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
+import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 
@@ -204,6 +205,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 max-w-[1800px]">
+
+      {/* Race calendar strip — top */}
+      <RaceCalendarStrip />
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">

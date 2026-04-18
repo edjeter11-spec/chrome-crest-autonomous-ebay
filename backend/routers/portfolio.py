@@ -136,6 +136,84 @@ async def add_to_portfolio(body: dict, db: Session = Depends(get_db)):
     return item_to_dict(item, db)
 
 
+@router.post("/bulk")
+def bulk_add(body: dict, db: Session = Depends(get_db)):
+    """
+    Bulk import from CSV. Accepts {rows: [{driver, parallel, grade, purchase_price,
+    purchase_date, quantity, notes}, ...]}. Creates placeholder Cards as needed.
+    Returns {inserted, skipped, errors[]}.
+    """
+    rows = body.get("rows") or []
+    inserted = 0
+    skipped = 0
+    errors: list = []
+
+    for idx, row in enumerate(rows):
+        try:
+            driver = (row.get("driver") or row.get("driver_name") or "").strip()
+            if not driver:
+                skipped += 1
+                errors.append(f"Row {idx + 1}: missing driver")
+                continue
+            parallel = (row.get("parallel") or "").strip() or None
+            grade = (row.get("grade") or "Raw").strip()
+            try:
+                purchase_price = float(row.get("purchase_price") or 0)
+            except Exception:
+                purchase_price = 0.0
+            try:
+                quantity = int(row.get("quantity") or 1)
+            except Exception:
+                quantity = 1
+            notes = (row.get("notes") or "").strip() or None
+
+            pdate_raw = row.get("purchase_date")
+            try:
+                if pdate_raw:
+                    pdate = datetime.fromisoformat(str(pdate_raw).replace("Z", ""))
+                else:
+                    pdate = datetime.utcnow()
+            except Exception:
+                pdate = datetime.utcnow()
+
+            # Find or create card
+            card = db.query(Card).filter(
+                Card.driver_name == driver,
+                Card.parallel == parallel,
+                Card.grade == grade,
+            ).first()
+            if not card:
+                card = Card(
+                    driver_name=driver,
+                    parallel=parallel,
+                    grade=grade,
+                    year=2025,
+                    set_name="Topps Chrome F1",
+                    base_value=purchase_price,
+                )
+                db.add(card)
+                db.commit()
+                db.refresh(card)
+
+            live_val = _latest_avg_value(db, driver, parallel, grade) or card.base_value or purchase_price
+            item = Portfolio(
+                card_id=card.id,
+                purchase_price=purchase_price,
+                purchase_date=pdate,
+                current_value=live_val,
+                quantity=quantity,
+                notes=notes,
+            )
+            db.add(item)
+            inserted += 1
+        except Exception as e:
+            skipped += 1
+            errors.append(f"Row {idx + 1}: {str(e)[:120]}")
+
+    db.commit()
+    return {"inserted": inserted, "skipped": skipped, "errors": errors[:20]}
+
+
 @router.patch("/{item_id}")
 def update_portfolio_item(item_id: int, body: dict, db: Session = Depends(get_db)):
     item = db.query(Portfolio).filter(Portfolio.id == item_id).first()

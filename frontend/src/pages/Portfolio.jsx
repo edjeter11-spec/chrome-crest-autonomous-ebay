@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle, Upload } from 'lucide-react'
 import StatCard from '../components/StatCard'
+import CSVImportModal from '../components/CSVImportModal'
 import { swrFetch } from '../lib/cache'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -165,6 +166,7 @@ export default function Portfolio() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [adding, setAdding] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [drivers, setDrivers] = useState([])
 
   const load = () => swrFetch(`${API}/api/portfolio`, d => { setItems(d.items || d || []); setLoading(false) })
@@ -199,14 +201,21 @@ export default function Portfolio() {
     <div className="space-y-5 max-w-5xl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="page-title">Portfolio</h1>
-        {!adding && (
-          <button onClick={() => setAdding(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg">
-            <Plus size={14} /> Add Card
+        <div className="flex items-center gap-2">
+          <button onClick={() => setImporting(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-xs font-bold rounded-lg">
+            <Upload size={14} /> Import CSV
           </button>
-        )}
+          {!adding && (
+            <button onClick={() => setAdding(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg">
+              <Plus size={14} /> Add Card
+            </button>
+          )}
+        </div>
       </div>
 
+      {importing && <CSVImportModal onClose={() => setImporting(false)} onImported={load} />}
       {adding && <AddCardForm drivers={drivers} onAdd={() => { setAdding(false); load() }} onCancel={() => setAdding(false)} />}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -2,10 +2,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Heart, Trash2, Zap, Eye, Plus, Clock, Tag, Gavel, ExternalLink,
-  AlertCircle, X
+  AlertCircle, X, Share2
 } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
+import ShareWatchlistModal from '../components/ShareWatchlistModal'
+import SmartRules from '../components/SmartRules'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -48,6 +50,7 @@ export default function Watchlist() {
   const [wishlist, setWishlist] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [showShare, setShowShare] = useState(false)
   const [activeAuctions, setActiveAuctions] = useState([])
 
   const load = useCallback(() => {
@@ -106,18 +109,26 @@ export default function Watchlist() {
     <div className="space-y-6 max-w-[1400px]">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="w-1 h-7 bg-yellow-500 rounded-full shrink-0" />
           <h1 className="text-2xl font-black text-white tracking-tight">Watchlist</h1>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-xl bg-gray-800 text-gray-300 border border-gray-700/50">
             {totalWatched} watching · {totalWish} wishlist · {totalMatches} matching
           </span>
+          <button
+            onClick={() => setShowShare(true)}
+            className="ml-auto px-3 py-1.5 rounded-lg bg-blue-600/15 border border-blue-600/40 text-blue-300 text-xs font-bold hover:bg-blue-600/25 flex items-center gap-1.5"
+          >
+            <Share2 size={11} /> Share
+          </button>
         </div>
         <p className="text-xs text-gray-500 mt-2 ml-4">
           <span className="text-gray-400">Watching</span> = specific live auctions you're tracking ·{' '}
           <span className="text-gray-400">Wishlist</span> = cards you want, with max price + auto-match
         </p>
       </div>
+
+      {showShare && <ShareWatchlistModal onClose={() => setShowShare(false)} />}
 
       {/* SECTION 1 — Watching live auctions */}
       <section>
@@ -274,6 +285,9 @@ export default function Watchlist() {
           </div>
         )}
       </section>
+
+      {/* SECTION 3 — Smart rules */}
+      <SmartRules />
     </div>
   )
 }

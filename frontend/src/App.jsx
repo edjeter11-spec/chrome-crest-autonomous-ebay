@@ -16,6 +16,11 @@ const PSA = lazy(() => import('./pages/PSA'))
 const GradedCards = lazy(() => import('./pages/GradedCards'))
 const GradedTracker = lazy(() => import('./pages/GradedTracker'))
 const SalesDatabase = lazy(() => import('./pages/SalesDatabase'))
+const Checklist = lazy(() => import('./pages/Checklist'))
+const SealedEV = lazy(() => import('./pages/SealedEV'))
+const GradePredictor = lazy(() => import('./pages/GradePredictor'))
+const SharedWatchlist = lazy(() => import('./pages/SharedWatchlist'))
+const EmbedPrice = lazy(() => import('./pages/EmbedPrice'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -25,6 +30,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Standalone routes — no layout chrome */}
+        <Route path="/share/watchlist/:token" element={<Suspense fallback={<PageFallback />}><SharedWatchlist /></Suspense>} />
+        <Route path="/embed/price" element={<Suspense fallback={<PageFallback />}><EmbedPrice /></Suspense>} />
+
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
           <Route path="auctions" element={<Auctions />} />
@@ -39,6 +48,9 @@ export default function App() {
           <Route path="graded" element={<Suspense fallback={<PageFallback />}><GradedTracker /></Suspense>} />
           <Route path="graded-cards" element={<Suspense fallback={<PageFallback />}><GradedCards /></Suspense>} />
           <Route path="sales" element={<Suspense fallback={<PageFallback />}><SalesDatabase /></Suspense>} />
+          <Route path="checklist" element={<Suspense fallback={<PageFallback />}><Checklist /></Suspense>} />
+          <Route path="sealed" element={<Suspense fallback={<PageFallback />}><SealedEV /></Suspense>} />
+          <Route path="grade" element={<Suspense fallback={<PageFallback />}><GradePredictor /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

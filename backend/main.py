@@ -16,6 +16,8 @@ from datetime import datetime, timedelta
 
 from database import create_tables, get_db, Auction, Card, engine
 from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales, psa_data, push, graded
+from routers import race_calendar, shared_watchlists, watch_rules, checklist, sealed
+from routers import ai_grader, discord as discord_router
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -39,6 +41,90 @@ app.include_router(sales.router)
 app.include_router(psa_data.router)
 app.include_router(push.router)
 app.include_router(graded.router)
+app.include_router(race_calendar.router)
+app.include_router(shared_watchlists.router)
+app.include_router(watch_rules.router)
+app.include_router(checklist.router)
+app.include_router(sealed.router)
+app.include_router(ai_grader.router)
+app.include_router(discord_router.router)
+
+
+@app.post("/api/admin/migrate-shared-watchlists")
+def migrate_shared_watchlists():
+    """Create shared_watchlists table (idempotent)."""
+    from sqlalchemy import text
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS shared_watchlists (
+            id SERIAL PRIMARY KEY,
+            token VARCHAR NOT NULL UNIQUE,
+            name VARCHAR,
+            items_json TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            view_count INTEGER DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_shared_watchlists_token ON shared_watchlists (token)",
+    ]
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"ok": True})
+                except Exception as e:
+                    results.append({"ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
+
+
+@app.post("/api/admin/migrate-watch-rules")
+def migrate_watch_rules():
+    """Create watch_rules table (idempotent)."""
+    from sqlalchemy import text
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS watch_rules (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR,
+            driver_filter VARCHAR,
+            parallel_filter VARCHAR,
+            grade_filter VARCHAR,
+            max_price FLOAT NOT NULL,
+            active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    ]
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"ok": True})
+                except Exception as e:
+                    results.append({"ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
 
 
 @app.post("/api/admin/migrate-bid-intents")
@@ -1028,6 +1114,15 @@ async def cron_sync(db: Session = Depends(get_db)):
     except Exception as e:
         scraper_errors.append(f"ebay_html: {str(e)[:120]}")
 
+    # Smart watch rules — auto-move matching auctions to watchlist
+    rules_auto_watched = 0
+    try:
+        from routers.watch_rules import apply_rules_to_auctions
+        rules_auto_watched = apply_rules_to_auctions(db)
+    except Exception as _re:
+        import logging as _log
+        _log.getLogger("rules").warning(f"rules apply failed: {_re}")
+
     # Feature 1: enhanced snipe alert generation — never blocks sync
     snipe_alerts_created = 0
     snipe_alert_error = None
@@ -1111,6 +1206,7 @@ async def cron_sync(db: Session = Depends(get_db)):
         "strong_buy_alerts_created": strong_buy_created,
         "wishlist_match_alerts_created": wishlist_match_created,
         "auto_watchlisted": auto_watchlisted,
+        "rules_auto_watched": rules_auto_watched,
     }
 
 
