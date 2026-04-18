@@ -61,6 +61,8 @@ def get_conn():
 def upsert_sold(conn, rows):
     if not rows:
         return 0
+    deduped = {r[0]: r for r in rows}
+    rows = list(deduped.values())
     sql = """
         INSERT INTO sold_cards (
             ebay_item_id, title, driver_name, parallel, grade, condition,

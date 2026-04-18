@@ -71,6 +71,16 @@ def get_default_card_id(conn) -> int:
 
 def upsert_auction(conn, rows):
     if not rows: return 0
+    # Dedup in-memory by ebay_listing_id (index 1) to prevent
+    # 'ON CONFLICT DO UPDATE command cannot affect row a second time'.
+    # Synthetic IDs derived from {url|title} can collide if the same Shopify
+    # product appears across multiple search queries.
+    deduped = {}
+    for row in rows:
+        listing_id = row[1]
+        deduped[listing_id] = row  # last one wins
+    rows = list(deduped.values())
+
     sql = """
         INSERT INTO auctions (
             card_id, ebay_listing_id, title, current_price, buy_now_price,

@@ -30,16 +30,21 @@ if not DB_URL:
     log.error("DATABASE_URL not set — exiting")
     sys.exit(1)
 
+# MySlabs has limited 2025 F1 inventory but solid older Topps Chrome F1 (2020-2024).
+# We pull broader F1 queries since these older graded slabs have value too.
 QUERIES = [
-    "2025 topps chrome f1",
-    "2025 topps chrome formula 1",
-    "2025 chrome f1 verstappen",
-    "2025 chrome f1 norris",
-    "2025 chrome f1 hamilton",
+    "topps chrome formula 1",
+    "topps chrome f1",
+    "verstappen topps chrome",
+    "hamilton topps chrome f1",
+    "norris topps chrome f1",
+    "leclerc topps chrome",
+    "f1 sapphire",
 ]
 
 MYSLABS_HOME = "https://myslabs.com/"
-MYSLABS_BASE = "https://myslabs.com/cards"
+# Verified: MySlabs search lives at /bin/search/all with ?search= param.
+MYSLABS_BASE = "https://myslabs.com/bin/search/all"
 
 
 def synthetic_id(url: str, title: str) -> str:
@@ -61,6 +66,8 @@ def get_default_card_id(conn) -> int:
 def upsert_auction(conn, rows):
     if not rows:
         return 0
+    deduped = {r[1]: r for r in rows}  # ebay_listing_id at index 1
+    rows = list(deduped.values())
     sql = """
         INSERT INTO auctions (
             card_id, ebay_listing_id, title, current_price, buy_now_price,
@@ -103,21 +110,30 @@ def scrape_myslabs_query(page, query: str):
     except Exception:
         pass
 
+    # MySlabs slab pages live under /slab/view/{id}/. We anchor on those links.
     items = page.evaluate("""
         () => {
             const out = [];
             const seen = new Set();
-            const cards = document.querySelectorAll(
-                '[class*="card-tile"], [class*="card-item"], [class*="listing"], article, li.card, .card'
-            );
-            cards.forEach(el => {
-                const linkEl = el.querySelector('a[href*="/cards/"], a[href*="/card/"], a[href*="/listing"]');
-                if (!linkEl) return;
-                const href = linkEl.href || '';
+            // Find every anchor pointing to a slab page; walk up to the row container.
+            const links = document.querySelectorAll('a[href*="/slab/view/"]');
+            links.forEach(a => {
+                const href = a.href || '';
                 if (seen.has(href)) return;
-                const titleText = (el.querySelector('h2, h3, h4, [class*="title"], [class*="name"]')?.textContent || '').trim();
-                if (!titleText || titleText.length < 8) return;
+                // Walk up to a reasonable container (li/article/div with text + img)
+                let el = a;
+                for (let i = 0; i < 6 && el && el.parentElement; i++) {
+                    if (el.querySelector && el.querySelector('img') && (el.textContent || '').match(/\\$\\s*[\\d,]+/)) break;
+                    el = el.parentElement;
+                }
+                if (!el) return;
                 const allText = el.textContent || '';
+                // Title: prefer the link text, then look for a heading
+                let titleText = (a.textContent || '').trim();
+                if (!titleText || titleText.length < 8) {
+                    titleText = (el.querySelector('h1,h2,h3,h4,h5')?.textContent || '').trim();
+                }
+                if (!titleText || titleText.length < 8) return;
                 const priceMatch = allText.match(/\\$\\s*[\\d,]+\\.?\\d{0,2}/);
                 if (!priceMatch) return;
                 const imgEl = el.querySelector('img');
@@ -126,12 +142,15 @@ def scrape_myslabs_query(page, query: str):
                     title: titleText,
                     price: priceMatch[0],
                     url: href,
-                    image: imgEl ? (imgEl.src || imgEl.dataset.src || '') : '',
+                    image: imgEl ? (imgEl.src || imgEl.dataset.src || imgEl.getAttribute('data-original') || '') : '',
                 });
             });
             return out.slice(0, 100);
         }
     """)
+    if not items:
+        body = page.evaluate("() => document.body ? document.body.innerText.slice(0, 500) : ''") or ""
+        log.info(f"MySlabs: 0 items; body preview: {body[:300]!r}")
     return items or [], ""
 
 
@@ -172,6 +191,10 @@ def main():
             log.info(f"  -> {len(items)} items (reason: {reason or 'ok'})")
             for it in items:
                 t = re.sub(r"\s+", " ", it["title"]).strip()
+                tl = t.lower()
+                # Filter to F1/Formula 1 only — MySlabs returns mixed sports.
+                if "f1" not in tl and "formula" not in tl:
+                    continue
                 price = parse_price(it["price"])
                 if price <= 0: continue
                 listing_id = synthetic_id(it["url"], t)

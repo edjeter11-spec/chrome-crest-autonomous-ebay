@@ -47,6 +47,10 @@ QUERIES = [
 ]
 
 FANATICS_HOME = "https://www.fanaticscollect.com/"
+# Verified active item URLs:
+#   /weekly/{uuid}/{slug}   -> Weekly Auction items (timed auctions)
+#   /buy-now/{uuid}/{slug}  -> Fixed-price marketplace items
+# Search lives at /search?query= (returns both auction + buy-now items).
 FANATICS_ACTIVE = "https://www.fanaticscollect.com/search"
 FANATICS_SOLD = "https://www.fanaticscollect.com/marketplace/sold"
 
@@ -69,6 +73,8 @@ def get_default_card_id(conn) -> int:
 
 def upsert_sold(conn, rows):
     if not rows: return 0
+    deduped = {r[0]: r for r in rows}
+    rows = list(deduped.values())
     sql = """
         INSERT INTO sold_cards (
             ebay_item_id, title, driver_name, parallel, grade, condition,
@@ -88,6 +94,8 @@ def upsert_sold(conn, rows):
 
 def upsert_auction(conn, rows):
     if not rows: return 0
+    deduped = {r[1]: r for r in rows}  # ebay_listing_id at index 1
+    rows = list(deduped.values())
     sql = """
         INSERT INTO auctions (
             card_id, ebay_listing_id, title, current_price, buy_now_price,
@@ -128,30 +136,44 @@ def scrape_fanatics_page(page, url: str, label: str):
     except Exception:
         pass
 
+    # Anchor on verified item URL patterns: /weekly/{uuid}/{slug} or /buy-now/{uuid}/{slug}.
     items = page.evaluate("""
         () => {
             const out = [];
             const seen = new Set();
-            const cards = document.querySelectorAll(
-                '[data-testid*="listing"], [data-testid*="card"], [class*="ListingCard"], [class*="listing-card"], [class*="card"], article, li'
-            );
-            cards.forEach(el => {
-                const linkEl = el.querySelector('a[href*="/listing"], a[href*="/item"], a[href*="/marketplace"]');
-                if (!linkEl) return;
-                const url = linkEl.href || '';
-                if (seen.has(url)) return;
-                const titleText = (el.querySelector('h2, h3, h4, [class*="title"], [class*="Title"]')?.textContent || linkEl.textContent || '').trim();
-                if (!titleText || titleText.length < 8) return;
+            const itemPattern = /\\/(weekly|buy-now)\\/[0-9a-f-]{8,}\\//;
+            const links = document.querySelectorAll('a[href]');
+            links.forEach(a => {
+                const href = a.href || '';
+                if (!itemPattern.test(href)) return;
+                if (seen.has(href)) return;
+                let el = a;
+                for (let i = 0; i < 6 && el && el.parentElement; i++) {
+                    if (el.querySelector && el.querySelector('img') && (el.textContent || '').match(/\\$\\s*[\\d,]+/)) break;
+                    el = el.parentElement;
+                }
+                if (!el) return;
                 const allText = el.textContent || '';
+                let titleText = (a.getAttribute('aria-label') || a.textContent || '').trim();
+                if (!titleText || titleText.length < 8) {
+                    titleText = (el.querySelector('h1,h2,h3,h4,h5,[class*="title" i]')?.textContent || '').trim();
+                }
+                if (!titleText || titleText.length < 8) {
+                    // Fallback: derive from URL slug
+                    const m = href.match(/\\/(weekly|buy-now)\\/[0-9a-f-]{8,}\\/([^?#]+)/);
+                    if (m) titleText = decodeURIComponent(m[2]).replace(/-/g, ' ');
+                }
+                if (!titleText || titleText.length < 8) return;
                 const priceMatch = allText.match(/\\$\\s*[\\d,]+\\.?\\d{0,2}/);
                 if (!priceMatch) return;
                 const imgEl = el.querySelector('img');
-                seen.add(url);
+                seen.add(href);
                 out.push({
                     title: titleText,
                     price: priceMatch[0],
-                    url,
-                    image: imgEl ? (imgEl.src || imgEl.dataset.src || '') : '',
+                    url: href,
+                    image: imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || '') : '',
+                    is_auction: href.includes('/weekly/'),
                 });
             });
             return out.slice(0, 100);

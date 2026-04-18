@@ -9,7 +9,7 @@ on:
 jobs:
   tier-a:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +28,25 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/mavin_runner.py
         continue-on-error: true
+
+      - name: 130point (multi-marketplace aggregator)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/onethirtypoint_runner.py
+        continue-on-error: true
+
+      - name: SportsCardsPro (price guide)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/sportscardspro_runner.py
+        continue-on-error: true
+
+      - name: eBay broad (driver + parallel queries)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/ebay_broad_runner.py
+        continue-on-error: true
+        timeout-minutes: 25
 
       - name: Heritage
         env:
