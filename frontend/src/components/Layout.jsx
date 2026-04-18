@@ -17,7 +17,7 @@ const NAV = [
   { to: '/drivers', label: 'Drivers', icon: Users },
   { to: '/graded-cards', label: 'Card Catalog', icon: Shield },
   { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
-  { to: '/wishlist', label: 'Wishlist', icon: Heart },
+  { to: '/wishlist', label: 'Watchlist', icon: Heart },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/price-history', label: 'Price History', icon: TrendingUp },
   { to: '/alerts', label: 'Alerts', icon: Bell },

@@ -33,20 +33,50 @@ def list_wishlist(db: Session = Depends(get_db)):
 
 
 @router.post("")
-def add_to_wishlist(data: WishlistCreate, db: Session = Depends(get_db)):
-    card = db.query(Card).filter(Card.id == data.card_id).first()
+def add_to_wishlist(body: dict, db: Session = Depends(get_db)):
+    """Accepts either {card_id, ...} OR {driver_name, parallel, grade?, ...}.
+    The driver-name path looks up an existing matching Card, or creates a
+    placeholder Card so the wishlist row has something to FK to."""
+    card_id = body.get("card_id")
+    if card_id:
+        card = db.query(Card).filter(Card.id == card_id).first()
+    else:
+        driver = body.get("driver_name") or ""
+        parallel = body.get("parallel") or "Refractor"
+        grade = body.get("grade") or "Raw"
+        # Try exact match first, then driver+parallel, then driver only
+        card = (
+            db.query(Card).filter(
+                Card.driver_name == driver,
+                Card.parallel == parallel,
+                Card.grade == grade,
+            ).first()
+            or db.query(Card).filter(
+                Card.driver_name == driver, Card.parallel == parallel
+            ).first()
+            or db.query(Card).filter(Card.driver_name == driver).first()
+        )
+        if not card:
+            # Create a placeholder so the wishlist row has a card to point at
+            card = Card(
+                driver_name=driver, year=2025, set_name="Topps Chrome F1",
+                parallel=parallel, grade=grade, base_value=0.0,
+                investment_score=0.0,
+            )
+            db.add(card); db.commit(); db.refresh(card)
     if not card:
-        raise HTTPException(404, "Card not found")
-    existing = db.query(Wishlist).filter(Wishlist.card_id == data.card_id).first()
+        raise HTTPException(400, "Driver name or card_id required")
+    existing = db.query(Wishlist).filter(Wishlist.card_id == card.id).first()
     if existing:
         return item_to_dict(existing)
     item = Wishlist(
-        card_id=data.card_id, max_price=data.max_price,
-        priority=data.priority, notes=data.notes, auto_snipe=data.auto_snipe,
+        card_id=card.id,
+        max_price=body.get("max_price"),
+        priority=body.get("priority", 3),
+        notes=body.get("notes"),
+        auto_snipe=body.get("auto_snipe", False),
     )
-    db.add(item)
-    db.commit()
-    db.refresh(item)
+    db.add(item); db.commit(); db.refresh(item)
     return item_to_dict(item)
 
 
