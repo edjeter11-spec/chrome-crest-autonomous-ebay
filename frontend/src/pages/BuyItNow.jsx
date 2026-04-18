@@ -10,11 +10,31 @@ import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const SORTS = [
-  { value: 'price_low', label: 'Price: Low → High' },
+  { value: 'best_value', label: 'Best Value (snipe + comps)' },
   { value: 'price_high', label: 'Price: High → Low' },
+  { value: 'price_low', label: 'Price: Low → High' },
   { value: 'best_offer', label: 'Best Offer First' },
   { value: 'rarest', label: 'Rarest First' },
 ]
+
+// Composite "is this worth buying" score:
+//   60% snipe_score (already computed against median by backend)
+//   30% rarity tier (numbered parallels score higher)
+//   10% bonus when row has scarcity_count <= 99 (rare)
+function valueScore(a) {
+  const snipe = a.snipe_score || 0
+  const rarity = (() => {
+    const t = a.scarcity_tier
+    if (t === 'S' || t === 'A+') return 100
+    if (t === 'A' || t === 'A-') return 80
+    if (t === 'B+' || t === 'B') return 60
+    if (t === 'B-') return 40
+    if (t === 'C+' || t === 'C') return 25
+    return 10
+  })()
+  const rareBonus = (a.scarcity_count != null && a.scarcity_count <= 99) ? 100 : 0
+  return snipe * 0.6 + rarity * 0.3 + rareBonus * 0.1
+}
 
 const PARALLELS = [
   'All', 'No Base',
@@ -43,7 +63,7 @@ export default function BuyItNow() {
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [sortBy, setSortBy] = useState('price_low')
+  const [sortBy, setSortBy] = useState('best_value')
   const [filterParallel, setFilterParallel] = useState('No Base')
   const [printRun, setPrintRun] = useState('Any')
   const [filterWatchlist, setFilterWatchlist] = useState(false)
@@ -89,6 +109,7 @@ export default function BuyItNow() {
       return true
     })
     .sort((a, b) => {
+      if (sortBy === 'best_value') return valueScore(b) - valueScore(a)
       if (sortBy === 'price_low') return a.current_price - b.current_price
       if (sortBy === 'price_high') return b.current_price - a.current_price
       if (sortBy === 'best_offer') {

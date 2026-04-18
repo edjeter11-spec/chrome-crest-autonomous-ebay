@@ -230,8 +230,9 @@ function PricingOptions({ auction, comp }) {
   const hasBestOffer = opts.includes('BEST_OFFER')
   const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
 
-  // Build "vs median" pill. Prefer median; fall back to thin-comps label.
+  // Build "vs median" pill + verdict badge ("STRONG BUY" / "GOOD BUY" / "FAIR" / "PASS").
   let medianPill = null
+  let verdict = null
   if (comp) {
     if (comp.low_confidence || (comp.n ?? 0) < 3) {
       medianPill = (
@@ -246,6 +247,19 @@ function PricingOptions({ auction, comp }) {
       medianPill = (
         <span className={`text-[10px] ${color} font-semibold`} title={`Median total over last 90d (n=${comp.n})`}>
           {pct > 0 ? `${pct}% below` : `${-pct}% above`} median ${Math.round(comp.median_total)} · n={comp.n}
+        </span>
+      )
+      // Buy/pass verdict
+      let label, cls
+      if (ratio <= 0.6) { label = 'STRONG BUY'; cls = 'bg-green-600 text-white' }
+      else if (ratio <= 0.8) { label = 'GOOD BUY'; cls = 'bg-emerald-600 text-white' }
+      else if (ratio <= 1.05) { label = 'FAIR'; cls = 'bg-gray-700 text-gray-300' }
+      else if (ratio <= 1.25) { label = 'OVERPRICED'; cls = 'bg-orange-700/80 text-orange-100' }
+      else { label = 'PASS'; cls = 'bg-red-800/80 text-red-200' }
+      verdict = (
+        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${cls} tracking-wider`}
+              title={`Total $${totalCost.toFixed(2)} vs $${Math.round(comp.median_total)} median (n=${comp.n})`}>
+          {label}
         </span>
       )
     }
@@ -266,7 +280,12 @@ function PricingOptions({ auction, comp }) {
               <span className="text-xs text-gray-500" title={`Total $${totalCost.toFixed(2)}`}>+${auction.shipping_cost?.toFixed(2)} ship</span>
             ) : null}
           </div>
-          {medianPill && <div className="mt-0.5">{medianPill}</div>}
+          {(medianPill || verdict) && (
+            <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+              {verdict}
+              {medianPill}
+            </div>
+          )}
           {hasAuction && (
             <div className="text-xs mt-0.5">
               {auction.bid_count > 0
