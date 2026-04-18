@@ -534,11 +534,32 @@ def parse_sale_date(date_text: str) -> datetime:
     return datetime.utcnow()
 
 
+def write_telemetry(conn, source, started_at, queries_attempted, queries_succeeded,
+                    rows_seen, rows_inserted, blocked, error_message=None):
+    """Write a row to scraper_runs so /api/admin/scraper-health reflects reality."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO scraper_runs (
+                    source, started_at, ended_at, queries_attempted, queries_succeeded,
+                    rows_seen, rows_inserted, rows_updated, rows_skipped_dup,
+                    blocked, error_message, run_id
+                ) VALUES (%s, %s, NOW(), %s, %s, %s, %s, 0, 0, %s, %s, %s)
+            """, (source, started_at, queries_attempted, queries_succeeded,
+                  rows_seen, rows_inserted, blocked, error_message,
+                  os.environ.get("GITHUB_RUN_ID")))
+        conn.commit()
+    except Exception as e:
+        log.warning(f"Telemetry write failed: {e}")
+
+
 def main():
     log.info("Starting scrape run")
     conn = get_conn()
+    started_at = datetime.utcnow()
     total_added = 0
     total_seen = 0
+    auc_seen = auc_added = bin_seen = bin_added = 0
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -665,6 +686,21 @@ def main():
         log.info(f"Marked {ended} stale auctions as ended")
 
         browser.close()
+
+    # Telemetry: one row per scraper "source" so /api/admin/scraper-health
+    # reflects the GH Actions runs (not just the always-blocked Vercel ones).
+    write_telemetry(conn, "eBay-sold", started_at, len(QUERIES),
+                    len(QUERIES) if total_added > 0 else 0,
+                    total_seen, total_added,
+                    blocked=(total_added == 0 and total_seen == 0))
+    write_telemetry(conn, "eBay-auction", started_at, len(QUERIES),
+                    len(QUERIES) if auc_added > 0 else 0,
+                    auc_seen, auc_added,
+                    blocked=(auc_added == 0 and auc_seen == 0))
+    write_telemetry(conn, "eBay-BIN", started_at, 5,
+                    5 if bin_added > 0 else 0,
+                    bin_seen, bin_added,
+                    blocked=(bin_added == 0 and bin_seen == 0))
 
     conn.close()
     log.info(f"DONE: sold {total_seen}/{total_added}, auction {auc_seen}/{auc_added}, bin {bin_seen}/{bin_added}")
