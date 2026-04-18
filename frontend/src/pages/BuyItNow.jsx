@@ -5,6 +5,7 @@ import AuctionModal from '../components/AuctionModal'
 import { swrFetch } from '../lib/cache'
 import { matchesParallel } from '../lib/parallels'
 import { useVisibilityInterval, useProgressiveRender } from '../lib/hooks'
+import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -29,13 +30,6 @@ const PARALLELS = [
 ]
 const PRINT_RUNS = ['Any', '/5', '/25', '/50', '/99', '/150']
 const FORMULA_TYPES = ['All', 'F1', 'F2', 'F3', 'Legends']
-const seriesOf = a => {
-  if (a.card?.series) return a.card.series
-  const t = a.title?.toLowerCase() || ''
-  if (t.includes('f3') || t.includes('formula 3')) return 'F3'
-  if (t.includes('f2') || t.includes('formula 2')) return 'F2'
-  return 'F1'
-}
 
 const RARITY = {
   'Autograph': 100, 'Red /5': 95, 'Orange /25': 85, 'Gold /50': 80,
@@ -56,6 +50,7 @@ export default function BuyItNow() {
   const [filterRookie, setFilterRookie] = useState(false)
   const [filterBestOffer, setFilterBestOffer] = useState(false)
   const [formulaType, setFormulaType] = useState('All')
+  const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -78,6 +73,7 @@ export default function BuyItNow() {
     .filter(a => {
       if (!isBIN(a)) return false
       if (formulaType !== 'All' && seriesOf(a) !== formulaType) return false
+      if (teamFilter !== 'All' && teamOf(a) !== teamFilter) return false
       if (!matchesParallel(a, filterParallel)) return false
       if (printRun !== 'Any') {
         const re = new RegExp(`${printRun.replace('/', '\\/')}(?!\\d)`)
@@ -144,7 +140,13 @@ export default function BuyItNow() {
         {/* Formula type */}
         <select value={formulaType} onChange={e => setFormulaType(e.target.value)}
           className="input-field px-3 py-2 text-xs cursor-pointer">
-          {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'F1 + F3' : t}</option>)}
+          {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
+        </select>
+
+        {/* Team */}
+        <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)}
+          className="input-field px-3 py-2 text-xs cursor-pointer">
+          {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
         </select>
 
         <select value={filterParallel} onChange={e => setFilterParallel(e.target.value)}

@@ -4,6 +4,7 @@ import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval, useProgressiveRender } from '../lib/hooks'
+import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -27,14 +28,6 @@ const gradeOf = a => {
   const m = (a.title || '').toUpperCase().match(/\b(?:PSA|BGS|SGC|CGC)\s*(10|9\.5|9|8\.5|8|7|6)\b/)
   return m ? m[1] : ''
 }
-const seriesOf = a => {
-  if (a.card?.series) return a.card.series
-  const t = a.title?.toLowerCase() || ''
-  if (t.includes('f3') || t.includes('formula 3')) return 'F3'
-  if (t.includes('f2') || t.includes('formula 2')) return 'F2'
-  return 'F1'
-}
-
 const isAuction = a => (a.buying_options || []).includes('AUCTION')
 const isBIN = a => {
   const o = a.buying_options || []
@@ -49,6 +42,7 @@ export default function GradedCards() {
   const [grader, setGrader] = useState('All')
   const [grade, setGrade] = useState('All')
   const [formulaType, setFormulaType] = useState('All')
+  const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
 
   const load = useCallback((showRefresh = false) => {
@@ -68,13 +62,14 @@ export default function GradedCards() {
       if (grader !== 'All' && graderOf(a) !== grader) return false
       if (grade !== 'All' && gradeOf(a) !== grade) return false
       if (formulaType !== 'All' && seriesOf(a) !== formulaType) return false
+      if (teamFilter !== 'All' && teamOf(a) !== teamFilter) return false
       if (search) {
         const q = search.toLowerCase()
         if (!(a.title?.toLowerCase().includes(q) || a.card?.driver_name?.toLowerCase().includes(q))) return false
       }
       return true
     })
-  }, [auctions, grader, grade, formulaType, search])
+  }, [auctions, grader, grade, formulaType, teamFilter, search])
 
   const bins = useMemo(
     () => graded.filter(isBIN).sort((a, b) => a.current_price - b.current_price),
@@ -139,6 +134,9 @@ export default function GradedCards() {
         </select>
         <select value={formulaType} onChange={e => setFormulaType(e.target.value)} className="input-field px-3 py-2 text-xs cursor-pointer">
           {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
+        </select>
+        <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} className="input-field px-3 py-2 text-xs cursor-pointer">
+          {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
         </select>
       </div>
 
