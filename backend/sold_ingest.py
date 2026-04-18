@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from database import SoldCard, SessionLocal, Auction, Card
+from dedup import fingerprint as sold_fingerprint
 from ebay_finding_api import (
     fetch_sold_for_driver, fetch_sold_for_query, fetch_active_for_query,
 )
@@ -120,6 +121,29 @@ def _build_ebay_url(ebay_item_id: str) -> str:
     return f"https://www.ebay.com/itm/{raw}"
 
 
+def _has_matching_fingerprint(db: Session, driver, parallel, grade, sale_date, sale_price) -> bool:
+    """Return True if a non-duplicate SoldCard with this fingerprint already exists."""
+    if not sale_date:
+        return False
+    fp = sold_fingerprint(driver, parallel, grade, sale_date, sale_price)
+    try:
+        day_start = datetime.combine(sale_date.date(), datetime.min.time())
+        day_end = datetime.combine(sale_date.date(), datetime.max.time())
+    except Exception:
+        return False
+    q = db.query(SoldCard).filter(
+        SoldCard.driver_name == driver,
+        SoldCard.parallel == parallel,
+        SoldCard.sale_date >= day_start,
+        SoldCard.sale_date <= day_end,
+        SoldCard.is_duplicate == False,  # noqa: E712
+    )
+    for c in q.all():
+        if sold_fingerprint(c.driver_name, c.parallel, c.grade, c.sale_date, c.sale_price) == fp:
+            return True
+    return False
+
+
 async def ingest_sold_for_driver(driver_name: str, db: Session) -> dict:
     """Fetch Finding API results for one driver and upsert non-base rows."""
     items = await fetch_sold_for_driver(driver_name, pages=3)
@@ -158,6 +182,8 @@ async def ingest_sold_for_driver(driver_name: str, db: Session) -> dict:
         grade = _grade_from_title(title)
         matched_driver = _match_driver(title) or driver_name
 
+        is_dupe = _has_matching_fingerprint(db, matched_driver, parallel, grade, sale_date, price)
+
         db.add(SoldCard(
             ebay_item_id=ebay_item_id,
             title=title,
@@ -169,9 +195,10 @@ async def ingest_sold_for_driver(driver_name: str, db: Session) -> dict:
             sale_date=sale_date,
             image_url=item.get("image_url"),
             ebay_url=_build_ebay_url(ebay_item_id),
-            shipping_cost=None,
+            shipping_cost=item.get("shipping_cost"),
             is_auction=False,  # Finding API doesn't return buying_options reliably
             series="F1",
+            is_duplicate=is_dupe,
             scraped_at=datetime.utcnow(),
         ))
         added += 1
@@ -254,20 +281,25 @@ async def _upsert_sold_item(item: dict, db: Session, fallback_driver: Optional[s
         return "skip"
     if db.query(SoldCard).filter(SoldCard.ebay_item_id == ebay_item_id).first():
         return "dupe"
+    sale_date = item.get("sale_date") or datetime.utcnow()
+    grade_val = _grade_from_title(title)
+    driver_val = _match_driver(title) or fallback_driver
+    is_dupe = _has_matching_fingerprint(db, driver_val, parallel, grade_val, sale_date, price)
     db.add(SoldCard(
         ebay_item_id=ebay_item_id,
         title=title,
-        driver_name=_match_driver(title) or fallback_driver,
+        driver_name=driver_val,
         parallel=parallel,
-        grade=_grade_from_title(title),
+        grade=grade_val,
         condition=item.get("condition"),
         sale_price=price,
-        sale_date=item.get("sale_date") or datetime.utcnow(),
+        sale_date=sale_date,
         image_url=item.get("image_url"),
         ebay_url=item.get("ebay_url") or f"https://www.ebay.com/itm/{ebay_item_id.split('|')[-2] if '|' in ebay_item_id else ebay_item_id}",
-        shipping_cost=None,
+        shipping_cost=item.get("shipping_cost"),
         is_auction=False,
         series="F1",
+        is_duplicate=is_dupe,
         scraped_at=datetime.utcnow(),
     ))
     return "added"

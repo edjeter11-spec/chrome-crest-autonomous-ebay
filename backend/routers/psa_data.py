@@ -85,7 +85,7 @@ def observed_aggregates(
 
     Returns per-grade aggregates + per-parallel-per-grade breakdown.
     """
-    q = db.query(SoldCard).filter(SoldCard.grade.isnot(None))
+    q = db.query(SoldCard).filter(SoldCard.grade.isnot(None), SoldCard.is_duplicate == False)  # noqa: E712
     if driver:
         q = q.filter(SoldCard.driver_name.ilike(f"%{driver}%"))
     if parallel:
@@ -170,7 +170,7 @@ def observed_aggregates(
     total_graded_value = sum((s.sale_price or 0) for s in sold)
 
     # Raw comparison (non-graded sales of same driver/parallel)
-    raw_q = db.query(SoldCard).filter(SoldCard.grade.is_(None))
+    raw_q = db.query(SoldCard).filter(SoldCard.grade.is_(None), SoldCard.is_duplicate == False)  # noqa: E712
     if driver:
         raw_q = raw_q.filter(SoldCard.driver_name.ilike(f"%{driver}%"))
     if parallel:
@@ -229,7 +229,7 @@ def graded_sales(
         })
 
     # From sold_cards (eBay observed graded)
-    sq = db.query(SoldCard).filter(SoldCard.grade.isnot(None))
+    sq = db.query(SoldCard).filter(SoldCard.grade.isnot(None), SoldCard.is_duplicate == False)  # noqa: E712
     if driver:
         sq = sq.filter(SoldCard.driver_name.ilike(f"%{driver}%"))
     if grade:
@@ -276,6 +276,7 @@ def leaderboard(db: Session = Depends(get_db)):
     ).filter(
         SoldCard.grade.isnot(None),
         SoldCard.driver_name.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
     ).group_by(SoldCard.driver_name).all()
 
     top_value = sorted(drv_rows, key=lambda r: -(r.total_value or 0))[:15]
@@ -295,6 +296,7 @@ def leaderboard(db: Session = Depends(get_db)):
     ).filter(
         SoldCard.grade.isnot(None),
         SoldCard.parallel.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
     ).group_by(SoldCard.parallel).order_by(desc("total_value")).limit(20).all()
 
     # KPIs

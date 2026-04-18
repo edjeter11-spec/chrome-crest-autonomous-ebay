@@ -159,6 +159,22 @@ def parse_price(s: str) -> float:
     return float(m.group()) if m else 0.0
 
 
+def parse_shipping(s: str) -> float:
+    """'+ $4.50 shipping' → 4.50; 'Free shipping' → 0.0; '' → None."""
+    if not s:
+        return None
+    t = s.lower().strip()
+    if "free" in t:
+        return 0.0
+    m = re.search(r"\$\s*([\d,]+\.?\d*)", t)
+    if m:
+        try:
+            return float(m.group(1).replace(",", ""))
+        except Exception:
+            return None
+    return None
+
+
 def extract_ebay_item_id(url: str):
     if not url:
         return None
@@ -175,25 +191,49 @@ def get_conn():
 def upsert_sold(conn, rows):
     if not rows:
         return 0
+    # Try the new schema (with shipping_cost). Fall back to the legacy schema
+    # so a partially-migrated DB still works.
     sql = """
         INSERT INTO sold_cards (
             ebay_item_id, title, driver_name, parallel, grade, condition,
             sale_price, sale_date, image_url, ebay_url, is_auction, series,
-            source, scraped_at
+            shipping_cost, source, scraped_at
         ) VALUES %s
         ON CONFLICT (ebay_item_id) DO UPDATE SET
             sale_price = EXCLUDED.sale_price,
             sale_date = EXCLUDED.sale_date,
             image_url = COALESCE(EXCLUDED.image_url, sold_cards.image_url),
+            shipping_cost = COALESCE(EXCLUDED.shipping_cost, sold_cards.shipping_cost),
             scraped_at = EXCLUDED.scraped_at
     """
-    # Append source='eBay' + current timestamp to each row.
     now = datetime.utcnow()
     stamped = [r + ("eBay", now) for r in rows]
-    with conn.cursor() as cur:
-        execute_values(cur, sql, stamped)
-    conn.commit()
-    return len(rows)
+    try:
+        with conn.cursor() as cur:
+            execute_values(cur, sql, stamped)
+        conn.commit()
+        return len(rows)
+    except Exception as e:
+        # Schema drift fallback
+        conn.rollback()
+        log.warning(f"Full-schema insert failed ({str(e)[:80]}); retrying without shipping_cost")
+        legacy_sql = """
+            INSERT INTO sold_cards (
+                ebay_item_id, title, driver_name, parallel, grade, condition,
+                sale_price, sale_date, image_url, ebay_url, is_auction, series,
+                source, scraped_at
+            ) VALUES %s
+            ON CONFLICT (ebay_item_id) DO UPDATE SET
+                sale_price = EXCLUDED.sale_price,
+                sale_date = EXCLUDED.sale_date,
+                image_url = COALESCE(EXCLUDED.image_url, sold_cards.image_url),
+                scraped_at = EXCLUDED.scraped_at
+        """
+        legacy = [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], "eBay", now) for r in rows]
+        with conn.cursor() as cur:
+            execute_values(cur, legacy_sql, legacy)
+        conn.commit()
+        return len(rows)
 
 
 # --- Scraper ---
@@ -340,6 +380,7 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
                 continue  # Skip rows we can't determine end time for — better than fake countdown
             buying_opts = '["AUCTION"]' if mode == "auction" else '["FIXED_PRICE"]'
             buy_now = price if mode == "bin" else None
+            ship = parse_shipping(it.get("shipping_text", ""))
             rows.append((
                 card_id,
                 ebay_listing_id,
@@ -356,7 +397,7 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
                 "active",
                 it["url"],
                 it["image"] or None,
-                0.0,                # shipping_cost
+                float(ship) if ship is not None else 0.0,  # shipping_cost
                 True,               # is_real_ebay
                 buying_opts,
                 datetime.utcnow(),
@@ -435,6 +476,22 @@ def scrape_search_page(page, url: str):
                 }
                 if (!priceText) return;  // No real price → skip
 
+                // Shipping extraction — look for "+ $X shipping" or "Free shipping" near
+                // the price element. Fall back to scanning the whole card text.
+                let shippingText = '';
+                const shipSelectors = el.querySelectorAll(
+                    '.s-item__shipping, .s-card__shipping, [data-testid="shipping"], .s-item__logisticsCost'
+                );
+                for (const sp of shipSelectors) {
+                    const t = (sp.textContent || sp.innerText || '').trim();
+                    if (t) { shippingText = t; break; }
+                }
+                if (!shippingText) {
+                    const all = (el.innerText || el.textContent || '');
+                    const m = all.match(/(\\+\\s*\\$\\s*[\\d,]+\\.?\\d{0,2}\\s*shipping)|(free\\s+shipping)/i);
+                    if (m) shippingText = m[0];
+                }
+
                 // Time-left extraction: try dedicated selectors first, then
                 // fall back to scanning the whole card for "Xd Yh" / "Xh Ym" / "Xm Ys".
                 let dateText = dateEl ? (dateEl.innerText || dateEl.textContent || '').trim() : '';
@@ -450,7 +507,8 @@ def scrape_search_page(page, url: str):
                     price: priceText,
                     url,
                     image: imgEl ? (imgEl.src || imgEl.dataset.src || '') : '',
-                    date_text: dateText
+                    date_text: dateText,
+                    shipping_text: shippingText
                 });
             });
             return out;
@@ -570,6 +628,7 @@ def main():
                     it["url"],
                     False,  # is_auction — always False; this table is sold only
                     "F1",
+                    parse_shipping(it.get("shipping_text", "")),  # shipping_cost
                 ))
 
             if rows:

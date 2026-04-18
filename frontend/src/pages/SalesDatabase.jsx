@@ -190,7 +190,7 @@ export default function SalesDatabase() {
           <StatBox icon={Calendar} label="This Week" value={(stats.week_count || 0).toLocaleString()} color="yellow" />
           <StatBox icon={TrendingUp} label="Top Parallel"
             value={stats.by_parallel?.[0]?.parallel ?? '—'}
-            sub={stats.by_parallel?.[0] ? `${stats.by_parallel[0].count} sold · avg $${Math.round(stats.by_parallel[0].avg_price)}` : ''}
+            sub={stats.by_parallel?.[0] ? `${stats.by_parallel[0].count} sold · median $${Math.round(stats.by_parallel[0].median_price ?? stats.by_parallel[0].avg_price)}` : ''}
             color="violet" />
         </div>
       )}
@@ -266,7 +266,13 @@ export default function SalesDatabase() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2 mb-1">
                 <span className="text-sm font-bold text-white truncate">{s.driver_name || '—'}</span>
-                <span className="text-sm font-black text-emerald-400 whitespace-nowrap">${s.sale_price?.toFixed(2)}</span>
+                <span className="text-sm font-black text-emerald-400 whitespace-nowrap"
+                  title={s.shipping_cost ? `Item $${s.sale_price?.toFixed(2)} + ship $${s.shipping_cost?.toFixed(2)}` : undefined}>
+                  ${(s.total_cost ?? s.sale_price)?.toFixed(2)}
+                  {s.shipping_cost > 0 && (
+                    <span className="text-[10px] text-gray-500 font-medium ml-1">(+${s.shipping_cost?.toFixed(2)} ship)</span>
+                  )}
+                </span>
               </div>
               <div className="text-[11px] text-cyan-300 truncate mb-1">{s.parallel || '—'}</div>
               <div className="text-[11px] text-gray-400 line-clamp-2 mb-1.5">{s.title}</div>
@@ -358,8 +364,12 @@ export default function SalesDatabase() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-400 max-w-md truncate" title={s.title}>{s.title}</td>
-                  <td className="px-3 py-2 text-xs font-black text-emerald-400 text-right whitespace-nowrap">
-                    ${s.sale_price?.toFixed(2)}
+                  <td className="px-3 py-2 text-xs font-black text-emerald-400 text-right whitespace-nowrap"
+                    title={s.shipping_cost ? `Item $${s.sale_price?.toFixed(2)} + ship $${s.shipping_cost?.toFixed(2)}` : undefined}>
+                    ${(s.total_cost ?? s.sale_price)?.toFixed(2)}
+                    {s.shipping_cost > 0 && (
+                      <div className="text-[9px] text-gray-500 font-medium">+${s.shipping_cost?.toFixed(2)} ship</div>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-center">
                     <div className="inline-flex items-center gap-1">
@@ -412,7 +422,13 @@ export default function SalesDatabase() {
             renderItem={d => ({ label: d.driver, value: d.count, sub: `$${Math.round(d.total_value).toLocaleString()}` })}
             accent="cyan" />
           <BreakdownPanel title="By Parallel" items={stats.by_parallel}
-            renderItem={p => ({ label: p.parallel, value: p.count, sub: `avg $${Math.round(p.avg_price)}` })}
+            renderItem={p => ({
+              label: p.parallel,
+              value: p.count,
+              sub: p.low_confidence
+                ? `thin data (n=${p.count})`
+                : `median $${Math.round(p.median_price ?? p.avg_price)} · avg $${Math.round(p.avg_price)}`,
+            })}
             accent="violet" />
         </div>
       )}

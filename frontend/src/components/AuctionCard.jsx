@@ -112,11 +112,33 @@ function ImageCarousel({ images, title, driverName, teamColor }) {
   )
 }
 
-function PricingOptions({ auction }) {
+function PricingOptions({ auction, comp }) {
   const opts = auction.buying_options || []
   const hasAuction = opts.includes('AUCTION') || (opts.length === 0 && !auction.buy_now_price)
   const hasBIN = opts.includes('FIXED_PRICE') || auction.buy_now_price > 0
   const hasBestOffer = opts.includes('BEST_OFFER')
+  const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
+
+  // Build "vs median" pill. Prefer median; fall back to thin-comps label.
+  let medianPill = null
+  if (comp) {
+    if (comp.low_confidence || (comp.n ?? 0) < 3) {
+      medianPill = (
+        <span className="text-[10px] text-gray-500 uppercase tracking-wide" title={`Only ${comp.n} comps in 90d`}>
+          thin comps
+        </span>
+      )
+    } else if (comp.median_total) {
+      const ratio = totalCost / comp.median_total
+      const pct = Math.round((1 - ratio) * 100)
+      const color = ratio <= 0.7 ? 'text-green-400' : ratio <= 0.9 ? 'text-emerald-400' : ratio <= 1.1 ? 'text-gray-400' : 'text-orange-400'
+      medianPill = (
+        <span className={`text-[10px] ${color} font-semibold`} title={`Median total over last 90d (n=${comp.n})`}>
+          {pct > 0 ? `${pct}% below` : `${-pct}% above`} median ${Math.round(comp.median_total)} · n={comp.n}
+        </span>
+      )
+    }
+  }
 
   return (
     <div className="space-y-2">
@@ -130,9 +152,10 @@ function PricingOptions({ auction }) {
             {auction.shipping_cost === 0 ? (
               <span className="text-[10px] text-green-500 font-semibold uppercase tracking-wide">Free Ship</span>
             ) : auction.shipping_cost > 0 ? (
-              <span className="text-xs text-gray-500">+${auction.shipping_cost?.toFixed(2)}</span>
+              <span className="text-xs text-gray-500" title={`Total $${totalCost.toFixed(2)}`}>+${auction.shipping_cost?.toFixed(2)} ship</span>
             ) : null}
           </div>
+          {medianPill && <div className="mt-0.5">{medianPill}</div>}
           {hasAuction && (
             <div className="text-xs mt-0.5">
               {auction.bid_count > 0
@@ -351,6 +374,24 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   const [watchLoading, setWatchLoading] = useState(false)
   const [shareToast, setShareToast] = useState(false)
   const [expandedPanel, setExpandedPanel] = useState(null)
+  const [comp, setComp] = useState(null)
+
+  // Pull median comp for this driver+parallel (+grade if present in title).
+  useEffect(() => {
+    const driver = auction.card?.driver_name
+    const parallel = auction.card?.parallel
+    if (!driver) return
+    const title = (auction.title || '').toUpperCase()
+    let grade = null
+    const gm = title.match(/\b(PSA|BGS|SGC|CGC)\s*(10|9\.5|9|8\.5|8|7)\b/)
+    if (gm) grade = `${gm[1]} ${gm[2]}`
+    const qs = new URLSearchParams({ driver, ...(parallel ? { parallel } : {}), ...(grade ? { grade } : {}) })
+    fetch(`${API}/api/sales/median?${qs}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(setComp)
+      .catch(() => {})
+  }, [auction.id, auction.card?.driver_name, auction.card?.parallel, auction.title])
+
   // Priority: extra_images → listing image_url → card catalog image
   const [images, setImages] = useState(() => {
     if (auction.extra_images?.length) return auction.extra_images
@@ -531,7 +572,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
         </div>
 
         {/* Pricing options */}
-        <PricingOptions auction={auction} />
+        <PricingOptions auction={auction} comp={comp} />
 
         {/* Place Bid (snipe executor) */}
         {auction.snipe_eligible && (

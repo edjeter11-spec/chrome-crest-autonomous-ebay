@@ -31,7 +31,7 @@ def source_counts(db: Session = Depends(get_db)):
     rows = db.query(
         SoldCard.source,
         func.count(SoldCard.id).label("c"),
-    ).filter(SoldCard.grade.isnot(None)).group_by(SoldCard.source).all()
+    ).filter(SoldCard.grade.isnot(None), SoldCard.is_duplicate == False).group_by(SoldCard.source).all()  # noqa: E712
     out = {"eBay": 0, "Goldin": 0, "PWCC": 0, "MySlabs": 0}
     for r in rows:
         key = (r.source or "eBay")
@@ -83,7 +83,7 @@ def graded_sales_feed(
     db: Session = Depends(get_db),
 ):
     """Paginated graded-sale feed across all sources."""
-    q = db.query(SoldCard).filter(SoldCard.grade.isnot(None))
+    q = db.query(SoldCard).filter(SoldCard.grade.isnot(None), SoldCard.is_duplicate == False)  # noqa: E712
     if driver:
         q = q.filter(SoldCard.driver_name.ilike(f"%{driver}%"))
     if grade:
@@ -126,6 +126,7 @@ def graded_leaderboard(
     ).filter(
         SoldCard.grade.isnot(None),
         SoldCard.driver_name.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
     ).group_by(SoldCard.driver_name).all()
 
     out = []
@@ -155,12 +156,18 @@ def graded_leaderboard(
     out.sort(key=key_map[sort], reverse=(order == "desc"))
 
     # KPIs + misc
-    total_graded_sales = db.query(func.count(SoldCard.id)).filter(SoldCard.grade.isnot(None)).scalar() or 0
-    total_graded_value = db.query(func.sum(SoldCard.sale_price)).filter(SoldCard.grade.isnot(None)).scalar() or 0
-    drivers_with_psa10 = db.query(func.count(func.distinct(SoldCard.driver_name))).filter(
-        SoldCard.grade == "PSA 10"
+    total_graded_sales = db.query(func.count(SoldCard.id)).filter(
+        SoldCard.grade.isnot(None), SoldCard.is_duplicate == False  # noqa: E712
     ).scalar() or 0
-    highest_row = db.query(SoldCard).filter(SoldCard.grade.isnot(None)).order_by(desc(SoldCard.sale_price)).first()
+    total_graded_value = db.query(func.sum(SoldCard.sale_price)).filter(
+        SoldCard.grade.isnot(None), SoldCard.is_duplicate == False  # noqa: E712
+    ).scalar() or 0
+    drivers_with_psa10 = db.query(func.count(func.distinct(SoldCard.driver_name))).filter(
+        SoldCard.grade == "PSA 10", SoldCard.is_duplicate == False  # noqa: E712
+    ).scalar() or 0
+    highest_row = db.query(SoldCard).filter(
+        SoldCard.grade.isnot(None), SoldCard.is_duplicate == False  # noqa: E712
+    ).order_by(desc(SoldCard.sale_price)).first()
     most_graded_driver = out[0]["driver"] if out else None
 
     # Count active graded auctions (title-regex match in Python layer — fast enough on <5k rows)
@@ -197,22 +204,37 @@ def graded_driver_detail(
     sold = db.query(SoldCard).filter(
         SoldCard.grade.isnot(None),
         SoldCard.driver_name == driver,
+        SoldCard.is_duplicate == False,  # noqa: E712
     ).all()
 
-    # Per-parallel × grade
+    # Per-parallel × grade — median + min + max + count (not just avg)
+    def _median_local(vs: list[float]):
+        if not vs: return None
+        vs = sorted(vs); n = len(vs)
+        return vs[n // 2] if n % 2 else (vs[n // 2 - 1] + vs[n // 2]) / 2
+
     breakdown: dict = {}
     for s in sold:
         par = s.parallel or "Unknown"
         g = s.grade or "Unknown"
         key = (par, g)
-        d = breakdown.setdefault(key, {"parallel": par, "grade": g, "count": 0, "sum_price": 0.0})
-        d["count"] += 1
-        d["sum_price"] += float(s.sale_price or 0)
-    bk = [
-        {"parallel": k[0], "grade": k[1], "count": d["count"],
-         "avg_price": round(d["sum_price"] / d["count"], 2) if d["count"] else 0}
-        for k, d in breakdown.items()
-    ]
+        total = float(s.sale_price or 0) + float(s.shipping_cost or 0)
+        d = breakdown.setdefault(key, {"parallel": par, "grade": g, "vals": []})
+        d["vals"].append(total)
+    bk = []
+    for k, d in breakdown.items():
+        vals = d["vals"]
+        cnt = len(vals)
+        avg = sum(vals) / cnt if cnt else 0
+        med = _median_local(vals)
+        bk.append({
+            "parallel": k[0], "grade": k[1], "count": cnt,
+            "avg_price": round(avg, 2),
+            "median_price": round(med, 2) if med is not None else None,
+            "min_price": round(min(vals), 2) if vals else None,
+            "max_price": round(max(vals), 2) if vals else None,
+            "low_confidence": cnt < 3,
+        })
     bk.sort(key=lambda x: (-x["count"], x["parallel"]))
 
     # Top 10 sales

@@ -14,6 +14,10 @@ from database import get_db, SoldCard
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 
 
+def _total_cost(s: SoldCard) -> float:
+    return float((s.sale_price or 0) + (s.shipping_cost or 0))
+
+
 def _sold_to_dict(s: SoldCard) -> dict:
     return {
         "id": s.id,
@@ -24,23 +28,34 @@ def _sold_to_dict(s: SoldCard) -> dict:
         "grade": s.grade,
         "condition": s.condition,
         "sale_price": s.sale_price,
+        "shipping_cost": s.shipping_cost,
+        "total_cost": round(_total_cost(s), 2),
         "sale_date": s.sale_date.isoformat() if s.sale_date else None,
         "image_url": s.image_url,
         "ebay_url": s.ebay_url,
-        "shipping_cost": s.shipping_cost,
         "is_auction": bool(s.is_auction),
+        "is_duplicate": bool(getattr(s, "is_duplicate", False)),
         "series": s.series or "F1",
         "source": getattr(s, "source", None) or "eBay",
         "scraped_at": s.scraped_at.isoformat() if s.scraped_at else None,
     }
 
 
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    v = sorted(values)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
 def _apply_filters(q, driver, parallel, grade, min_price, max_price,
-                   date_from, date_to, is_auction):
+                   date_from, date_to, is_auction, include_duplicates=False):
+    if not include_duplicates:
+        q = q.filter(SoldCard.is_duplicate == False)  # noqa: E712
     if driver:
         q = q.filter(SoldCard.driver_name.ilike(f"%{driver}%"))
     if parallel:
-        # Allow comma-separated multi-select
         parts = [p.strip() for p in parallel.split(",") if p.strip()]
         if parts:
             q = q.filter(SoldCard.parallel.in_(parts))
@@ -80,16 +95,21 @@ def list_sales(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     is_auction: Optional[bool] = None,
+    include_duplicates: bool = False,
     limit: int = Query(100, le=500),
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, min_price, max_price,
-                       date_from, date_to, is_auction)
+                       date_from, date_to, is_auction, include_duplicates)
     total = q.count()
     sales = q.order_by(desc(SoldCard.sale_date)).offset(offset).limit(limit).all()
-    return {"total": total, "sales": [_sold_to_dict(s) for s in sales]}
+    return {
+        "total": total,
+        "include_duplicates": include_duplicates,
+        "sales": [_sold_to_dict(s) for s in sales],
+    }
 
 
 @router.get("/stats")
@@ -99,65 +119,138 @@ def sales_stats(
     grade: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    include_duplicates: bool = False,
     db: Session = Depends(get_db),
 ):
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, None, None,
-                       date_from, date_to, None)
+                       date_from, date_to, None, include_duplicates)
 
     total_count = q.count()
-    total_value = db.query(func.coalesce(func.sum(SoldCard.sale_price), 0)).scalar() or 0
-
-    # This-week count (last 7 days)
-    cutoff = datetime.utcnow() - timedelta(days=7)
-    week_count = db.query(func.count(SoldCard.id)).filter(
-        SoldCard.sale_date >= cutoff
+    total_value = db.query(func.coalesce(func.sum(SoldCard.sale_price), 0)).filter(
+        SoldCard.is_duplicate == False  # noqa: E712
     ).scalar() or 0
 
-    # Avg price per parallel
-    parallel_rows = db.query(
-        SoldCard.parallel,
-        func.count(SoldCard.id).label("count"),
-        func.avg(SoldCard.sale_price).label("avg_price"),
-        func.max(SoldCard.sale_price).label("max_price"),
-    ).group_by(SoldCard.parallel).order_by(desc("count")).limit(20).all()
+    cutoff = datetime.utcnow() - timedelta(days=7)
+    week_count = db.query(func.count(SoldCard.id)).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.is_duplicate == False,  # noqa: E712
+    ).scalar() or 0
 
-    # Top drivers by volume
-    driver_rows = db.query(
-        SoldCard.driver_name,
-        func.count(SoldCard.id).label("count"),
-        func.sum(SoldCard.sale_price).label("total_value"),
-    ).filter(SoldCard.driver_name.isnot(None))\
-     .group_by(SoldCard.driver_name)\
-     .order_by(desc("count")).limit(15).all()
+    # Per-parallel: count, avg, median, max — median needed so PSA-10 outliers
+    # don't drag the "typical" parallel price into the stratosphere.
+    par_q = db.query(
+        SoldCard.parallel, SoldCard.sale_price, SoldCard.shipping_cost
+    ).filter(SoldCard.is_duplicate == False, SoldCard.parallel.isnot(None))  # noqa: E712
+    par_bucket: dict[str, list[float]] = {}
+    for pr, price, ship in par_q.all():
+        if price is None or price <= 0:
+            continue
+        par_bucket.setdefault(pr, []).append(float(price) + float(ship or 0))
+    parallel_rows = []
+    for pr, vals in par_bucket.items():
+        med = _median(vals)
+        parallel_rows.append({
+            "parallel": pr,
+            "count": len(vals),
+            "avg_price": round(sum(vals) / len(vals), 2),
+            "median_price": round(med, 2) if med is not None else None,
+            "max_price": round(max(vals), 2),
+            "low_confidence": len(vals) < 3,
+        })
+    parallel_rows.sort(key=lambda r: -r["count"])
+    parallel_rows = parallel_rows[:20]
+
+    # Top drivers by volume + median total for context.
+    drv_q = db.query(
+        SoldCard.driver_name, SoldCard.sale_price, SoldCard.shipping_cost
+    ).filter(SoldCard.is_duplicate == False, SoldCard.driver_name.isnot(None))  # noqa: E712
+    drv_bucket: dict[str, list[float]] = {}
+    for dn, price, ship in drv_q.all():
+        if price is None or price <= 0:
+            continue
+        drv_bucket.setdefault(dn, []).append(float(price) + float(ship or 0))
+    driver_rows = []
+    for dn, vals in drv_bucket.items():
+        med = _median(vals)
+        driver_rows.append({
+            "driver": dn,
+            "count": len(vals),
+            "total_value": round(sum(vals), 2),
+            "avg_price": round(sum(vals) / len(vals), 2),
+            "median_price": round(med, 2) if med is not None else None,
+            "low_confidence": len(vals) < 3,
+        })
+    driver_rows.sort(key=lambda r: -r["count"])
+    driver_rows = driver_rows[:15]
 
     # Grade distribution
     grade_rows = db.query(
         func.coalesce(SoldCard.grade, "Raw").label("grade"),
         func.count(SoldCard.id).label("count"),
         func.avg(SoldCard.sale_price).label("avg_price"),
-    ).group_by("grade").order_by(desc("count")).all()
+    ).filter(SoldCard.is_duplicate == False).group_by("grade").order_by(desc("count")).all()  # noqa: E712
 
     return {
         "total_count": total_count,
         "total_value": round(float(total_value), 2),
         "week_count": week_count,
-        "by_parallel": [
-            {"parallel": r[0], "count": r[1],
-             "avg_price": round(float(r[2] or 0), 2),
-             "max_price": round(float(r[3] or 0), 2)}
-            for r in parallel_rows
-        ],
-        "top_drivers": [
-            {"driver": r[0], "count": r[1],
-             "total_value": round(float(r[2] or 0), 2)}
-            for r in driver_rows
-        ],
+        "by_parallel": parallel_rows,
+        "top_drivers": driver_rows,
         "by_grade": [
             {"grade": r[0], "count": r[1],
              "avg_price": round(float(r[2] or 0), 2)}
             for r in grade_rows
         ],
+    }
+
+
+@router.get("/median")
+def median_for(
+    driver: str = Query(...),
+    parallel: Optional[str] = None,
+    grade: Optional[str] = None,
+    days: int = 90,
+    db: Session = Depends(get_db),
+):
+    """
+    Median total_cost (sale_price + shipping) for a driver+parallel[+grade]
+    slice over the last `days`. Used by AuctionCard tooltips and the Sales
+    Database "Median for this parallel" column.
+
+    `low_confidence: true` when n < 3.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    q = db.query(SoldCard).filter(
+        SoldCard.driver_name == driver,
+        SoldCard.sale_date >= cutoff,
+        SoldCard.sale_price > 0,
+        SoldCard.is_duplicate == False,  # noqa: E712
+    )
+    if parallel:
+        q = q.filter(SoldCard.parallel == parallel)
+    if grade:
+        q = q.filter(SoldCard.grade == grade)
+    else:
+        q = q.filter(SoldCard.grade.is_(None))
+
+    totals = [
+        (s.sale_price or 0) + (s.shipping_cost or 0) for s in q.all()
+    ]
+    totals = [t for t in totals if t > 0]
+    med = _median(totals)
+    avg = (sum(totals) / len(totals)) if totals else None
+    return {
+        "driver": driver,
+        "parallel": parallel,
+        "grade": grade,
+        "days": days,
+        "n": len(totals),
+        "median_total": round(med, 2) if med is not None else None,
+        "avg_total": round(avg, 2) if avg is not None else None,
+        "min_total": round(min(totals), 2) if totals else None,
+        "max_total": round(max(totals), 2) if totals else None,
+        "low_confidence": len(totals) < 3,
     }
 
 
@@ -171,18 +264,19 @@ def export_csv(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     is_auction: Optional[bool] = None,
+    include_duplicates: bool = False,
     db: Session = Depends(get_db),
 ):
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, min_price, max_price,
-                       date_from, date_to, is_auction)
+                       date_from, date_to, is_auction, include_duplicates)
     sales = q.order_by(desc(SoldCard.sale_date)).limit(50000).all()
 
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow([
         "sale_date", "driver", "parallel", "grade", "condition",
-        "sale_price", "shipping_cost", "is_auction", "title",
+        "sale_price", "shipping_cost", "total_cost", "is_auction", "title",
         "ebay_item_id", "ebay_url", "image_url",
     ])
     for s in sales:
@@ -194,6 +288,7 @@ def export_csv(
             s.condition or "",
             f"{s.sale_price:.2f}" if s.sale_price else "",
             f"{s.shipping_cost:.2f}" if s.shipping_cost else "",
+            f"{_total_cost(s):.2f}",
             "auction" if s.is_auction else "bin",
             s.title or "",
             s.ebay_item_id or "",
@@ -218,23 +313,22 @@ def sales_heatmap(
 ):
     """
     Driver x Parallel 30-day sale count grid for the Dashboard heatmap.
-    Returns pre-computed rows/cols/cells so the frontend doesn't have to
-    aggregate thousands of rows client-side.
     """
     cutoff = datetime.utcnow() - timedelta(days=days)
     base = db.query(SoldCard).filter(
         SoldCard.sale_date >= cutoff,
         SoldCard.driver_name.isnot(None),
         SoldCard.parallel.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
     )
 
-    # Top drivers by volume within window
     driver_rows = db.query(
         SoldCard.driver_name,
         func.count(SoldCard.id).label("cnt"),
     ).filter(
         SoldCard.sale_date >= cutoff,
         SoldCard.driver_name.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
     ).group_by(SoldCard.driver_name)\
      .order_by(desc("cnt")).limit(top_drivers).all()
     drivers = [r[0] for r in driver_rows]
@@ -245,6 +339,7 @@ def sales_heatmap(
     ).filter(
         SoldCard.sale_date >= cutoff,
         SoldCard.parallel.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
     ).group_by(SoldCard.parallel)\
      .order_by(desc("cnt")).limit(top_parallels).all()
     parallels = [r[0] for r in parallel_rows]
@@ -252,7 +347,6 @@ def sales_heatmap(
     if not drivers or not parallels:
         return {"drivers": drivers, "parallels": parallels, "cells": [], "days": days}
 
-    # Single aggregate query for all cells
     cell_rows = db.query(
         SoldCard.driver_name,
         SoldCard.parallel,
@@ -262,6 +356,7 @@ def sales_heatmap(
         SoldCard.sale_date >= cutoff,
         SoldCard.driver_name.in_(drivers),
         SoldCard.parallel.in_(parallels),
+        SoldCard.is_duplicate == False,  # noqa: E712
     ).group_by(SoldCard.driver_name, SoldCard.parallel).all()
 
     cells = [
@@ -286,9 +381,7 @@ def sales_heatmap(
 def backfill_from_price_history(db: Session = Depends(get_db)):
     """
     One-time bootstrap: promote existing price_history rows into the new
-    SoldCard table so users see real data immediately. Only includes rows with
-    an ebay_item_id (dedupeable) and a matched Card. Skips base-parallel rows
-    and duplicates by ebay_item_id.
+    SoldCard table so users see real data immediately.
     """
     from database import PriceHistory, Card
     from sqlalchemy import and_
@@ -315,7 +408,6 @@ def backfill_from_price_history(db: Session = Depends(get_db)):
             skipped_base += 1
             continue
 
-        # Grade detection from stored condition field
         cond = (ph.condition or "")
         grade = None
         upper = cond.upper()

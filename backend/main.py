@@ -71,6 +71,47 @@ def migrate_sold_source():
     return {"status": "done", "results": results}
 
 
+@app.post("/api/admin/migrate-dedup-flag")
+def migrate_dedup_flag():
+    """Add is_duplicate column to sold_cards (idempotent) + index."""
+    from sqlalchemy import text
+    statements = [
+        "ALTER TABLE sold_cards ADD COLUMN IF NOT EXISTS is_duplicate BOOLEAN DEFAULT FALSE",
+        "UPDATE sold_cards SET is_duplicate = FALSE WHERE is_duplicate IS NULL",
+        "CREATE INDEX IF NOT EXISTS ix_sold_cards_is_duplicate ON sold_cards (is_duplicate)",
+    ]
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"stmt": stmt[:80], "ok": True})
+                except Exception as e:
+                    results.append({"stmt": stmt[:80], "ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
+
+
+@app.post("/api/admin/backfill-dedup")
+def backfill_dedup():
+    """Sweep sold_cards, compute fuzzy fingerprints, mark soft duplicates."""
+    try:
+        from dedup import backfill_duplicates
+        return {"status": "done", **backfill_duplicates()}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "error": str(e)[:300], "trace": traceback.format_exc()[-500:]}
+
+
 @app.post("/api/admin/migrate-push-subscriptions")
 def migrate_push_subscriptions():
     """Create push_subscriptions table on Neon Postgres (idempotent)."""

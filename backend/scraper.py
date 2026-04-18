@@ -3,8 +3,10 @@ Snipe scoring engine + eBay live sync. No simulation.
 All auction data comes exclusively from the real eBay Browse API.
 """
 import asyncio
+import re
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func, text
 from database import Card, Auction, PriceHistory, Alert
 from ebay_api import fetch_all_f1_listings, extract_driver_from_title
 import logging
@@ -12,7 +14,90 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def calculate_snipe_score(auction, card) -> float:
+# Grade extractor for auction titles (matches PSA/BGS/SGC/CGC + numeric grade).
+_GRADE_RE = re.compile(r"\b(PSA|BGS|SGC|CGC)\s*(10|9\.5|9|8\.5|8|7|6)\b", re.I)
+
+
+def _extract_grade_from_title(title: str) -> str | None:
+    if not title:
+        return None
+    m = _GRADE_RE.search(title)
+    if not m:
+        return None
+    return f"{m.group(1).upper()} {m.group(2)}"
+
+
+def median_comp_price(
+    db: Session,
+    driver: str | None,
+    parallel: str | None,
+    grade: str | None = None,
+    days: int = 90,
+) -> tuple[float | None, int]:
+    """
+    Median SoldCard total-cost (sale_price + shipping) for this driver+parallel
+    (and grade, when specified) in the last `days` days, excluding soft dupes.
+
+    Returns (median_total, n_comps). `None` median when no comps.
+
+    Strategy: try the fully-scoped query first. If it returns <3 rows, fall back
+    to driver-only (ignoring parallel) so we at least get *something* to compare
+    against. Caller can tell it was a fallback because the driver+parallel combo
+    returned 0 rows.
+    """
+    from database import SoldCard
+    if not driver:
+        return (None, 0)
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    def _run(filters) -> tuple[float | None, int]:
+        # total_cost = sale_price + COALESCE(shipping_cost, 0). Use Postgres
+        # PERCENTILE_CONT when available; fall back to Python median for SQLite.
+        q = db.query(
+            (SoldCard.sale_price + func.coalesce(SoldCard.shipping_cost, 0)).label("total"),
+        ).filter(
+            SoldCard.sale_date >= cutoff,
+            SoldCard.sale_price > 0,
+            SoldCard.is_duplicate == False,  # noqa: E712
+            *filters,
+        )
+        rows = [float(r.total) for r in q.all() if r.total is not None]
+        if not rows:
+            return (None, 0)
+        rows.sort()
+        n = len(rows)
+        med = rows[n // 2] if n % 2 else (rows[n // 2 - 1] + rows[n // 2]) / 2
+        return (float(med), n)
+
+    filters = [SoldCard.driver_name == driver]
+    if parallel:
+        filters.append(SoldCard.parallel == parallel)
+    if grade:
+        filters.append(SoldCard.grade == grade)
+    else:
+        # When auction is raw, only compare against raw comps — grading
+        # premium would otherwise blow up the median.
+        filters.append(SoldCard.grade.is_(None))
+    med, n = _run(filters)
+    if n >= 3:
+        return (med, n)
+
+    # Fallback: driver-only (no parallel scope), still grade-matched.
+    filters = [SoldCard.driver_name == driver]
+    if grade:
+        filters.append(SoldCard.grade == grade)
+    else:
+        filters.append(SoldCard.grade.is_(None))
+    med2, n2 = _run(filters)
+    if n2 >= 3:
+        return (med2, n2)
+
+    # Last resort: whatever we got at the scoped level (even if <3).
+    return (med, n)
+
+
+def calculate_snipe_score(auction, card, db: Session | None = None) -> float:
     """Score 0–100. Higher = better snipe opportunity."""
     if not card:
         return 0.0
@@ -36,26 +121,24 @@ def calculate_snipe_score(auction, card) -> float:
         time_score = 8
 
     price_score = 50
-    # Use actual avg sold price from price_history if available
-    from database import PriceHistory
-    from sqlalchemy.orm import Session as _Session
-    avg_sold = None
-    try:
+    # Use median (not avg) scoped to driver+parallel+grade when available.
+    owns_db = db is None
+    if owns_db:
         from database import SessionLocal as _SL
-        _db = _SL()
-        from sqlalchemy import func as _func
-        row = _db.query(_func.avg(PriceHistory.price)).filter(
-            PriceHistory.card_id == card.id,
-            PriceHistory.source.in_(["eBay Sold", "eBay Live"]),
-        ).scalar()
-        if row and row > 0:
-            avg_sold = float(row)
-        _db.close()
-    except Exception:
-        pass
-    ref_price = avg_sold or card.base_value or 0
-    if ref_price > 0:
-        ratio = auction.current_price / ref_price
+        db = _SL()
+    try:
+        auction_grade = _extract_grade_from_title(auction.title or "")
+        med, n = median_comp_price(db, card.driver_name, card.parallel, auction_grade)
+        ref_price = med if (med and n >= 3) else (card.base_value or 0)
+    finally:
+        if owns_db:
+            db.close()
+
+    # Compare against total cost (price + shipping) so "free shipping $20" vs
+    # "$15 + $8 shipping" are apples-to-apples.
+    cur_total = (auction.current_price or 0) + (getattr(auction, "shipping_cost", 0) or 0)
+    if ref_price and ref_price > 0 and cur_total > 0:
+        ratio = cur_total / ref_price
         if ratio <= 0.5:
             price_score = 100
         elif ratio <= 0.65:
@@ -203,11 +286,9 @@ async def sync_real_ebay_listings(db: Session) -> int:
         parallel = _parallel_from_title(title)
         card = None
         if driver:
-            # Try to match driver + parallel exactly
             card = db.query(Card).filter(
                 Card.driver_name == driver, Card.parallel == parallel
             ).first()
-            # Fall back to driver + Refractor, then any card for driver
             if not card and parallel != "Base":
                 card = db.query(Card).filter(
                     Card.driver_name == driver, Card.parallel == "Refractor"
@@ -225,10 +306,6 @@ async def sync_real_ebay_listings(db: Session) -> int:
         buying_opts_list = listing.get("buying_options", []) or []
         is_true_auction = "AUCTION" in buying_opts_list
         if end_time is None:
-            # BIN listings without an itemEndDate: use a far-future sentinel
-            # (1 year) so the UI treats them as "not ending soon" and the
-            # auction-ended purge never fires on them. True auctions without
-            # an end_time are skipped.
             if is_true_auction:
                 continue
             end_time = datetime.utcnow() + timedelta(days=365)
@@ -245,7 +322,9 @@ async def sync_real_ebay_listings(db: Session) -> int:
             existing.current_price = current_price
             existing.bid_count = listing.get("bid_count", existing.bid_count)
             existing.last_updated = datetime.utcnow()
-            existing.snipe_score = calculate_snipe_score(existing, card)
+            if listing.get("shipping_cost") is not None:
+                existing.shipping_cost = listing.get("shipping_cost")
+            existing.snipe_score = calculate_snipe_score(existing, card, db)
             existing.snipe_eligible = existing.snipe_score >= 50
             if listing.get("image_url") and not existing.image_url:
                 existing.image_url = listing["image_url"]
@@ -271,7 +350,7 @@ async def sync_real_ebay_listings(db: Session) -> int:
                 is_real_ebay=True,
                 status="active",
             )
-            a.snipe_score = calculate_snipe_score(a, card)
+            a.snipe_score = calculate_snipe_score(a, card, db)
             a.snipe_eligible = a.snipe_score >= 50
             db.add(a)
             added += 1
@@ -304,8 +383,6 @@ def run_snipe_alerts(db: Session) -> list:
             Auction.snipe_score >= 65,
             Auction.end_time > now,
             Auction.end_time < now + timedelta(hours=3),
-            # True auction listings only — BIN listings have 30-day synthetic end_times
-            # but would still match the above filter if end_time was miscomputed.
             Auction.buying_options.like('%AUCTION%'),
         )
         .all()
@@ -348,16 +425,24 @@ def run_snipe_alerts(db: Session) -> list:
 
 def run_enhanced_snipe_alerts(db: Session) -> list:
     """
-    Expanded snipe alert generator with severity tiers, dedup, and expiry.
+    High-conviction snipe alerts only.
 
-    Severity tiers:
-      - critical: ends <30 min OR snipe_score >=90 OR price 70%+ below avg
-      - high:     ends <2h  OR snipe_score >=80 OR price 50%+ below avg
-      - normal:   everything else snipe-eligible
+    Fires ONLY if ALL of the following hold for an active auction:
+      - >=3 valid comps in last 90 days (driver+parallel+grade) — otherwise no
+        median to compare against
+      - current price (incl. shipping) <= 0.7 * median for 'high' tier
+      - current price (incl. shipping) <= 0.5 * median for 'critical' tier
+      - time left < 2h for 'high', < 30 min for 'critical'
+      - bid count < 3 (market hasn't reacted yet)
+      - seller feedback >= 50 (filter scammers)
+      - no active non-triggered alert already exists for this auction
 
-    Dedup: skip if an ACTIVE (non-triggered) alert for same auction exists.
-    Expiry: alerts whose auction ended OR is no longer a snipe get
-    `triggered=True` (treated as resolved) before new alerts are created.
+    Alert message is fully self-explanatory:
+      "SNIPE: Lewis Hamilton Refractor PSA 10 — $185 (incl ship) vs $410 median
+       (n=8 comps last 90d). 47 min left, 0 bids. Seller 14k feedback."
+
+    The median + comp count are embedded in the message string so downstream
+    consumers don't need an extra DB lookup.
     """
     from database import SoldCard
 
@@ -367,7 +452,7 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
     # ---- Expiry pass: mark resolved alerts whose auction no longer qualifies ----
     open_alerts = db.query(Alert).filter(
         Alert.alert_type == "snipe_opportunity",
-        Alert.triggered == False,
+        Alert.triggered == False,  # noqa: E712
         Alert.auction_id.isnot(None),
     ).all()
     for al in open_alerts:
@@ -383,39 +468,24 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
             al.triggered_at = now
     db.commit()
 
-    # Existing ACTIVE alert keys — don't double-alert
     existing_keys = set(
         (aid,) for (aid,) in db.query(Alert.auction_id).filter(
             Alert.alert_type == "snipe_opportunity",
-            Alert.triggered == False,
+            Alert.triggered == False,  # noqa: E712
             Alert.auction_id.isnot(None),
         ).all()
     )
 
-    # Candidate pool: every active auction (filtered in-python to stay cheap)
-    candidates = db.query(Auction).filter(Auction.status == "active").all()
+    # Only look at auctions ending within 24h — nothing further out can possibly
+    # be high-conviction under the new criteria (high tier caps at 2h).
+    candidates = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.end_time > now,
+        Auction.end_time < now + timedelta(hours=24),
+    ).all()
 
-    # Per-(driver,parallel) median + avg cache — one DB trip per pair
-    stat_cache: dict = {}
-
-    def get_stats(driver: str, parallel: str):
-        key = (driver, parallel)
-        if key in stat_cache:
-            return stat_cache[key]
-        q = db.query(SoldCard.sale_price).filter(
-            SoldCard.driver_name == driver,
-            SoldCard.parallel == parallel,
-            SoldCard.sale_price > 0,
-        )
-        prices = sorted(p[0] for p in q.all() if p[0] is not None)
-        if not prices:
-            stat_cache[key] = (None, None, 0)
-            return stat_cache[key]
-        n = len(prices)
-        median = prices[n // 2] if n % 2 else (prices[n // 2 - 1] + prices[n // 2]) / 2
-        avg = sum(prices) / n
-        stat_cache[key] = (median, avg, n)
-        return stat_cache[key]
+    # Median cache: (driver, parallel, grade) -> (median, n)
+    med_cache: dict = {}
 
     for auction in candidates:
         if (auction.id,) in existing_keys:
@@ -428,57 +498,51 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
         driver = card.driver_name
         parallel = card.parallel or ""
         cur_price = auction.current_price or 0
+        shipping = auction.shipping_cost or 0
+        cur_total = cur_price + shipping
         end_time = auction.end_time
         mins_left = (end_time - now).total_seconds() / 60 if end_time else 9999
+        bid_count = auction.bid_count or 0
+        seller_fb = auction.seller_feedback or 0
 
-        median, avg, n_sold = get_stats(driver, parallel)
-
-        reason = None
-
-        # Criterion 1: ending <1h, low bids, below median
-        if (
-            end_time and 0 < mins_left < 60
-            and (auction.bid_count or 0) < 3
-            and median and cur_price > 0 and cur_price < median
-        ):
-            reason = f"Ending {int(mins_left)}m, {auction.bid_count or 0} bids, ${cur_price:.0f} < median ${median:.0f}"
-
-        # Criterion 2: very high snipe score
-        elif (auction.snipe_score or 0) >= 80:
-            reason = f"Snipe score {auction.snipe_score:.0f} · ${cur_price:.0f}"
-
-        # Criterion 3: 40%+ below avg and snipe_eligible
-        elif (
-            auction.snipe_eligible and avg and cur_price > 0
-            and cur_price < avg * 0.60
-        ):
-            pct = int((1 - cur_price / avg) * 100)
-            reason = f"{pct}% below avg (${cur_price:.0f} vs ${avg:.0f}, n={n_sold})"
-
-        if not reason:
+        # Hard gates — bail fast on anything that can't qualify.
+        if cur_price <= 0 or mins_left <= 0 or mins_left >= 120:
+            continue
+        if bid_count >= 3:
+            continue
+        if seller_fb < 50:
             continue
 
-        # Severity tiers
-        pct_below = 0.0
-        if avg and cur_price > 0:
-            pct_below = max(0.0, 1 - cur_price / avg)
+        # Grade-aware median lookup.
+        grade = _extract_grade_from_title(auction.title or "")
+        cache_key = (driver, parallel, grade)
+        if cache_key not in med_cache:
+            med_cache[cache_key] = median_comp_price(db, driver, parallel, grade)
+        median, n_comps = med_cache[cache_key]
 
-        if (
-            (end_time and 0 < mins_left < 30)
-            or (auction.snipe_score or 0) >= 90
-            or pct_below >= 0.70
-        ):
+        if not median or n_comps < 3:
+            continue
+
+        # Tier thresholds on total-cost / median.
+        ratio = cur_total / median
+        if mins_left < 30 and ratio <= 0.5 and n_comps >= 5:
             urgency = "critical"
-        elif (
-            (end_time and 0 < mins_left < 120)
-            or (auction.snipe_score or 0) >= 80
-            or pct_below >= 0.50
-        ):
+        elif mins_left < 120 and ratio <= 0.7 and n_comps >= 3:
             urgency = "high"
         else:
-            urgency = "normal"
+            continue
 
-        msg = f"SNIPE: {driver} {parallel} — {reason}"
+        # Human-readable message with the full context baked in.
+        ship_frag = f" (incl ship)" if shipping > 0 else ""
+        fb_frag = f"{seller_fb // 1000}k" if seller_fb >= 1000 else f"{seller_fb}"
+        grade_frag = f" {grade}" if grade else ""
+        par_frag = f" {parallel}" if parallel else ""
+        msg = (
+            f"SNIPE: {driver}{par_frag}{grade_frag} — ${cur_total:.0f}{ship_frag} vs "
+            f"${median:.0f} median (n={n_comps} comps last 90d). "
+            f"{int(mins_left)} min left, {bid_count} bids. Seller {fb_frag} feedback."
+        )
+
         alert = Alert(
             card_id=auction.card_id,
             alert_type="snipe_opportunity",

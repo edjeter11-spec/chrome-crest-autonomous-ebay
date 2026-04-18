@@ -166,6 +166,7 @@ class SoldCard(Base):
     is_auction = Column(Boolean, default=False)
     series = Column(String, default="F1", nullable=True)
     source = Column(String, default="eBay", index=True)  # 'eBay', 'Goldin', 'PWCC', 'MySlabs'
+    is_duplicate = Column(Boolean, default=False, index=True)  # fuzzy-dedup flag
     scraped_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
