@@ -142,12 +142,34 @@ def driver_from_title(title: str):
 
 
 def is_valid_2025_f1(title: str):
+    """Strict 2025 Topps Chrome FORMULA 1 only — reject MLB/NFL/NBA Topps Chrome."""
     t = (title or "").lower()
     if "2025" not in t:
         return False
-    if not any(k in t for k in ("formula 1", "formula1", "f1", "grand prix", "topps chrome")):
+    # Require an explicit F1 marker — "topps chrome" alone matches MLB cards.
+    has_f1 = (
+        "formula 1" in t or "formula1" in t or "grand prix" in t or
+        re.search(r"\bf1\b", t) is not None
+    )
+    if not has_f1:
         return False
+    # Reject other motorsport
     if any(k in t for k in (" f2 ", " f3 ", "formula 2", "formula 3", "indycar", "nascar")):
+        return False
+    # Reject other sports leaking through
+    OTHER_SPORTS = (
+        "mlb", "nfl", "nba", "nhl", "wnba", "mls", "ufc", "pga",
+        " baseball", " football", " basketball", " hockey", " soccer",
+        # MLB team keywords commonly in titles
+        "yankees", "red sox", "dodgers", "rockies", "nationals", "mets",
+        "cubs", "cardinals", "phillies", "braves", "astros", "rangers",
+        "padres", "giants", "twins", "blue jays", "orioles", "guardians",
+        "tigers", "white sox", "royals", "marlins", "rays", "mariners",
+        "angels", "athletics", "pirates", "reds", "brewers", "diamondbacks",
+        # NFL teams (common bleed-throughs)
+        "patriots", "cowboys", "eagles", "chiefs", "49ers",
+    )
+    if any(k in t for k in OTHER_SPORTS):
         return False
     return True
 
