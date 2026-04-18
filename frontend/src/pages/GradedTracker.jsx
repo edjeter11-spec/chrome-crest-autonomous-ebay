@@ -9,14 +9,20 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const DriverPriceChart = lazy(() => import('../components/DriverPriceChart'))
 
 const SOURCE_STYLES = {
-  eBay:    { bg: 'bg-gray-700/60',  text: 'text-gray-200',  border: 'border-gray-600/50' },
-  Goldin:  { bg: 'bg-yellow-800/40', text: 'text-yellow-300', border: 'border-yellow-700/50' },
-  PWCC:    { bg: 'bg-blue-800/40',  text: 'text-blue-300',  border: 'border-blue-700/50' },
-  MySlabs: { bg: 'bg-purple-800/40', text: 'text-purple-300', border: 'border-purple-700/50' },
+  eBay:               { bg: 'bg-gray-700/60',   text: 'text-gray-200',   border: 'border-gray-600/50' },
+  'eBay-detail':      { bg: 'bg-gray-600/50',   text: 'text-gray-100',   border: 'border-gray-500/50' },
+  Goldin:             { bg: 'bg-yellow-800/40', text: 'text-yellow-300', border: 'border-yellow-700/50' },
+  PWCC:               { bg: 'bg-blue-800/40',   text: 'text-blue-300',   border: 'border-blue-700/50' },
+  MySlabs:            { bg: 'bg-purple-800/40', text: 'text-purple-300', border: 'border-purple-700/50' },
+  Mavin:              { bg: 'bg-teal-800/40',   text: 'text-teal-300',   border: 'border-teal-700/50' },
+  Heritage:           { bg: 'bg-rose-800/40',   text: 'text-rose-300',   border: 'border-rose-700/50' },
+  'Fanatics Collect': { bg: 'bg-orange-800/40', text: 'text-orange-300', border: 'border-orange-700/50' },
+  HEROES:             { bg: 'bg-green-800/40',  text: 'text-green-300',  border: 'border-green-700/50' },
 }
+const DEFAULT_SOURCE_STYLE = { bg: 'bg-gray-800/40', text: 'text-gray-300', border: 'border-gray-700/50' }
 
 function SourceBadge({ source }) {
-  const s = SOURCE_STYLES[source] || SOURCE_STYLES.eBay
+  const s = SOURCE_STYLES[source] || DEFAULT_SOURCE_STYLE
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase ${s.bg} ${s.text} border ${s.border}`}>
       {source || 'eBay'}
@@ -127,15 +133,18 @@ export default function GradedTracker() {
           <Info size={16} className="text-yellow-500 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-gray-300 leading-relaxed">
-              PSA hasn't indexed the 2025 Topps Chrome F1 set yet. We surface real graded sales from 4 marketplaces + compute an observed pop estimate.
+              PSA hasn't indexed the 2025 Topps Chrome F1 set yet. We surface real graded sales from every marketplace we can reach + compute an observed pop estimate.
             </p>
             <div className="flex flex-wrap items-center gap-2 mt-2.5">
-              {['eBay', 'Goldin', 'PWCC', 'MySlabs'].map(src => (
-                <div key={src} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border ${SOURCE_STYLES[src].bg} ${SOURCE_STYLES[src].border}`}>
-                  <span className={`font-bold ${SOURCE_STYLES[src].text}`}>{src}</span>
-                  <span className="text-white font-black">{sourceCounts?.sources?.[src] ?? '—'}</span>
-                </div>
-              ))}
+              {Object.entries(sourceCounts?.sources || {}).sort((a,b) => (b[1]||0) - (a[1]||0)).map(([src, cnt]) => {
+                const style = SOURCE_STYLES[src] || DEFAULT_SOURCE_STYLE
+                return (
+                  <div key={src} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border ${style.bg} ${style.border}`}>
+                    <span className={`font-bold ${style.text}`}>{src}</span>
+                    <span className="text-white font-black">{cnt ?? '—'}</span>
+                  </div>
+                )
+              })}
               {sourceCounts?.myslabs_active_listings > 0 && (
                 <div className="px-2.5 py-1 rounded-lg text-[11px] border border-purple-700/40 bg-purple-900/20 text-purple-300">
                   {sourceCounts.myslabs_active_listings} active MySlabs listings

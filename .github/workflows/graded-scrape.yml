@@ -41,3 +41,12 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/myslabs_runner.py
         continue-on-error: true
+
+      - name: Upload block-evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graded-scrape-artifacts
+          path: scrape_artifacts/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -4,6 +4,12 @@ records and writes them into sold_cards with source='Goldin'.
 
 Synthetic ebay_item_id = 'goldin-{hash}' so we reuse the existing unique
 constraint for dedup.
+
+Phase-1 diagnosis upgrades (2026-04):
+  - Stronger stealth profile via scripts/stealth_helpers
+  - Homepage warm-up + cookie accept + human dwell before search
+  - Block detection with screenshot + body-preview dumped to logs
+  - Telemetry via scraper_runs table
 """
 import os, re, sys, time, hashlib, logging
 from datetime import datetime
@@ -12,16 +18,14 @@ from urllib.parse import urlencode
 import psycopg2
 from psycopg2.extras import execute_values
 from playwright.sync_api import sync_playwright
-try:
-    from tf_playwright_stealth import stealth_sync
-    HAS_STEALTH = True
-except ImportError:
-    HAS_STEALTH = False
 
-# Reuse title parsers from eBay scraper
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scrape_runner import (
     parallel_from_title, grade_from_title, driver_from_title, parse_price,
+    write_telemetry,
+)
+from stealth_helpers import (
+    build_stealth_context, apply_stealth, warm_up, human_dwell, detect_block,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -40,6 +44,7 @@ QUERIES = [
     "2025 Topps Chrome F1 auto",
 ]
 
+GOLDIN_HOME = "https://goldin.co/"
 GOLDIN_SEARCH_URL = "https://goldin.co/search-results"
 
 
@@ -79,35 +84,34 @@ def scrape_goldin_query(page, query: str):
         page.goto(url, wait_until="domcontentloaded", timeout=45000)
     except Exception as e:
         log.warning(f"Page load failed: {e}")
-        return []
+        return [], "timeout"
 
-    title = (page.title() or "").lower()
-    if "just a moment" in title or "cloudflare" in title:
-        log.warning(f"CLOUDFLARE BLOCK on Goldin for {query!r}")
-        return []
+    page.wait_for_timeout(5000)  # initial dwell
+    human_dwell(page, 3.0)
+
+    blocked, reason = detect_block(page, "Goldin")
+    if blocked:
+        return [], reason
 
     try:
         page.wait_for_load_state("networkidle", timeout=15000)
     except Exception:
         pass
-    page.wait_for_timeout(2500)
 
     items = page.evaluate("""
         () => {
             const out = [];
             const seen = new Set();
-            // Goldin's markup varies; try several card-container selectors.
             const cards = document.querySelectorAll(
-                'article, [class*="result"], [class*="card"], [class*="lot"], li'
+                'article, [class*="result"], [class*="card"], [class*="lot"], [class*="Item"], li'
             );
             cards.forEach(el => {
                 const linkEl = el.querySelector('a[href*="/item/"], a[href*="/lot/"], a[href*="/auctions/"]');
                 if (!linkEl) return;
                 const url = linkEl.href || '';
                 if (seen.has(url)) return;
-                const titleText = (el.querySelector('h2, h3, h4, [class*="title"]')?.textContent || '').trim();
+                const titleText = (el.querySelector('h2, h3, h4, [class*="title"], [class*="Title"]')?.textContent || '').trim();
                 if (!titleText || titleText.length < 8) return;
-                // Look for any price text inside the card
                 const allText = el.textContent || '';
                 const priceMatch = allText.match(/\\$\\s*[\\d,]+\\.?\\d{0,2}/);
                 if (!priceMatch) return;
@@ -120,46 +124,53 @@ def scrape_goldin_query(page, query: str):
                     image: imgEl ? (imgEl.src || imgEl.dataset.src || '') : '',
                 });
             });
-            return out.slice(0, 50);
+            return out.slice(0, 100);
         }
     """)
-    return items or []
+    return items or [], ""
 
 
 def main():
     log.info("Starting Goldin scrape run")
+    started_at = datetime.utcnow()
     conn = get_conn()
     total_rows = []
+    seen_count = 0
+    queries_succeeded = 0
+    block_reason = None
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+            args=[
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-features=IsolateOrigins,site-per-process",
+            ],
         )
-        ctx = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
-            viewport={"width": 1440, "height": 900},
-            locale="en-US",
-        )
+        ctx = build_stealth_context(browser)
         page = ctx.new_page()
-        if HAS_STEALTH:
-            try: stealth_sync(page)
-            except Exception: pass
+        apply_stealth(page)
+        warm_up(page, GOLDIN_HOME, "Goldin")
 
         for query in QUERIES:
             try:
-                items = scrape_goldin_query(page, query)
+                items, reason = scrape_goldin_query(page, query)
             except Exception as e:
                 log.warning(f"Goldin scrape failed for {query!r}: {e}")
-                items = []
-            log.info(f"  -> {len(items)} items")
+                items, reason = [], str(e)[:120]
+            if reason and not block_reason:
+                block_reason = reason
+            seen_count += len(items)
+            if items:
+                queries_succeeded += 1
+            log.info(f"  -> {len(items)} items (reason: {reason or 'ok'})")
             for it in items:
                 t = re.sub(r"\s+", " ", it["title"]).strip()
                 price = parse_price(it["price"])
                 if price <= 0: continue
                 grade = grade_from_title(t)
-                if not grade: continue  # Only graded sales for this source
+                if not grade: continue
                 parallel = parallel_from_title(t)
                 driver = driver_from_title(t)
                 sale_date = datetime.utcnow()
@@ -174,8 +185,18 @@ def main():
         browser.close()
 
     added = upsert_sold(conn, total_rows)
+    log.info(f"Goldin DONE: upserted {added} rows (seen {seen_count})")
+
+    write_telemetry(
+        conn, "Goldin", started_at,
+        queries_attempted=len(QUERIES),
+        queries_succeeded=queries_succeeded,
+        rows_seen=seen_count,
+        rows_inserted=added,
+        blocked=(added == 0 and seen_count == 0),
+        error_message=block_reason,
+    )
     conn.close()
-    log.info(f"Goldin DONE: upserted {added} rows")
     return added
 
 
@@ -184,4 +205,4 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         logging.exception("Goldin fatal: %s", e)
-        sys.exit(0)  # exit 0 so other scrapers in the workflow still run
+        sys.exit(0)

@@ -1,0 +1,81 @@
+name: Data Scrape (Tier-A sources + blocked retries)
+
+on:
+  schedule:
+    # Every 6 hours
+    - cron: '15 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  tier-a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install playwright tf-playwright-stealth psycopg2-binary httpx beautifulsoup4 sqlalchemy
+          playwright install chromium --with-deps
+
+      - name: eBay detail-page deepen (Tier-A bonus)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/ebay_sitemap_runner.py
+        continue-on-error: true
+
+      - name: Mavin
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/mavin_runner.py
+        continue-on-error: true
+
+      - name: Heritage
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/heritage_runner.py
+        continue-on-error: true
+
+      - name: Fanatics Collect
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/fanatics_collect_runner.py
+        continue-on-error: true
+
+      - name: HEROES (GiantSportsCards)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/heroes_runner.py
+        continue-on-error: true
+
+      - name: Goldin (retry w/ new stealth)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/goldin_runner.py
+        continue-on-error: true
+
+      - name: PWCC (retry w/ new stealth)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/pwcc_runner.py
+        continue-on-error: true
+
+      - name: MySlabs (retry w/ new stealth)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/myslabs_runner.py
+        continue-on-error: true
+
+      - name: Upload block-evidence artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-artifacts
+          path: scrape_artifacts/
+          if-no-files-found: ignore
+          retention-days: 7

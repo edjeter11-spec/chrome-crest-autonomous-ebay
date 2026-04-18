@@ -27,20 +27,35 @@ def _title_has_grade(title: str) -> bool:
 
 @router.get("/source-counts")
 def source_counts(db: Session = Depends(get_db)):
-    """Counts of graded sales per source (eBay / Goldin / PWCC / MySlabs)."""
+    """Counts of graded sales per source — dynamic GROUP BY on sold_cards.source.
+    Also returns active-listing counts for marketplaces that only have live inventory
+    (MySlabs, HEROES, Fanatics Collect)."""
     rows = db.query(
         SoldCard.source,
         func.count(SoldCard.id).label("c"),
-    ).filter(SoldCard.grade.isnot(None), SoldCard.is_duplicate == False).group_by(SoldCard.source).all()  # noqa: E712
+    ).filter(
+        SoldCard.grade.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
+    ).group_by(SoldCard.source).all()
+
+    # Seed the four legacy sources so the UI always shows them (as 0 if empty)
     out = {"eBay": 0, "Goldin": 0, "PWCC": 0, "MySlabs": 0}
     for r in rows:
         key = (r.source or "eBay")
-        out[key] = int(r.c)
-    # Active MySlabs listings live in auctions table
-    myslabs_active = db.query(func.count(Auction.id)).filter(
-        Auction.seller == "MySlabs", Auction.status == "active"
-    ).scalar() or 0
-    return {"sources": out, "myslabs_active_listings": myslabs_active}
+        out[key] = out.get(key, 0) + int(r.c)
+
+    # Active listings from the auctions table, grouped by seller
+    active_rows = db.query(
+        Auction.seller,
+        func.count(Auction.id).label("c"),
+    ).filter(Auction.status == "active").group_by(Auction.seller).all()
+    active_by_seller = {(r.seller or "Unknown"): int(r.c) for r in active_rows}
+
+    return {
+        "sources": out,
+        "myslabs_active_listings": active_by_seller.get("MySlabs", 0),
+        "active_by_seller": active_by_seller,
+    }
 
 
 @router.get("/active-auctions")
