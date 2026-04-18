@@ -441,11 +441,21 @@ function DetailsPanel({ auctionId, onImages }) {
 function SellerPanel({ auctionId }) {
   const [seller, setSeller] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [insights, setInsights] = useState(null)
 
   useEffect(() => {
     fetch(`${API}/api/auctions/${auctionId}/seller`)
       .then(r => r.json())
-      .then(d => { setSeller(d); setLoading(false) })
+      .then(d => {
+        setSeller(d); setLoading(false)
+        // Fire insights lookup after we know the seller handle
+        if (d?.seller) {
+          fetch(`${API}/api/sellers/insights?seller=${encodeURIComponent(d.seller)}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(setInsights)
+            .catch(() => {})
+        }
+      })
       .catch(() => setLoading(false))
   }, [auctionId])
 
@@ -481,7 +491,30 @@ function SellerPanel({ auctionId }) {
         {seller.auctions_from_seller > 1 && (
           <span><span className="text-white font-bold">{seller.auctions_from_seller}</span> listings</span>
         )}
+        {insights?.recent_listings_24h > 0 && (
+          <span><span className="text-white font-bold">{insights.recent_listings_24h}</span> listed 24h</span>
+        )}
       </div>
+      {insights?.flags?.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {insights.flags.map(f => {
+            const style = {
+              top_rated:    'bg-yellow-900/40 text-yellow-300 border-yellow-800/40',
+              power_lister: 'bg-blue-900/40 text-blue-300 border-blue-800/40',
+              flooder:      'bg-orange-900/40 text-orange-300 border-orange-800/40',
+              low_feedback: 'bg-gray-800 text-gray-400 border-gray-700',
+              suspicious:   'bg-red-900/40 text-red-300 border-red-800/40',
+              many_unsold:  'bg-purple-900/40 text-purple-300 border-purple-800/40',
+            }[f] || 'bg-gray-800 text-gray-400 border-gray-700'
+            const label = f.replace(/_/g, ' ').toUpperCase()
+            return (
+              <span key={f} className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${style}`}>
+                {label}
+              </span>
+            )
+          })}
+        </div>
+      )}
       {seller.ebay_seller_url && (
         <a href={seller.ebay_seller_url} target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"

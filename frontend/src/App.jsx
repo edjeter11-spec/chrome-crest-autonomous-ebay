@@ -21,6 +21,8 @@ const SealedEV = lazy(() => import('./pages/SealedEV'))
 const GradePredictor = lazy(() => import('./pages/GradePredictor'))
 const SharedWatchlist = lazy(() => import('./pages/SharedWatchlist'))
 const EmbedPrice = lazy(() => import('./pages/EmbedPrice'))
+const Sellers = lazy(() => import('./pages/Sellers'))
+const ScoreListing = lazy(() => import('./pages/ScoreListing'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -51,6 +53,8 @@ export default function App() {
           <Route path="checklist" element={<Suspense fallback={<PageFallback />}><Checklist /></Suspense>} />
           <Route path="sealed" element={<Suspense fallback={<PageFallback />}><SealedEV /></Suspense>} />
           <Route path="grade" element={<Suspense fallback={<PageFallback />}><GradePredictor /></Suspense>} />
+          <Route path="sellers" element={<Suspense fallback={<PageFallback />}><Sellers /></Suspense>} />
+          <Route path="score-listing" element={<Suspense fallback={<PageFallback />}><ScoreListing /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -1,8 +1,86 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle, Upload } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle, Upload, Sparkles } from 'lucide-react'
 import StatCard from '../components/StatCard'
 import CSVImportModal from '../components/CSVImportModal'
 import { swrFetch } from '../lib/cache'
+
+function AIAdvisorSection() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+
+  const run = async () => {
+    setBusy(true); setError(null); setResult(null)
+    try {
+      const r = await fetch(`${API}/api/ai/portfolio-advice`, { method: 'POST' })
+      const data = await r.json()
+      if (data?.status === 'no_key') setError(data.message || 'ANTHROPIC_API_KEY not set')
+      else if (data?.status === 'empty') setError('Portfolio is empty — add holdings first.')
+      else if (!r.ok) setError(data?.detail || `HTTP ${r.status}`)
+      else setResult(data)
+    } catch (e) {
+      setError(e.message || 'Request failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="panel p-4 space-y-3 border-purple-800/30">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <Sparkles size={14} className="text-purple-400" />
+          <h3 className="font-bold text-white text-sm">AI Advisor</h3>
+        </div>
+        <button
+          onClick={run}
+          disabled={busy}
+          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg flex items-center gap-1.5"
+        >
+          <Sparkles size={12} /> {busy ? 'Thinking…' : 'Get sell recommendations'}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {result && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-2">Sell now</h4>
+            <div className="space-y-2">
+              {(result.sell || []).map((s, i) => (
+                <div key={i} className="bg-gray-800/60 rounded-lg p-2.5 border border-red-900/30">
+                  <div className="text-xs font-bold text-white truncate">{s.card}</div>
+                  <div className="text-[11px] text-gray-400 mt-1">{s.reason}</div>
+                  <div className="flex gap-3 mt-1.5 text-[10px] text-gray-500">
+                    {s.current_value != null && <span>${Number(s.current_value).toFixed(0)}</span>}
+                    {s.profit_pct != null && (
+                      <span className={Number(s.profit_pct) >= 0 ? 'text-green-400' : 'text-red-400'}>
+                        {Number(s.profit_pct) >= 0 ? '+' : ''}{Number(s.profit_pct).toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {(!result.sell || !result.sell.length) && <p className="text-xs text-gray-600 italic">No sell recommendations.</p>}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-green-400 mb-2">Hold</h4>
+            <div className="space-y-2">
+              {(result.hold || []).map((h, i) => (
+                <div key={i} className="bg-gray-800/60 rounded-lg p-2.5 border border-green-900/30">
+                  <div className="text-xs font-bold text-white truncate">{h.card}</div>
+                  <div className="text-[11px] text-gray-400 mt-1">{h.reason}</div>
+                </div>
+              ))}
+              {(!result.hold || !result.hold.length) && <p className="text-xs text-gray-600 italic">No hold recommendations.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -217,6 +295,8 @@ export default function Portfolio() {
 
       {importing && <CSVImportModal onClose={() => setImporting(false)} onImported={load} />}
       {adding && <AddCardForm drivers={drivers} onAdd={() => { setAdding(false); load() }} onCancel={() => setAdding(false)} />}
+
+      <AIAdvisorSection />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Total Cost" value={loading ? null : `$${totalCost.toFixed(0)}`} icon={DollarSign} color="blue" />

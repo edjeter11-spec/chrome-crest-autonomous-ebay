@@ -18,6 +18,7 @@ from database import create_tables, get_db, Auction, Card, engine
 from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales, psa_data, push, graded
 from routers import race_calendar, shared_watchlists, watch_rules, checklist, sealed
 from routers import ai_grader, discord as discord_router
+from routers import verdict_accuracy, sellers as sellers_router, snapshots, ai_advisor
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -48,6 +49,10 @@ app.include_router(checklist.router)
 app.include_router(sealed.router)
 app.include_router(ai_grader.router)
 app.include_router(discord_router.router)
+app.include_router(verdict_accuracy.router)
+app.include_router(sellers_router.router)
+app.include_router(snapshots.router)
+app.include_router(ai_advisor.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")
@@ -1190,11 +1195,23 @@ async def cron_sync(db: Session = Depends(get_db)):
         snipe_alert_error = str(e)[:200]
 
     total = db.query(Auction).filter(Auction.status == "active").count()
+
+    # Daily snapshot — runs once per day, skipped if today's already captured.
+    snapshot_taken = False
+    snapshot_error = None
+    try:
+        from routers.snapshots import maybe_take_snapshot
+        snapshot_taken = maybe_take_snapshot(db)
+    except Exception as _se:
+        snapshot_error = str(_se)[:200]
+
     return {
         "ok": ebay_error is None,
         "added": added,
         "total_active": total,
         "price_history": ph,
+        "snapshot_taken": snapshot_taken,
+        "snapshot_error": snapshot_error,
         "ebay_error": ebay_error,
         "price_history_error": ph_error,
         "sold_ingest_started": sold_error is None,
