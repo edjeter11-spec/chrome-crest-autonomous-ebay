@@ -57,22 +57,43 @@ export function parallelFromTitle(title) {
   return null
 }
 
+// Low-tier inserts hidden by default — these clog the feed with cheap base-tier
+// listings nobody actually wants to buy. User can still explicitly select them
+// from the parallel dropdown to view.
+export const HIDDEN_BY_DEFAULT_PARALLELS = new Set([
+  'Floor It',
+  'Four & More',
+  'B&W Lazer',
+])
+
+export function isHiddenByDefault(auction) {
+  const titleMatch = parallelFromTitle(auction?.title || '')
+  const cardParallel = auction?.card?.parallel || ''
+  return HIDDEN_BY_DEFAULT_PARALLELS.has(titleMatch) ||
+         HIDDEN_BY_DEFAULT_PARALLELS.has(cardParallel)
+}
+
 // True if an auction matches the selected parallel filter option.
-// Handles 'All' (pass), 'No Base' (exclude only plain Base/unknown), and
-// every specific parallel label.
+// Handles 'All' (pass — but applies hidden-by-default filter),
+// 'No Base' (exclude only plain Base/unknown), and every specific parallel.
 export function matchesParallel(auction, filterValue) {
-  if (filterValue === 'All') return true
+  if (filterValue === 'All') {
+    // 'All' actually means "all GOOD parallels" — hide trash inserts unless
+    // user explicitly picks one.
+    return !isHiddenByDefault(auction)
+  }
 
   const titleMatch = parallelFromTitle(auction.title || '')
   const cardParallel = auction.card?.parallel || ''
 
   if (filterValue === 'No Base') {
-    // Reject only true Base cards — everything with a detected parallel passes.
+    // Same hidden-by-default treatment.
+    if (isHiddenByDefault(auction)) return false
     if (titleMatch && titleMatch !== 'Base') return true
     if (cardParallel && cardParallel !== 'Base') return true
     return false
   }
 
-  // Specific parallel: match if title regex hits OR card.parallel matches exactly.
+  // Specific parallel: user explicitly picked it — show even if hidden-by-default.
   return titleMatch === filterValue || cardParallel === filterValue
 }
