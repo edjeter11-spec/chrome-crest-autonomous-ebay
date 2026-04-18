@@ -178,15 +178,20 @@ def upsert_sold(conn, rows):
     sql = """
         INSERT INTO sold_cards (
             ebay_item_id, title, driver_name, parallel, grade, condition,
-            sale_price, sale_date, image_url, ebay_url, is_auction, series
+            sale_price, sale_date, image_url, ebay_url, is_auction, series,
+            scraped_at
         ) VALUES %s
         ON CONFLICT (ebay_item_id) DO UPDATE SET
             sale_price = EXCLUDED.sale_price,
             sale_date = EXCLUDED.sale_date,
-            image_url = COALESCE(EXCLUDED.image_url, sold_cards.image_url)
+            image_url = COALESCE(EXCLUDED.image_url, sold_cards.image_url),
+            scraped_at = EXCLUDED.scraped_at
     """
+    # Append current timestamp to each row so scraped_at reflects when we saw it.
+    now = datetime.utcnow()
+    stamped = [r + (now,) for r in rows]
     with conn.cursor() as cur:
-        execute_values(cur, sql, rows)
+        execute_values(cur, sql, stamped)
     conn.commit()
     return len(rows)
 

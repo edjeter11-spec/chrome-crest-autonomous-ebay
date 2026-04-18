@@ -24,6 +24,20 @@ function relTime(iso) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+// eBay only provides the sold DATE (no time-of-day), so all sales cluster at
+// midnight UTC. Showing "23 hours ago" for a midnight timestamp is misleading.
+// Prefer the sale date formatted short ("Apr 17"); optionally tag "NEW" when
+// scraped within the last 6 hours.
+function saleTimeLabel(sale) {
+  const date = sale?.sale_date
+  if (!date) return '—'
+  const d = new Date(date)
+  const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const scraped = sale?.scraped_at ? new Date(sale.scraped_at).getTime() : null
+  const fresh = scraped && (Date.now() - scraped) < 6 * 3600 * 1000
+  return fresh ? `${label} · new` : label
+}
+
 export default function Dashboard() {
   const navigate = useNavigate()
 
@@ -271,7 +285,7 @@ export default function Dashboard() {
                   <div className="text-sm font-black text-emerald-400">
                     ${(s.sale_price ?? 0).toFixed(2)}
                   </div>
-                  <div className="text-[10px] text-gray-600">{relTime(s.sale_date)}</div>
+                  <div className="text-[10px] text-gray-600">{saleTimeLabel(s)}</div>
                 </div>
               </div>
             ))}
