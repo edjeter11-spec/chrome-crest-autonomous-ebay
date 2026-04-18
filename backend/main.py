@@ -15,7 +15,7 @@ import httpx
 from datetime import datetime
 
 from database import create_tables, get_db, Auction, Card, engine
-from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales, psa_data, push
+from routers import cards, auctions, portfolio, alerts, analytics, wishlist, sales, psa_data, push, graded
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -38,6 +38,37 @@ app.include_router(wishlist.router)
 app.include_router(sales.router)
 app.include_router(psa_data.router)
 app.include_router(push.router)
+app.include_router(graded.router)
+
+
+@app.post("/api/admin/migrate-sold-source")
+def migrate_sold_source():
+    """Add source column to sold_cards + backfill existing rows to 'eBay'."""
+    from sqlalchemy import text
+    statements = [
+        "ALTER TABLE sold_cards ADD COLUMN IF NOT EXISTS source VARCHAR DEFAULT 'eBay'",
+        "UPDATE sold_cards SET source = 'eBay' WHERE source IS NULL",
+        "CREATE INDEX IF NOT EXISTS ix_sold_cards_source ON sold_cards (source)",
+    ]
+    try:
+        from database import Base, engine as _engine
+        Base.metadata.create_all(bind=_engine)
+    except Exception:
+        pass
+    results = []
+    try:
+        from database import engine as _engine
+        with _engine.connect() as conn:
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                    results.append({"stmt": stmt[:70], "ok": True})
+                except Exception as e:
+                    results.append({"stmt": stmt[:70], "ok": False, "error": str(e)[:200]})
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:300]}
+    return {"status": "done", "results": results}
 
 
 @app.post("/api/admin/migrate-push-subscriptions")
@@ -1048,6 +1079,7 @@ async def startup_event():
                 ("auctions", "buying_options", "TEXT"),
                 ("auctions", "extra_images", "TEXT"),
                 ("price_history", "ebay_item_id", "VARCHAR(64)"),
+                ("sold_cards", "source", "VARCHAR DEFAULT 'eBay'"),
             ]
             for table, col, typedef in migrations:
                 try:

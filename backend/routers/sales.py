@@ -30,6 +30,7 @@ def _sold_to_dict(s: SoldCard) -> dict:
         "shipping_cost": s.shipping_cost,
         "is_auction": bool(s.is_auction),
         "series": s.series or "F1",
+        "source": getattr(s, "source", None) or "eBay",
         "scraped_at": s.scraped_at.isoformat() if s.scraped_at else None,
     }
 

@@ -14,6 +14,7 @@ const Analytics = lazy(() => import('./pages/Analytics'))
 const Drivers = lazy(() => import('./pages/Drivers'))
 const PSA = lazy(() => import('./pages/PSA'))
 const GradedCards = lazy(() => import('./pages/GradedCards'))
+const GradedTracker = lazy(() => import('./pages/GradedTracker'))
 const SalesDatabase = lazy(() => import('./pages/SalesDatabase'))
 
 const PageFallback = () => (
@@ -34,8 +35,9 @@ export default function App() {
           <Route path="price-history" element={<Suspense fallback={<PageFallback />}><PriceHistory /></Suspense>} />
           <Route path="alerts" element={<Suspense fallback={<PageFallback />}><AlertsPage /></Suspense>} />
           <Route path="analytics" element={<Suspense fallback={<PageFallback />}><Analytics /></Suspense>} />
-          <Route path="psa" element={<Suspense fallback={<PageFallback />}><PSA /></Suspense>} />
-          <Route path="graded" element={<Suspense fallback={<PageFallback />}><GradedCards /></Suspense>} />
+          <Route path="psa" element={<Suspense fallback={<PageFallback />}><GradedTracker /></Suspense>} />
+          <Route path="graded" element={<Suspense fallback={<PageFallback />}><GradedTracker /></Suspense>} />
+          <Route path="graded-cards" element={<Suspense fallback={<PageFallback />}><GradedCards /></Suspense>} />
           <Route path="sales" element={<Suspense fallback={<PageFallback />}><SalesDatabase /></Suspense>} />
         </Route>
       </Routes>

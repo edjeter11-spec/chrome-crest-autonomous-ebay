@@ -10,12 +10,12 @@ import Tutorial from './Tutorial'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/graded', label: 'Graded Tracker', icon: Shield },
   { to: '/auctions', label: 'Live Auctions', icon: Gavel },
   { to: '/bin', label: 'Buy It Now', icon: Tag },
-  { to: '/graded', label: 'Graded Cards', icon: Shield },
   { to: '/sales', label: 'Sales Database', icon: Database },
   { to: '/drivers', label: 'Drivers', icon: Users },
-  { to: '/psa', label: 'PSA Population', icon: Shield },
+  { to: '/graded-cards', label: 'Card Catalog', icon: Shield },
   { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
   { to: '/wishlist', label: 'Wishlist', icon: Heart },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
