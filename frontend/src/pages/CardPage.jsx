@@ -43,17 +43,21 @@ function parseSlug(slug) {
   return { driver: null, parallel: null }
 }
 
-function useSeo({ title, description }) {
+function upsertMeta(selector, attr, name, content) {
+  let m = document.querySelector(selector)
+  if (!m) {
+    m = document.createElement('meta')
+    m.setAttribute(attr, name)
+    document.head.appendChild(m)
+  }
+  m.setAttribute('content', content)
+}
+
+function useSeo({ title, description, ogTitle, ogDescription }) {
   useEffect(() => {
     if (title) document.title = title
     if (description) {
-      let m = document.querySelector('meta[name="description"]')
-      if (!m) {
-        m = document.createElement('meta')
-        m.setAttribute('name', 'description')
-        document.head.appendChild(m)
-      }
-      m.setAttribute('content', description)
+      upsertMeta('meta[name="description"]', 'name', 'description', description)
     }
     // Canonical
     let c = document.querySelector('link[rel="canonical"]')
@@ -63,7 +67,18 @@ function useSeo({ title, description }) {
       document.head.appendChild(c)
     }
     c.setAttribute('href', window.location.href)
-  }, [title, description])
+
+    // Per-card OG / Twitter tags
+    if (ogTitle) {
+      upsertMeta('meta[property="og:title"]', 'property', 'og:title', ogTitle)
+      upsertMeta('meta[name="twitter:title"]', 'name', 'twitter:title', ogTitle)
+    }
+    if (ogDescription) {
+      upsertMeta('meta[property="og:description"]', 'property', 'og:description', ogDescription)
+      upsertMeta('meta[name="twitter:description"]', 'name', 'twitter:description', ogDescription)
+    }
+    upsertMeta('meta[property="og:url"]', 'property', 'og:url', window.location.href)
+  }, [title, description, ogTitle, ogDescription])
 }
 
 function ScarcityBadge({ tier }) {
@@ -100,6 +115,10 @@ export default function CardPage() {
     description: median?.n
       ? `${driver} ${parallel} median sold price: $${median.median_total?.toFixed(0)} across ${median.n} recent sales. Live eBay listings + 90-day trend.`
       : `Live 2025 Topps Chrome Formula 1 card prices for ${driver || ''} ${parallel || ''}.`,
+    ogTitle: driver && parallel ? `${driver} ${parallel} — F1 Card Hub` : 'F1 Card Hub',
+    ogDescription: driver && parallel
+      ? `Live eBay prices, verdict, and median comps for ${driver} ${parallel}. 2025 Topps Chrome F1.`
+      : 'Live eBay prices and median comps for 2025 Topps Chrome F1.',
   })
 
   useEffect(() => {

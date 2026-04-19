@@ -636,19 +636,22 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
     e.preventDefault()
     const driver = auction.card?.driver_name || 'F1 card'
     const par = auction.card?.parallel ? ` ${auction.card.parallel}` : ''
-    const gr = auction.card?.grade && auction.card.grade !== 'Raw' ? ` ${auction.card.grade}` : ' Raw'
-    const verdictLabel = (() => {
-      const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
-      if (comp?.median_total) {
-        const v = verdictFor(totalCost, comp.median_total, comp.n)
-        if (v) return v.label
-      }
-      return 'LIVE'
-    })()
+    const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
+    const verdictObj = comp?.median_total ? verdictFor(totalCost, comp.median_total, comp.n) : null
+    const verdictLabel = verdictObj?.label || null
     const price = auction.current_price?.toFixed(2) ?? '—'
-    const slug = (driver).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-    const url = `${window.location.origin}/card/${slug}`
-    const text = `🏎️ ${driver}${par}${gr} — ${verdictLabel} at $${price}`
+    const pctBelow = comp?.median_total
+      ? Math.max(0, Math.round((1 - totalCost / comp.median_total) * 100))
+      : null
+    const slugBase = `${driver}${par}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const url = `${window.location.origin}/card/${slugBase}`
+    let text
+    if (verdictLabel) {
+      const pctPart = pctBelow != null && pctBelow > 0 ? ` (${pctBelow}% off median)` : ''
+      text = `🏎️ ${driver}${par} — ${verdictLabel} at $${price}${pctPart}`
+    } else {
+      text = `🏎️ ${driver}${par} at $${price}`
+    }
     const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`
     window.open(intent, '_blank', 'noopener')
   }

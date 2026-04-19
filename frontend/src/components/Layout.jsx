@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, Link } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
@@ -365,6 +365,11 @@ export default function Layout() {
               <strong className="text-gray-500">Disclosure:</strong> As an eBay Partner, F1 Card Hub may be compensated
               when you make a qualifying purchase after clicking a link on this site. This does not affect the price
               you pay. Median prices and verdicts are computed from public sale data and are not investment advice.
+            </p>
+            <p className="text-[10px] text-gray-500 mt-2">
+              <Link to="/about" className="text-gray-500 hover:underline">About</Link>
+              {' · '}
+              <a href="mailto:edjeter11@gmail.com" className="text-gray-500 hover:underline">Contact</a>
             </p>
           </div>
         </main>
