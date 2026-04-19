@@ -14,6 +14,16 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const isAuction = a => (a.buying_options || []).includes('AUCTION')
 
+// `time_left` in DB is often stale/0; derive from end_time when needed.
+function secsLeft(a) {
+  if (!a) return 0
+  if (a.end_time) {
+    const s = Math.floor((new Date(a.end_time).getTime() - Date.now()) / 1000)
+    if (!Number.isNaN(s)) return Math.max(0, s)
+  }
+  return a.time_left || 0
+}
+
 // Notable-sales filter: only show cards >= $25, exclude plain Base + B&W parallels.
 // Keeps the dashboard feed exciting instead of clogged with $2 commons.
 const BORING_PARALLELS = new Set(['Base', 'B&W Ray Wave', 'B&W Lazer', 'Floor It', 'Four & More'])
@@ -118,10 +128,14 @@ export default function Dashboard() {
     if (showRefresh) setRefreshing(true)
 
     swrFetch(
-      `${API}/api/sales?limit=200`,
+      `${API}/api/sales?limit=500`,
       d => {
         const all = d.sales || d || []
-        setSales(all.filter(isNotable).slice(0, 15))
+        // Prefer "notable" sales, but fall back to raw data so the feed is
+        // never empty just because filters were too aggressive.
+        const notable = all.filter(isNotable)
+        const feed = notable.length >= 5 ? notable : all
+        setSales(feed.slice(0, 15))
         setSalesLoading(false)
       }
     )
@@ -145,7 +159,9 @@ export default function Dashboard() {
       `${API}/api/sales?limit=150`,
       d => {
         const all = d.sales || d || []
-        setTicker(all.filter(isNotable).slice(0, 10))
+        const notable = all.filter(isNotable)
+        const src = notable.length >= 3 ? notable : all
+        setTicker(src.slice(0, 10))
       }
     )
 
@@ -175,11 +191,11 @@ export default function Dashboard() {
 
   // --- KPI derivations ---
   const liveAuctionsCount = useMemo(
-    () => auctions.filter(a => isAuction(a) && (a.time_left || 0) > 0).length,
+    () => auctions.filter(a => isAuction(a) && secsLeft(a) > 0).length,
     [auctions]
   )
   const endingSoonCount = useMemo(
-    () => auctions.filter(a => isAuction(a) && (a.time_left || 0) > 0 && (a.time_left || 0) < 1800).length,
+    () => auctions.filter(a => { const s = secsLeft(a); return isAuction(a) && s > 0 && s < 1800 }).length,
     [auctions]
   )
   const avg30d = useMemo(() => {
@@ -198,8 +214,8 @@ export default function Dashboard() {
   // --- Derived lists ---
   const endingStrip = useMemo(() => {
     return auctions
-      .filter(a => isAuction(a) && (a.time_left || 0) > 0 && (a.time_left || 0) < 7200)
-      .sort((a, b) => (a.time_left || 0) - (b.time_left || 0))
+      .filter(a => { const s = secsLeft(a); return isAuction(a) && s > 0 && s < 7200 })
+      .sort((a, b) => secsLeft(a) - secsLeft(b))
       .slice(0, 8)
   }, [auctions])
 
@@ -207,7 +223,7 @@ export default function Dashboard() {
 
   // New enthusiast-row derivations
   const endingUnderHour = useMemo(
-    () => auctions.filter(a => isAuction(a) && (a.time_left || 0) > 0 && (a.time_left || 0) < 3600).length,
+    () => auctions.filter(a => { const s = secsLeft(a); return isAuction(a) && s > 0 && s < 3600 }).length,
     [auctions]
   )
   const activeSnipesCount = useMemo(

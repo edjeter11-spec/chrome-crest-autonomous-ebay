@@ -57,8 +57,8 @@ export default function SalesDatabase() {
   const [driver, setDriver] = useState('All')
   const [parallel, setParallel] = useState('All')
   const [grade, setGrade] = useState('All')
-  // Default to "notable" — $25 minimum hides $2 base/commons. User can clear it.
-  const [minPrice, setMinPrice] = useState('25')
+  // Show all sales by default; user can filter up with $ min input.
+  const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
