@@ -1,9 +1,19 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Auctions from './pages/Auctions'
 import BuyItNow from './pages/BuyItNow'
+import Login from './pages/Login'
+import { AuthProvider, useAuth } from './lib/auth'
+
+function RequireAuth({ children }) {
+  const { user, loading } = useAuth()
+  const loc = useLocation()
+  if (loading) return <div className="p-6 text-gray-500 text-sm">Loading…</div>
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname)}`} replace />
+  return children
+}
 
 // Lazy-loaded pages (code-split to keep initial bundle lean)
 const Portfolio = lazy(() => import('./pages/Portfolio'))
@@ -33,6 +43,7 @@ const PageFallback = () => (
 
 export default function App() {
   return (
+    <AuthProvider>
     <BrowserRouter>
       <Routes>
         {/* Standalone routes — no layout chrome */}
@@ -41,11 +52,12 @@ export default function App() {
 
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
+          <Route path="login" element={<Login />} />
           <Route path="auctions" element={<Auctions />} />
           <Route path="bin" element={<BuyItNow />} />
           <Route path="drivers" element={<Suspense fallback={<PageFallback />}><Drivers /></Suspense>} />
-          <Route path="portfolio" element={<Suspense fallback={<PageFallback />}><Portfolio /></Suspense>} />
-          <Route path="wishlist" element={<Suspense fallback={<PageFallback />}><Wishlist /></Suspense>} />
+          <Route path="portfolio" element={<RequireAuth><Suspense fallback={<PageFallback />}><Portfolio /></Suspense></RequireAuth>} />
+          <Route path="wishlist" element={<RequireAuth><Suspense fallback={<PageFallback />}><Wishlist /></Suspense></RequireAuth>} />
           <Route path="price-history" element={<Suspense fallback={<PageFallback />}><PriceHistory /></Suspense>} />
           <Route path="alerts" element={<Suspense fallback={<PageFallback />}><AlertsPage /></Suspense>} />
           <Route path="analytics" element={<Suspense fallback={<PageFallback />}><Analytics /></Suspense>} />
@@ -64,5 +76,6 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+    </AuthProvider>
   )
 }

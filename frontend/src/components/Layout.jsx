@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
+import { useAuth } from '../lib/auth'
+import { LogIn, LogOut } from 'lucide-react'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
@@ -42,6 +44,7 @@ export default function Layout() {
   const [pushState, setPushState] = useState('idle') // idle | subscribed | busy | unsupported
   const [showTutorial, setShowTutorial] = useState(false)
   const location = useLocation()
+  const { user, signOut } = useAuth()
 
   // Push subscription state
   useEffect(() => {
@@ -242,8 +245,25 @@ export default function Layout() {
         ))}
       </nav>
 
-      {/* WS + collapse toggle at bottom */}
+      {/* Auth + push at bottom */}
       <div className="px-3 py-3 border-t border-gray-800/60 space-y-2">
+        {(!collapsed || mobile) && (
+          user ? (
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-800/60">
+              <div className="w-6 h-6 rounded-full bg-red-600 flex items-center justify-center text-white text-[10px] font-black shrink-0">
+                {(user.email || '?')[0].toUpperCase()}
+              </div>
+              <span className="text-[11px] text-gray-300 truncate flex-1">{user.email}</span>
+              <button onClick={signOut} title="Sign out" className="text-gray-500 hover:text-red-400">
+                <LogOut size={12} />
+              </button>
+            </div>
+          ) : (
+            <NavLink to="/login" className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-red-600/10 border border-red-600/30 text-red-400 hover:bg-red-600/20 text-[11px] font-semibold">
+              <LogIn size={12} /> Sign in / Create account
+            </NavLink>
+          )
+        )}
         {/* Push notifications button */}
         {pushState !== 'unsupported' && (!collapsed || mobile) && (
           <button
