@@ -11,23 +11,24 @@ import Tutorial from './Tutorial'
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/today', label: 'Today', icon: Sunrise },
-  { to: '/graded', label: 'Graded Tracker', icon: Shield },
   { to: '/auctions', label: 'Live Auctions', icon: Gavel },
   { to: '/bin', label: 'Buy It Now', icon: Tag },
-  { to: '/sales', label: 'Sales Database', icon: Database },
+  { to: '/sales', label: 'Sales', icon: Database },
   { to: '/drivers', label: 'Drivers', icon: Users },
-  { to: '/compare', label: 'Compare', icon: Scale },
-  { to: '/sellers', label: 'Sellers', icon: User },
-  { to: '/graded-cards', label: 'Card Catalog', icon: Shield },
+  { to: '/graded', label: 'Graded', icon: Shield },
   { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
   { to: '/wishlist', label: 'Watchlist', icon: Heart },
-  { to: '/checklist', label: 'Checklist', icon: ListChecks },
-  { to: '/sealed', label: 'Sealed EV', icon: Package },
   { to: '/grade', label: 'AI Grader', icon: Sparkles },
-  { to: '/score-listing', label: 'Listing Scorer', icon: ShieldAlert },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { to: '/price-history', label: 'Price History', icon: TrendingUp },
   { to: '/alerts', label: 'Alerts', icon: Bell },
+]
+
+// Mobile bottom tab bar — 5 most-used
+const MOBILE_TABS = [
+  { to: '/', label: 'Home', icon: LayoutDashboard, exact: true },
+  { to: '/auctions', label: 'Deals', icon: Gavel },
+  { to: '/sales', label: 'Sales', icon: Database },
+  { to: '/portfolio', label: 'Mine', icon: Briefcase },
+  { to: '/grade', label: 'AI', icon: Sparkles },
 ]
 
 export default function Layout() {
@@ -205,18 +206,6 @@ export default function Layout() {
         )}
       </div>
 
-      {/* eBay status */}
-      {(!collapsed || mobile) && (
-        <div className="mx-3 mt-3 px-3 py-2 rounded-xl bg-gray-800/60 border border-gray-700/40 flex items-center gap-2">
-          {ebayConnected
-            ? <Wifi size={11} className="text-green-400 shrink-0" />
-            : <WifiOff size={11} className="text-gray-500 shrink-0" />}
-          <span className={`text-xs font-medium ${ebayConnected ? 'text-green-400' : 'text-gray-500'}`}>
-            {ebayConnected ? 'Live eBay Data' : 'Simulated Data'}
-          </span>
-        </div>
-      )}
-
       {/* Nav */}
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {NAV.map(({ to, label, icon: Icon, exact }) => (
@@ -269,12 +258,6 @@ export default function Layout() {
             <BellRing size={12} />
             {pushState === 'subscribed' ? 'Push enabled' : pushState === 'busy' ? '…' : 'Enable push alerts'}
           </button>
-        )}
-        {(!collapsed || mobile) && (
-          <div className="flex items-center gap-2 px-1">
-            <div className={`w-1.5 h-1.5 rounded-full ${wsColor} ${wsStatus !== 'disconnected' ? 'animate-pulse' : ''}`} />
-            <span className="text-[10px] text-gray-600 capitalize font-medium">{wsStatus}</span>
-          </div>
         )}
         {collapsed && !mobile && (
           <button
@@ -334,12 +317,12 @@ export default function Layout() {
             </div>
             <span className="font-black text-white text-sm tracking-tight">F1 Card Hub</span>
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-800/60">
-            <div className={`w-1.5 h-1.5 rounded-full ${wsColor} ${wsStatus !== 'disconnected' ? 'animate-pulse' : ''}`} />
-            {snipeCount > 0 && (
+          {snipeCount > 0 ? (
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-600/20">
+              <Zap size={10} className="text-red-400" fill="currentColor" />
               <span className="text-[10px] font-black text-red-400">{snipeCount}</span>
-            )}
-          </div>
+            </div>
+          ) : <div className="w-8" />}
         </div>
 
         {/* Snipe alert banner */}
@@ -355,9 +338,31 @@ export default function Layout() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden">
+        <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-20 md:pb-6">
           <Outlet />
         </main>
+
+        {/* Mobile bottom tab bar */}
+        <nav
+          className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800/80 flex items-center justify-around px-1"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          {MOBILE_TABS.map(({ to, label, icon: Icon, exact }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={exact}
+              className={({ isActive }) =>
+                `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[56px] justify-center transition-colors ${
+                  isActive ? 'text-red-400' : 'text-gray-500 hover:text-gray-300'
+                }`
+              }
+            >
+              <Icon size={20} />
+              <span className="text-[10px] font-semibold">{label}</span>
+            </NavLink>
+          ))}
+        </nav>
       </div>
 
       {showTutorial && <Tutorial onClose={dismissTutorial} />}
