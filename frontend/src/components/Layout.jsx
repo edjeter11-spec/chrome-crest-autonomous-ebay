@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
-  Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Sunrise
+  Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Sunrise, Camera
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
@@ -18,6 +18,7 @@ const NAV = [
   { to: '/sales', label: 'Sales', icon: Database },
   { to: '/drivers', label: 'Drivers', icon: Users },
   { to: '/graded', label: 'Graded', icon: Shield },
+  { to: '/my-cards', label: 'My Cards', icon: Camera },
   { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
   { to: '/wishlist', label: 'Watchlist', icon: Heart },
   { to: '/grade', label: 'AI Grader', icon: Sparkles },

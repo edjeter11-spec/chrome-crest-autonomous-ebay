@@ -36,6 +36,7 @@ const ScoreListing = lazy(() => import('./pages/ScoreListing'))
 const CardPage = lazy(() => import('./pages/CardPage'))
 const Compare = lazy(() => import('./pages/Compare'))
 const Today = lazy(() => import('./pages/Today'))
+const MyCards = lazy(() => import('./pages/MyCards'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="bin" element={<BuyItNow />} />
           <Route path="drivers" element={<Suspense fallback={<PageFallback />}><Drivers /></Suspense>} />
           <Route path="portfolio" element={<RequireAuth><Suspense fallback={<PageFallback />}><Portfolio /></Suspense></RequireAuth>} />
+          <Route path="my-cards" element={<RequireAuth><Suspense fallback={<PageFallback />}><MyCards /></Suspense></RequireAuth>} />
           <Route path="wishlist" element={<RequireAuth><Suspense fallback={<PageFallback />}><Wishlist /></Suspense></RequireAuth>} />
           <Route path="price-history" element={<Suspense fallback={<PageFallback />}><PriceHistory /></Suspense>} />
           <Route path="alerts" element={<Suspense fallback={<PageFallback />}><AlertsPage /></Suspense>} />
