@@ -68,7 +68,7 @@ async def predict_grade(image: UploadFile = File(...)):
         from anthropic import Anthropic
         client = Anthropic(api_key=api_key)
         resp = client.messages.create(
-            model="claude-haiku-4-5",
+            model="claude-haiku-4-5-20251001",
             max_tokens=600,
             messages=[
                 {
@@ -154,7 +154,7 @@ async def scan_card(image: UploadFile = File(...)):
         from anthropic import Anthropic
         client = Anthropic(api_key=api_key)
         resp = client.messages.create(
-            model="claude-haiku-4-5",
+            model="claude-haiku-4-5-20251001",
             max_tokens=800,
             messages=[
                 {
