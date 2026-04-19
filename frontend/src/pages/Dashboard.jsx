@@ -301,9 +301,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Deal of the Day hero — top STRONG_BUY snipe */}
-      <DealOfTheDay snipes={snipes} auctions={auctions} />
-
       {/* NEW: Live ticker strip */}
       {ticker.length > 0 && (
         <div className="relative overflow-hidden bg-gray-900/70 border border-gray-800/60 rounded-2xl">

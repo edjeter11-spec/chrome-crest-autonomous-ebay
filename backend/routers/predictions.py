@@ -36,6 +36,8 @@ def predict_driver(
         SoldCard.sale_price > 0,
         SoldCard.is_duplicate == False,  # noqa: E712
     )
+    # Exclude SportsCardsPro synthetic benchmark rows (all dated today, skew slope)
+    q = q.filter((SoldCard.source != 'SportsCardsPro') | (SoldCard.source.is_(None)))
     if parallel:
         q = q.filter(SoldCard.parallel == parallel)
     if grade:

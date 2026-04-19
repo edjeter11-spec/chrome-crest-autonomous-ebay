@@ -3,6 +3,7 @@ import { Camera, Trash2, Plus, Sparkles } from 'lucide-react'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import ScanCardModal from '../components/ScanCardModal'
+import TopPicks from '../components/TopPicks'
 
 export default function MyCards() {
   const { user } = useAuth()
@@ -46,6 +47,8 @@ export default function MyCards() {
           <Camera size={16} /> Scan new card
         </button>
       </div>
+
+      <TopPicks />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <Stat label="Cards" value={cards.length} />
