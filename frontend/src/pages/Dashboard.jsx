@@ -199,8 +199,21 @@ export default function Dashboard() {
     () => auctions.filter(a => isAuction(a) && secsLeft(a) > 0 && (a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')).length,
     [auctions]
   )
+  // "Ending Soon" = within 1 hour (label says <1h, counter must match).
+  // Loose isAuction check: accept any row with a future end_time, regardless of
+  // whether buying_options is populated (it isn't always).
+  const isLiveAuctionRow = (a) => {
+    const s = secsLeft(a)
+    if (s <= 0) return false
+    const bo = a.buying_options || []
+    return bo.includes('AUCTION') || (a.bid_count || 0) > 0 || !bo.length
+  }
   const endingSoonCount = useMemo(
-    () => auctions.filter(a => { const s = secsLeft(a); return isAuction(a) && s > 0 && s < 1800 }).length,
+    () => auctions.filter(a => isLiveAuctionRow(a) && secsLeft(a) < 3600).length,
+    [auctions]
+  )
+  const endingSoonList = useMemo(
+    () => auctions.filter(isLiveAuctionRow).sort((a,b) => secsLeft(a) - secsLeft(b)).slice(0, 5),
     [auctions]
   )
   const avg30d = useMemo(() => {
