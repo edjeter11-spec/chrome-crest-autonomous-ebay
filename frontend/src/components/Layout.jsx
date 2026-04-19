@@ -359,6 +359,14 @@ export default function Layout() {
 
         <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-20 md:pb-6">
           <Outlet />
+          {/* FTC-required affiliate disclosure */}
+          <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-gray-800/60">
+            <p className="text-[10px] text-gray-600 leading-relaxed">
+              <strong className="text-gray-500">Disclosure:</strong> As an eBay Partner, F1 Card Hub may be compensated
+              when you make a qualifying purchase after clicking a link on this site. This does not affect the price
+              you pay. Median prices and verdicts are computed from public sale data and are not investment advice.
+            </p>
+          </div>
         </main>
 
         {/* Mobile bottom tab bar */}
