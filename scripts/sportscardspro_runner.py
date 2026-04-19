@@ -97,57 +97,53 @@ def scrape_listing_page(page, url: str):
     except Exception:
         pass
 
+    # Try to ensure full table is rendered (DataTables can lazy-load on scroll)
+    try:
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        page.wait_for_timeout(1500)
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(500)
+    except Exception:
+        pass
+
     items = page.evaluate("""
         () => {
             const out = [];
             const seen = new Set();
 
-            // SCP renders a #games_table DataTable with sortable columns.
-            // Column order: [Card Name] [Loose Price] [Complete Price] [New Price] [Graded Price] ...
-            // We grab the full row and let Python sort out which price is which.
-            const rows = document.querySelectorAll('#games_table tbody tr, table.games-table tbody tr, .collection-table tbody tr');
-            rows.forEach(row => {
-                const linkEl = row.querySelector('a[href*="/game/"]');
-                if (!linkEl) return;
+            // Strategy: find every link to /game/ (product page), walk up to its row
+            // container, pull title + all $ values in that container.
+            const links = document.querySelectorAll('a[href*="/game/"]');
+            links.forEach(linkEl => {
                 const href = linkEl.getAttribute('href') || '';
+                if (!href || !href.includes('/game/')) return;
+                if (seen.has(href)) return;
+
                 const title = (linkEl.textContent || '').replace(/\\s+/g, ' ').trim();
-                if (!title || title.length < 4) return;
-                const key = href || title;
-                if (seen.has(key)) return;
-                seen.add(key);
+                if (!title || title.length < 3) return;
 
-                const cells = Array.from(row.querySelectorAll('td'));
-                const prices = [];
-                cells.forEach(td => {
-                    const txt = (td.textContent || '').trim();
-                    const m = txt.match(/^\\$([\\d,]+\\.?\\d{0,2})$/);
-                    if (m) prices.push('$' + m[1]);
-                    else if (txt === 'N/A' || txt === '--') prices.push(null);
-                });
+                // Walk up to find the row container (tr, or div with price info)
+                let row = linkEl.closest('tr');
+                if (!row) row = linkEl.closest('.product, .game, [class*="row"], li');
+                if (!row) row = linkEl.parentElement && linkEl.parentElement.parentElement;
+                if (!row) return;
 
+                // Grab all dollar amounts in this row
+                const rowText = row.textContent || '';
+                const priceMatches = rowText.match(/\\$\\s*[\\d,]+\\.?\\d{0,2}/g) || [];
+                const prices = priceMatches.slice(0, 8);
+
+                seen.add(href);
                 const imgEl = row.querySelector('img');
                 const fullHref = href.startsWith('http') ? href : 'https://www.sportscardspro.com' + href;
-                out.push({ title, url: fullHref, image: imgEl ? (imgEl.src || '') : '', prices });
+                out.push({
+                    title,
+                    url: fullHref,
+                    image: imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || '') : '',
+                    prices,
+                });
             });
 
-            // Fallback: generic table rows with price-looking cells
-            if (out.length === 0) {
-                document.querySelectorAll('table tr').forEach(row => {
-                    const linkEl = row.querySelector('a[href*="/game/"], a[href*="/console/"]');
-                    if (!linkEl) return;
-                    const href = linkEl.getAttribute('href') || '';
-                    const title = (linkEl.textContent || '').replace(/\\s+/g, ' ').trim();
-                    if (!title || seen.has(href)) return;
-                    seen.add(href);
-                    const prices = [];
-                    row.querySelectorAll('td').forEach(td => {
-                        const m = (td.textContent || '').match(/\\$[\\d,]+\\.?\\d{0,2}/);
-                        if (m) prices.push(m[0]);
-                    });
-                    const fullHref = href.startsWith('http') ? href : 'https://www.sportscardspro.com' + href;
-                    out.push({ title, url: fullHref, image: '', prices });
-                });
-            }
             return out;
         }
     """) or []
