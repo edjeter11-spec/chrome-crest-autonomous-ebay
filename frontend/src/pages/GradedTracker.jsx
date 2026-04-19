@@ -3,6 +3,7 @@ import {
   Shield, ExternalLink, TrendingUp, Award, BarChart2, Search,
   X, Clock, Gavel, Info,
 } from 'lucide-react'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -263,7 +264,7 @@ export default function GradedTracker() {
         ) : (
           <div className="space-y-1.5">
             {activeAuctions.map(a => (
-              <a key={a.id} href={a.ebay_url} target="_blank" rel="noreferrer"
+              <a key={a.id} href={ebayAffiliateUrl(a.ebay_url)} target="_blank" rel="sponsored noopener"
                 className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-900/60 transition-colors">
                 {a.image_url && <img src={a.image_url} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" loading="lazy" />}
                 <div className="flex-1 min-w-0">
@@ -303,7 +304,7 @@ export default function GradedTracker() {
         ) : (
           <div className="space-y-1">
             {sales.map(s => (
-              <a key={s.id} href={s.ebay_url || '#'} target="_blank" rel="noreferrer"
+              <a key={s.id} href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
                 className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-900/60 transition-colors">
                 {s.image_url ? (
                   <img src={s.image_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" loading="lazy" />
@@ -398,7 +399,7 @@ function DriverDrawer({ driver, onClose }) {
                 <h3 className="text-xs font-bold text-white mb-2 uppercase tracking-wide">Top 10 Graded Sales</h3>
                 <div className="space-y-1">
                   {(data.top_sales || []).map((s, i) => (
-                    <a key={i} href={s.ebay_url || '#'} target="_blank" rel="noreferrer"
+                    <a key={i} href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
                       className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-900/60">
                       <div className="flex-1 min-w-0">
                         <div className="text-xs text-white truncate">{s.title}</div>

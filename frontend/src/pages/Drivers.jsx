@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { usePersistedState } from '../lib/hooks'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const ROOKIES_2025 = new Set([
   'Andrea Kimi Antonelli', 'Gabriel Bortoleto', 'Oliver Bearman',
@@ -353,7 +354,7 @@ export default function Drivers() {
                 <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest flex items-center gap-2">
                   <Trophy size={12} className="text-amber-400" /> Top Graded Sale Ever
                 </h3>
-                <a href={topGraded.ebay_url || '#'} target="_blank" rel="noreferrer"
+                <a href={topGraded.ebay_url ? ebayAffiliateUrl(topGraded.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
                   className="flex items-center gap-3 bg-gradient-to-r from-amber-900/20 to-transparent border border-amber-800/30 rounded-2xl p-3 hover:from-amber-900/30 transition-colors">
                   {topGraded.image_url && (
                     <img src={topGraded.image_url} alt="" className="w-12 h-16 rounded object-cover shrink-0" onError={e => e.target.style.display='none'} />
@@ -392,7 +393,7 @@ export default function Drivers() {
                 </h3>
                 <div className="space-y-1 bg-gray-800/30 rounded-xl p-1 border border-gray-800/40">
                   {recentSales.slice(0, 10).map(s => (
-                    <a key={s.id} href={s.ebay_url || '#'} target="_blank" rel="noreferrer"
+                    <a key={s.id} href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
                       className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-800/60 transition-colors text-xs">
                       <span className="text-gray-300 flex-1 truncate">{s.title}</span>
                       {s.grade && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 font-bold shrink-0">{s.grade}</span>}

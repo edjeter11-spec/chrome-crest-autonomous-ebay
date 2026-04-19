@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Eye, ExternalLink, Gavel, Tag, Heart } from 'lucide-react'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -63,9 +64,9 @@ export default function SharedWatchlist() {
               {auctions.map((a, i) => (
                 <a
                   key={i}
-                  href={a.ebay_url}
+                  href={ebayAffiliateUrl(a.ebay_url)}
                   target="_blank"
-                  rel="noopener noreferrer"
+                  rel="sponsored noopener"
                   className="bg-gray-900/70 border border-gray-800 hover:border-gray-700 rounded-2xl p-3 flex gap-3 transition-colors"
                 >
                   <div className="w-14 h-20 rounded-lg bg-gray-800 overflow-hidden shrink-0">

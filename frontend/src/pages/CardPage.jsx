@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { TrendingUp, TrendingDown, ExternalLink, Tag, Award, Users, ArrowLeft } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const SITE = 'https://chrome-crest-autonomous-ebay.vercel.app'
@@ -213,7 +214,7 @@ export default function CardPage() {
               const pctOfMed = medianPrice ? total / medianPrice : null
               const isDeal = pctOfMed != null && pctOfMed <= 0.8
               return (
-                <a key={a.id} href={a.ebay_url} target="_blank" rel="noopener noreferrer"
+                <a key={a.id} href={ebayAffiliateUrl(a.ebay_url)} target="_blank" rel="sponsored noopener"
                   className={`bg-gray-800/60 hover:bg-gray-800 rounded-xl p-3 border transition-colors ${isDeal ? 'border-green-700/50' : 'border-gray-700/40'}`}>
                   <div className="flex gap-3">
                     {a.image_url && <img src={a.image_url} alt="" className="w-14 h-16 rounded object-cover bg-gray-900" />}
@@ -272,7 +273,7 @@ export default function CardPage() {
                     <td className="text-[10px] text-gray-500">{s.is_auction ? 'auction' : 'bin'}</td>
                     <td className="text-right">
                       {s.ebay_url && (
-                        <a href={s.ebay_url} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-white">
+                        <a href={ebayAffiliateUrl(s.ebay_url)} target="_blank" rel="sponsored noopener" className="text-gray-500 hover:text-white">
                           <ExternalLink size={12} />
                         </a>
                       )}

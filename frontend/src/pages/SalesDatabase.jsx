@@ -19,6 +19,7 @@ async function shareSale(e, sale) {
   try { await navigator.clipboard.writeText(url) } catch {}
 }
 import { swrFetch } from '../lib/cache'
+import { ebayAffiliateUrl } from '../lib/ebay'
 import { verdictFor, VERDICT_STYLES } from '../lib/verdict'
 import { applySeasonFilter, isNotable } from '../lib/season'
 
@@ -420,7 +421,7 @@ export default function SalesDatabase() {
                   <Share2 size={11} />
                 </button>
                 {s.ebay_url && (
-                  <a href={s.ebay_url} target="_blank" rel="noopener noreferrer"
+                  <a href={ebayAffiliateUrl(s.ebay_url)} target="_blank" rel="sponsored noopener"
                     className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 text-gray-400">
                     <ExternalLink size={11} />
                   </a>
@@ -523,7 +524,7 @@ export default function SalesDatabase() {
                         <Share2 size={12} />
                       </button>
                       {s.ebay_url && (
-                        <a href={s.ebay_url} target="_blank" rel="noopener noreferrer"
+                        <a href={ebayAffiliateUrl(s.ebay_url)} target="_blank" rel="sponsored noopener"
                           className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800 hover:bg-cyan-600/20 text-gray-400 hover:text-cyan-400 transition-colors">
                           <ExternalLink size={12} />
                         </a>

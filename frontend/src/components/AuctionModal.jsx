@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronRight, BookmarkPlus, BookmarkCheck,
   DollarSign, BarChart2, User, Package, Heart, Check, Plus
 } from 'lucide-react'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const proxyImg = url => {
@@ -220,7 +221,7 @@ export default function AuctionModal({ auction, onClose, onWatchlistChange }) {
   }
 
   const openEbay = () => {
-    if (auction.ebay_url) window.open(auction.ebay_url, '_blank', 'noopener,noreferrer')
+    if (auction.ebay_url) window.open(ebayAffiliateUrl(auction.ebay_url), '_blank', 'noopener,noreferrer')
   }
 
   const { text: timeText, cls: timeCls } = formatTimeLeft(timeLeft)
@@ -416,7 +417,7 @@ export default function AuctionModal({ auction, onClose, onWatchlistChange }) {
               </div>
             </div>
             {auction.ebay_url && (
-              <a href={`https://www.ebay.com/sch/${auction.seller}`} target="_blank" rel="noopener noreferrer"
+              <a href={ebayAffiliateUrl(`https://www.ebay.com/sch/${auction.seller}`)} target="_blank" rel="sponsored noopener"
                 className="ml-auto text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
                 <ExternalLink size={10} /> Seller
               </a>

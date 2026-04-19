@@ -8,6 +8,7 @@ import { swrFetch } from '../lib/cache'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import ShareWatchlistModal from '../components/ShareWatchlistModal'
 import SmartRules from '../components/SmartRules'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -169,7 +170,7 @@ export default function Watchlist() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-1 shrink-0">
-                    <a href={a.ebay_url} target="_blank" rel="noopener noreferrer"
+                    <a href={ebayAffiliateUrl(a.ebay_url)} target="_blank" rel="sponsored noopener"
                        className="p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
                       <ExternalLink size={11} />
                     </a>
@@ -266,7 +267,7 @@ export default function Watchlist() {
                           const tl = timeLeft(m.time_left || 0)
                           const isAuc = (m.buying_options || []).includes('AUCTION')
                           return (
-                            <a key={m.id} href={m.ebay_url} target="_blank" rel="noopener noreferrer"
+                            <a key={m.id} href={ebayAffiliateUrl(m.ebay_url)} target="_blank" rel="sponsored noopener"
                                className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-800/40 hover:bg-gray-800 transition-colors">
                               {isAuc ? <Gavel size={10} className="text-red-400" /> : <Tag size={10} className="text-green-400" />}
                               <span className="text-xs text-gray-300 truncate flex-1">{m.title}</span>

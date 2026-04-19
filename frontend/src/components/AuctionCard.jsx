@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { scarcityBadgeStyle } from '../lib/hooks'
 import { verdictFor } from '../lib/verdict'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -57,7 +58,7 @@ function BidIntentModal({ auction, onClose, onSaved }) {
       })
       const data = await r.json()
       onSaved?.(data)
-      if (goToEbay && bidUrl) window.open(bidUrl, '_blank', 'noopener')
+      if (goToEbay && bidUrl) window.open(ebayAffiliateUrl(bidUrl), '_blank', 'noopener')
       onClose()
     } catch (e) {
       alert('Save failed: ' + e.message)
@@ -306,9 +307,9 @@ function PricingOptions({ auction, comp }) {
       <div className="flex flex-col gap-1">
         {hasBIN && auction.buy_now_price && (
           <a
-            href={auction.ebay_url}
+            href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
-            rel="noopener noreferrer"
+            rel="sponsored noopener"
             className="flex items-center justify-center gap-1.5 py-2 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white text-xs font-bold rounded-lg transition-colors"
           >
             <Tag size={10} />
@@ -317,9 +318,9 @@ function PricingOptions({ auction, comp }) {
         )}
         {hasBestOffer && (
           <a
-            href={auction.ebay_url}
+            href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
-            rel="noopener noreferrer"
+            rel="sponsored noopener"
             className="flex items-center justify-center gap-1.5 py-2 bg-blue-800/80 hover:bg-blue-700 active:bg-blue-900 text-blue-200 text-xs font-bold rounded-lg transition-colors border border-blue-700/50"
           >
             <MessageSquare size={10} />
@@ -328,9 +329,9 @@ function PricingOptions({ auction, comp }) {
         )}
         {auction.ebay_url && (
           <a
-            href={auction.ebay_url}
+            href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
-            rel="noopener noreferrer"
+            rel="sponsored noopener"
             className="flex items-center justify-center gap-1.5 py-1.5 bg-gray-800 hover:bg-gray-700 active:bg-gray-900 text-gray-400 hover:text-gray-200 text-xs font-medium rounded-lg transition-colors"
           >
             {hasAuction ? <><Gavel size={10} /> Bid on eBay</> : <><ExternalLink size={10} /> View on eBay</>}
@@ -378,7 +379,7 @@ function BidHistoryPanel({ auctionId }) {
         <p className="text-xs text-gray-600 italic">No bids yet — first mover advantage</p>
       )}
       {history.ebay_bid_url && (
-        <a href={history.ebay_bid_url} target="_blank" rel="noopener noreferrer"
+        <a href={ebayAffiliateUrl(history.ebay_bid_url)} target="_blank" rel="sponsored noopener"
           className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
         >
           <ExternalLink size={10} /> Full history on eBay
@@ -516,7 +517,7 @@ function SellerPanel({ auctionId }) {
         </div>
       )}
       {seller.ebay_seller_url && (
-        <a href={seller.ebay_seller_url} target="_blank" rel="noopener noreferrer"
+        <a href={ebayAffiliateUrl(seller.ebay_seller_url)} target="_blank" rel="sponsored noopener"
           className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
         >
           <ExternalLink size={10} /> View seller on eBay

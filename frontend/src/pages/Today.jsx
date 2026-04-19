@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Flame, DollarSign, BarChart3, Eye, Check, Bell, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react'
 import { applySeasonFilter } from '../lib/season'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const LS_KEY = 'cc_last_today_visit'
@@ -110,7 +111,7 @@ export default function Today() {
                     <td className="text-right font-bold text-green-400">${(s.sale_price || 0).toFixed(0)}</td>
                     <td className="text-[10px] text-gray-500">{formatRelative(s.sale_date)}</td>
                     <td>
-                      {s.ebay_url && <a href={s.ebay_url} target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-white"><ExternalLink size={11} /></a>}
+                      {s.ebay_url && <a href={ebayAffiliateUrl(s.ebay_url)} target="_blank" rel="sponsored noopener" className="text-gray-500 hover:text-white"><ExternalLink size={11} /></a>}
                     </td>
                   </tr>
                 ))}
@@ -161,7 +162,7 @@ export default function Today() {
         ) : (
           <div className="space-y-2">
             {watchlist_changes.slice(0, 10).map(w => (
-              <a key={w.id} href={w.ebay_url || '#'} target="_blank" rel="noopener noreferrer"
+              <a key={w.id} href={w.ebay_url ? ebayAffiliateUrl(w.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
                 className="flex items-center gap-3 bg-gray-800/60 hover:bg-gray-800 rounded-lg p-2.5 transition-colors">
                 {w.image_url && <img src={w.image_url} alt="" className="w-10 h-12 rounded object-cover bg-gray-900" />}
                 <div className="min-w-0 flex-1">
