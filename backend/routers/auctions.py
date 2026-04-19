@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from database import get_db, Auction, Card
@@ -72,6 +72,7 @@ def list_auctions(
     buying: Optional[str] = None,
     limit: int = Query(100, le=500),
     offset: int = 0,
+    response: Response = None,
     db: Session = Depends(get_db),
 ):
     q = db.query(Auction).options(joinedload(Auction.card))
@@ -89,6 +90,9 @@ def list_auctions(
     # Sort ending-soonest first so auction listings (which expire today) always
     # appear before BIN listings (which may expire in 30+ days).
     auctions = q.order_by(Auction.end_time.asc()).offset(offset).limit(limit).all()
+    # Vercel Edge cache: fresh 60s, serve stale up to 59s more while revalidating.
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=59"
     return {"total": total, "auctions": [auction_to_dict(a) for a in auctions]}
 
 

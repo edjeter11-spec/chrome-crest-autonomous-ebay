@@ -77,12 +77,21 @@ export function isHiddenByDefault(auction) {
 // "Gold /50 Auto" AND an autograph. We check auto keywords directly on the
 // title so filterValue='Autograph' catches every signed card regardless of
 // what color parallel it also is.
-const AUTO_PATTERNS = [/\bauto(graph)?\b/i, /\bsigned\b/i, /\bon[- ]?card\b/i]
+// Strict autograph detection. Positive: auto(graph), signed, signature, on-card.
+// Negative: authentic/authenticated/authorized/authority — these are seller
+// boilerplate, NOT autographs. Also skip "automatic", "auto-bid".
+const AUTO_POSITIVE = /\b(auto(graph|s)?|signed|signature|on[- ]?card)\b/i
+const AUTO_NEGATIVE = /\b(authentic(ated|ity)?|authori[sz]ed|authority|automatic|auto[- ]?bid)\b/i
 export function isAutograph(auction) {
-  const t = (auction?.title || '').toLowerCase()
-  if (AUTO_PATTERNS.some(re => re.test(t))) return true
-  const p = (auction?.card?.parallel || '').toLowerCase()
-  return p.includes('auto') || p.includes('signed')
+  const t = (auction?.title || '')
+  if (!AUTO_POSITIVE.test(t)) {
+    // Fallback to parallel field only if title has no auto hint at all.
+    const p = (auction?.card?.parallel || '').toLowerCase()
+    return /\b(auto|signed|signature)\b/.test(p)
+  }
+  // Title has "auto" — strip false-positive matches and re-check.
+  const cleaned = t.replace(AUTO_NEGATIVE, '')
+  return AUTO_POSITIVE.test(cleaned)
 }
 
 // True if an auction matches the selected parallel filter option.

@@ -2,8 +2,9 @@ name: Scrape eBay (Playwright)
 
 on:
   schedule:
-    # Every 3 hours — bypasses Vercel/eBay Browse API quota entirely
-    - cron: '0 */3 * * *'
+    # Every hour — cuts auction staleness from 3h → 1h. Stays under any quota
+    # because the scraper uses Playwright on the public site (not Browse API).
+    - cron: '0 * * * *'
   workflow_dispatch:  # manual trigger from the Actions tab
 
 jobs:

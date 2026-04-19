@@ -30,11 +30,14 @@ export const VERDICT_LABEL = {
   PASS:       'PASS',
 }
 
-// Returns null when there isn't enough data for a confident verdict.
-//   minN: minimum comp count (default 3, same as backend)
-export function verdictFor(totalCost, median, n, minN = 3) {
+// Returns null only when we truly have no data. With n>=2 we still return a
+// verdict but flag lowConfidence=true so UI can de-emphasize it.
+//   minN: minimum comps for a confident verdict (default 3)
+//   minNLow: show a low-confidence verdict down to this count (default 2)
+export function verdictFor(totalCost, median, n, minN = 3, minNLow = 2) {
   if (!totalCost || !median || median <= 0) return null
-  if (n != null && n < minN) return null
+  if (n != null && n < minNLow) return null
+  const lowConfidence = n != null && n < minN
   const ratio = totalCost / median
   let key
   if (ratio <= VERDICT_THRESHOLDS.STRONG_BUY) key = 'STRONG_BUY'
@@ -42,13 +45,16 @@ export function verdictFor(totalCost, median, n, minN = 3) {
   else if (ratio <= VERDICT_THRESHOLDS.FAIR) key = 'FAIR'
   else if (ratio <= VERDICT_THRESHOLDS.OVERPRICED) key = 'OVERPRICED'
   else key = 'PASS'
+  // Never promote a low-confidence read to STRONG_BUY — downgrade to GOOD_BUY.
+  if (lowConfidence && key === 'STRONG_BUY') key = 'GOOD_BUY'
   return {
     key,
-    label: VERDICT_LABEL[key],
+    label: VERDICT_LABEL[key] + (lowConfidence ? '*' : ''),
     cls: VERDICT_STYLES[key].cls,
     dotColor: VERDICT_STYLES[key].dot,
     text: VERDICT_STYLES[key].text,
     ratio,
+    lowConfidence,
     pctVsMedian: Math.round((1 - ratio) * 100),
   }
 }

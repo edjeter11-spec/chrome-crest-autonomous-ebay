@@ -182,13 +182,22 @@ def calculate_snipe_score(auction, card, db: Session | None = None) -> float:
     else:
         bid_score = 10
 
-    return round(
+    score = round(
         time_score * 0.35
         + price_score * 0.40
         + feedback_score * 0.10
         + bid_score * 0.15,
         1,
     )
+    # Hard cap: anything listed >10% over median is NEVER a good snipe,
+    # regardless of how little time is left. Prevents "ends in 5 min at $2,300"
+    # scoring high on obvious overprices.
+    if ref_price and ref_price > 0 and cur_total > 0:
+        if cur_total > ref_price * 1.1:
+            score = min(score, 40)
+        if cur_total > ref_price * 1.5:
+            score = min(score, 15)
+    return score
 
 
 def _parallel_from_title(title: str) -> str:
