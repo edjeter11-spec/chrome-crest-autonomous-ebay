@@ -122,6 +122,39 @@ export default function Auctions() {
       return 0
     })
 
+  // Emit ItemList JSON-LD for the first 20 visible auctions (SEO).
+  useEffect(() => {
+    const top = filtered.slice(0, 20)
+    const payload = {
+      '@context': 'https://schema.org',
+      '@type': 'ItemList',
+      itemListElement: top.map((a, i) => ({
+        '@type': 'ListItem',
+        position: i + 1,
+        item: {
+          '@type': 'Product',
+          name: a.title,
+          image: a.image_url,
+          offers: {
+            '@type': 'Offer',
+            price: a.current_price,
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+            url: a.ebay_affiliate_url || a.affiliate_url || a.item_url,
+          },
+        },
+      })),
+    }
+    const existing = document.getElementById('auctions-jsonld')
+    if (existing) existing.remove()
+    const tag = document.createElement('script')
+    tag.type = 'application/ld+json'
+    tag.id = 'auctions-jsonld'
+    tag.textContent = JSON.stringify(payload)
+    document.head.appendChild(tag)
+    return () => { const el = document.getElementById('auctions-jsonld'); if (el) el.remove() }
+  }, [auctions, search, sortBy, filterParallel, printRun, listingType, filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter, filterStrongBuy])
+
   const snipeCount = filtered.filter(a => a.snipe_eligible).length
   const strongBuyCount = auctions.filter(a => a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY').length
   const { visibleCount, sentinelRef } = useProgressiveRender(filtered.length, 60, 40)

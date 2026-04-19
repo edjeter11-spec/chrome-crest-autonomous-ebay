@@ -44,6 +44,7 @@ const CORE_ROUTES = [
   ['/sales', '0.8'], ['/graded', '0.8'], ['/drivers', '0.8'], ['/psa', '0.8'],
   ['/compare', '0.8'], ['/portfolio', '0.8'], ['/analytics', '0.8'],
   ['/alerts', '0.8'], ['/wishlist', '0.8'], ['/price-history', '0.8'],
+  ['/about', '0.5'],
 ]
 
 function urlNode(loc, priority = '0.6') {

@@ -148,7 +148,7 @@ export default function Dashboard() {
     )
 
     swrFetch(
-      `${API}/api/auctions?buying=auction&limit=500`,
+      `${API}/api/auctions/with-verdicts?buying=auction&limit=500`,
       d => { setAuctions(applySeasonFilter(d.auctions || d || [])); setAuctionsLoading(false) }
     )
 
@@ -193,6 +193,10 @@ export default function Dashboard() {
   // --- KPI derivations ---
   const liveAuctionsCount = useMemo(
     () => auctions.filter(a => isAuction(a) && secsLeft(a) > 0).length,
+    [auctions]
+  )
+  const strongBuyCount = useMemo(
+    () => auctions.filter(a => isAuction(a) && secsLeft(a) > 0 && (a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')).length,
     [auctions]
   )
   const endingSoonCount = useMemo(
@@ -426,7 +430,7 @@ export default function Dashboard() {
           icon={Gavel}
           label="Live Auctions"
           value={auctionsLoading ? null : liveAuctionsCount.toLocaleString()}
-          sub="Total active"
+          sub={auctionsLoading ? 'Total active' : `🔥 ${strongBuyCount} strong buys`}
           color="blue"
         />
         <KpiTile
