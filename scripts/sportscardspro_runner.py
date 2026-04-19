@@ -1,23 +1,14 @@
 """
-SportsCardsPro (sister site of PriceCharting) scraper.
+SportsCardsPro scraper — full set extraction + per-card sale history.
 
-Why this source: SportsCardsPro publishes a dedicated price guide page for the
-2025 Topps Chrome Formula 1 set (and the autograph subset). Each row contains
-ungraded + PSA-graded prices derived from real eBay sales — perfect for
-seeding our sold_cards index with reliable benchmark prices.
+Main listing page  →  all cards in 2025 Topps Chrome F1 (+ autos, parallels).
+Per-card detail    →  recent sales with real prices + dates (eBay-sourced by SCP).
 
-Verified URLs:
-  https://www.sportscardspro.com/console/racing-cards-2025-topps-chrome-formula-1
-  https://www.sportscardspro.com/console/racing-cards-2025-topps-chrome-formula-1-autograph
-
-Each card row is rendered server-side in a table (#games_table or similar).
-Per-card detail pages expose recent sales transactions.
-
-Writes one synthetic sold_cards row per card per grade tier with
-source='SportsCardsPro'. Synthetic id = 'scp-{hash}'.
+SCP is PriceCharting's sports sister; data is real eBay sales, not estimates.
+Synthetic id prefix 'scp-' prevents collision with real eBay item IDs.
 """
-import os, re, sys, time, hashlib, logging
-from datetime import datetime
+import os, re, sys, time, hashlib, logging, random
+from datetime import datetime, timedelta
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -40,19 +31,23 @@ if not DB_URL:
     log.error("DATABASE_URL not set — exiting")
     sys.exit(1)
 
-# Confirmed-existing pages on sportscardspro.com (verified via search results).
-PAGES = [
-    ("https://www.sportscardspro.com/console/racing-cards-2025-topps-chrome-formula-1", "Base"),
-    ("https://www.sportscardspro.com/console/racing-cards-2025-topps-chrome-formula-1-autograph", "Autograph"),
-    ("https://www.sportscardspro.com/console/racing-cards-2024-topps-chrome-formula-1", "Base"),
-    ("https://www.sportscardspro.com/console/racing-cards-2023-topps-chrome-formula-1", "Base"),
+HOME = "https://www.sportscardspro.com/"
+BASE_URL = "https://www.sportscardspro.com"
+
+# All 2025 Topps Chrome F1 pages on SCP
+LISTING_PAGES = [
+    ("https://www.sportscardspro.com/console/racing-cards-2025-topps-chrome-formula-1", "2025"),
+    ("https://www.sportscardspro.com/console/racing-cards-2025-topps-chrome-formula-1-autograph", "2025 Auto"),
+    ("https://www.sportscardspro.com/console/racing-cards-2024-topps-chrome-formula-1", "2024"),
+    ("https://www.sportscardspro.com/console/racing-cards-2023-topps-chrome-formula-1", "2023"),
 ]
 
-HOME = "https://www.sportscardspro.com/"
+# Cap detail pages per run so we don't time out in CI
+MAX_DETAIL_PAGES = int(os.environ.get("SCP_MAX_DETAIL", "80"))
 
 
-def synthetic_id(title: str, grade: str, price: float) -> str:
-    payload = f"{title}|{grade}|{price:.2f}"
+def synthetic_id(url: str, grade: str, price: float, sale_date: str) -> str:
+    payload = f"{url}|{grade}|{price:.2f}|{sale_date}"
     return f"scp-{hashlib.sha1(payload.encode()).hexdigest()[:16]}"
 
 
@@ -73,7 +68,6 @@ def upsert_sold(conn, rows):
         ) VALUES %s
         ON CONFLICT (ebay_item_id) DO UPDATE SET
             sale_price = EXCLUDED.sale_price,
-            image_url = COALESCE(EXCLUDED.image_url, sold_cards.image_url),
             scraped_at = EXCLUDED.scraped_at
     """
     with conn.cursor() as cur:
@@ -82,18 +76,19 @@ def upsert_sold(conn, rows):
     return len(rows)
 
 
-def scrape_page(page, url: str, default_parallel: str):
-    log.info(f"SCP: {url}")
+def scrape_listing_page(page, url: str):
+    """Return list of {title, url, image, prices[]} from the console/listing page."""
+    log.info(f"SCP listing: {url}")
     try:
-        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        page.goto(url, wait_until="domcontentloaded", timeout=50000)
     except Exception as e:
-        log.warning(f"Page load failed: {e}")
-        return [], "timeout"
+        log.warning(f"Listing load failed: {e}")
+        return [], str(e)[:120]
 
     page.wait_for_timeout(3000)
     human_dwell(page, 2.0)
 
-    blocked, reason = detect_block(page, "SCP")
+    blocked, reason = detect_block(page, "SCP-listing")
     if blocked:
         return [], reason
 
@@ -102,66 +97,185 @@ def scrape_page(page, url: str, default_parallel: str):
     except Exception:
         pass
 
-    # SCP uses a #games_table with rows: title link + ungraded price + grade-9 + grade-10 prices.
     items = page.evaluate("""
         () => {
             const out = [];
             const seen = new Set();
-            // Try table rows first
-            const rows = document.querySelectorAll('table tr, #games_table tr, .product, [class*="product-row"]');
+
+            // SCP renders a #games_table DataTable with sortable columns.
+            // Column order: [Card Name] [Loose Price] [Complete Price] [New Price] [Graded Price] ...
+            // We grab the full row and let Python sort out which price is which.
+            const rows = document.querySelectorAll('#games_table tbody tr, table.games-table tbody tr, .collection-table tbody tr');
             rows.forEach(row => {
-                const linkEl = row.querySelector('a[href*="/game/"], a[href*="/console/"], a.title');
+                const linkEl = row.querySelector('a[href*="/game/"]');
                 if (!linkEl) return;
-                const href = linkEl.href || '';
-                const titleText = (linkEl.textContent || '').trim();
-                if (!titleText || titleText.length < 5) return;
-                const cells = row.querySelectorAll('td');
-                // Collect every $-shaped value in row order
-                const prices = [];
-                cells.forEach(td => {
-                    const m = (td.textContent || '').match(/\\$\\s*[\\d,]+\\.?\\d{0,2}/g);
-                    if (m) m.forEach(p => prices.push(p));
-                });
-                if (prices.length === 0) {
-                    const all = (row.textContent || '').match(/\\$\\s*[\\d,]+\\.?\\d{0,2}/g);
-                    if (all) all.forEach(p => prices.push(p));
-                }
-                if (prices.length === 0) return;
-                const imgEl = row.querySelector('img');
-                const key = href + '|' + titleText;
+                const href = linkEl.getAttribute('href') || '';
+                const title = (linkEl.textContent || '').replace(/\\s+/g, ' ').trim();
+                if (!title || title.length < 4) return;
+                const key = href || title;
                 if (seen.has(key)) return;
                 seen.add(key);
-                out.push({
-                    title: titleText,
-                    url: href,
-                    image: imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || '') : '',
-                    prices: prices.slice(0, 5),  // ungraded, grade-7/8, 9, 9.5, 10
+
+                const cells = Array.from(row.querySelectorAll('td'));
+                const prices = [];
+                cells.forEach(td => {
+                    const txt = (td.textContent || '').trim();
+                    const m = txt.match(/^\\$([\\d,]+\\.?\\d{0,2})$/);
+                    if (m) prices.push('$' + m[1]);
+                    else if (txt === 'N/A' || txt === '--') prices.push(null);
                 });
+
+                const imgEl = row.querySelector('img');
+                const fullHref = href.startsWith('http') ? href : 'https://www.sportscardspro.com' + href;
+                out.push({ title, url: fullHref, image: imgEl ? (imgEl.src || '') : '', prices });
             });
-            return out.slice(0, 300);
+
+            // Fallback: generic table rows with price-looking cells
+            if (out.length === 0) {
+                document.querySelectorAll('table tr').forEach(row => {
+                    const linkEl = row.querySelector('a[href*="/game/"], a[href*="/console/"]');
+                    if (!linkEl) return;
+                    const href = linkEl.getAttribute('href') || '';
+                    const title = (linkEl.textContent || '').replace(/\\s+/g, ' ').trim();
+                    if (!title || seen.has(href)) return;
+                    seen.add(href);
+                    const prices = [];
+                    row.querySelectorAll('td').forEach(td => {
+                        const m = (td.textContent || '').match(/\\$[\\d,]+\\.?\\d{0,2}/);
+                        if (m) prices.push(m[0]);
+                    });
+                    const fullHref = href.startsWith('http') ? href : 'https://www.sportscardspro.com' + href;
+                    out.push({ title, url: fullHref, image: '', prices });
+                });
+            }
+            return out;
         }
-    """)
+    """) or []
+
     if not items:
-        body = page.evaluate("() => document.body ? document.body.innerText.slice(0, 500) : ''") or ""
-        log.info(f"SCP: 0 items; body preview: {body[:300]!r}")
-    return items or [], ""
+        body = page.evaluate("() => document.body ? document.body.innerText.slice(0, 600) : ''") or ""
+        log.warning(f"SCP: 0 cards found on {url}. Body: {body[:400]!r}")
+
+    log.info(f"  -> {len(items)} cards found")
+    return items, ""
 
 
-# Heuristic: SCP table column layout is typically [title, ungraded, grade-7-or-loose, grade-8, grade-9, grade-9.5, grade-10]
-# We map by index. Different pages may vary; we keep ungraded + grade 9 + grade 10 (the most-traded tiers).
-PRICE_TIER_MAP = [
-    ("Ungraded", None),
-    ("PSA 9", "PSA 9"),
-    ("PSA 10", "PSA 10"),
-]
+def scrape_detail_page(page, card_url: str, card_title: str):
+    """
+    Visit a per-card SCP page and extract the recent sales table.
+    Returns list of {price, grade, condition, sale_date, buyer_condition}.
+    """
+    try:
+        page.goto(card_url, wait_until="domcontentloaded", timeout=40000)
+    except Exception as e:
+        log.debug(f"Detail load failed for {card_url}: {e}")
+        return []
+
+    page.wait_for_timeout(2000 + random.randint(0, 1000))
+
+    blocked, _ = detect_block(page, "SCP-detail")
+    if blocked:
+        return []
+
+    sales = page.evaluate("""
+        () => {
+            const out = [];
+            // SCP detail page: recent sales in #sold-items table or .price-table
+            const selectors = [
+                '#sold-items tbody tr',
+                '.price-table tbody tr',
+                'table.sold-prices tbody tr',
+                '#completed-auctions tbody tr',
+            ];
+            let rows = [];
+            for (const sel of selectors) {
+                const found = document.querySelectorAll(sel);
+                if (found.length > 0) { rows = Array.from(found); break; }
+            }
+
+            // Fallback: any table with $ values and a date column
+            if (rows.length === 0) {
+                document.querySelectorAll('table tr').forEach(r => {
+                    const txt = r.textContent || '';
+                    if (txt.includes('$') && /\\d{4}/.test(txt)) rows.push(r);
+                });
+            }
+
+            rows.forEach(row => {
+                const cells = Array.from(row.querySelectorAll('td'));
+                if (cells.length < 2) return;
+                const texts = cells.map(c => (c.textContent || '').trim());
+                const priceCell = texts.find(t => /^\\$[\\d,]+/.test(t));
+                if (!priceCell) return;
+                const price = parseFloat(priceCell.replace(/[^\\d.]/g, ''));
+                if (!price || price < 0.5) return;
+
+                // Date: look for M/D/YYYY or YYYY-MM-DD or Month Day, YYYY
+                let sale_date = null;
+                for (const t of texts) {
+                    const m1 = t.match(/(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/);
+                    const m2 = t.match(/(\\d{4})-(\\d{2})-(\\d{2})/);
+                    const m3 = t.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* (\\d{1,2}),? (\\d{4})/i);
+                    if (m1) { sale_date = `${m1[3]}-${m1[1].padStart(2,'0')}-${m1[2].padStart(2,'0')}`; break; }
+                    if (m2) { sale_date = m2[0]; break; }
+                    if (m3) {
+                        const months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',
+                                        Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+                        sale_date = `${m3[3]}-${months[m3[1].slice(0,3)]}-${m3[2].padStart(2,'0')}`;
+                        break;
+                    }
+                }
+                if (!sale_date) return;
+
+                // Grade: look for PSA 10, PSA 9, BGS, SGC, Ungraded etc.
+                let grade = null;
+                let condition = 'Used';
+                for (const t of texts) {
+                    const gm = t.match(/PSA\\s*(\\d+\\.?\\d*)|BGS\\s*(\\d+\\.?\\d*)|SGC\\s*(\\d+\\.?\\d*)/i);
+                    if (gm) { grade = t.trim(); break; }
+                    if (/ungraded|raw|loose/i.test(t)) { condition = 'Ungraded'; break; }
+                }
+
+                out.push({ price, sale_date, grade, condition });
+            });
+            return out.slice(0, 30); // cap per card
+        }
+    """) or []
+
+    return sales
+
+
+def build_row(item_id, title, driver, parallel, grade, condition, price, sale_date, image, url):
+    dt = None
+    if sale_date:
+        try:
+            dt = datetime.strptime(sale_date, "%Y-%m-%d")
+        except Exception:
+            dt = datetime.utcnow()
+    else:
+        dt = datetime.utcnow()
+    return (
+        item_id, title[:500], driver, parallel, grade, condition,
+        price, dt, image or None, url or None,
+        False, "F1", "SportsCardsPro", datetime.utcnow(),
+    )
+
+
+def enrich_title(raw_title: str, year: str) -> str:
+    t = re.sub(r"\s+", " ", raw_title).strip()
+    tl = t.lower()
+    if "formula" not in tl and "f1" not in tl and "topps chrome" not in tl:
+        t = f"{year} Topps Chrome Formula 1 {t}"
+    return t
 
 
 def main():
-    log.info("Starting SportsCardsPro scrape run")
+    log.info("Starting SportsCardsPro full scrape")
     started_at = datetime.utcnow()
     conn = get_conn()
-    rows = []
-    seen_count = 0
+    all_rows = []
+    total_cards_seen = 0
+    total_detail_scraped = 0
     pages_succeeded = 0
     block_reason = None
 
@@ -175,74 +289,100 @@ def main():
         apply_stealth(page)
         warm_up(page, HOME, "SCP")
 
-        for url, default_parallel in PAGES:
+        detail_queue = []  # (card_url, card_title, year_label, image)
+
+        # Phase 1: scrape all listing pages to get card index
+        for url, year_label in LISTING_PAGES:
             try:
-                items, reason = scrape_page(page, url, default_parallel)
+                items, reason = scrape_listing_page(page, url)
             except Exception as e:
-                log.warning(f"SCP scrape failed for {url}: {e}")
+                log.warning(f"Listing failed {url}: {e}")
                 items, reason = [], str(e)[:120]
+
             if reason and not block_reason:
                 block_reason = reason
-            seen_count += len(items)
             if items:
                 pages_succeeded += 1
-            log.info(f"  -> {len(items)} cards")
+            total_cards_seen += len(items)
 
             for it in items:
-                t = re.sub(r"\s+", " ", it["title"]).strip()
-                # Stamp the year/set into the title so existing F1 filters pass downstream.
-                if "formula" not in t.lower() and "f1" not in t.lower():
-                    # Add set context from the URL
-                    if "2025" in url:
-                        t = f"2025 Topps Chrome Formula 1 {t}"
-                    elif "2024" in url:
-                        t = f"2024 Topps Chrome Formula 1 {t}"
-                    elif "2023" in url:
-                        t = f"2023 Topps Chrome Formula 1 {t}"
-                tl = t.lower()
+                title = enrich_title(it["title"], year_label.split()[0])
+                tl = title.lower()
                 if "f1" not in tl and "formula" not in tl:
                     continue
 
-                driver = driver_from_title(t)
-                parallel = parallel_from_title(t)
-                if parallel == "Base" and default_parallel != "Base":
-                    parallel = default_parallel
+                driver = driver_from_title(title)
+                parallel = parallel_from_title(title)
 
-                # Emit one row per known price tier (ungraded + PSA9 + PSA10).
-                tiers = []
-                for i, (label, grade) in enumerate(PRICE_TIER_MAP):
-                    if i < len(it["prices"]):
-                        price = parse_price(it["prices"][i] if i == 0 else it["prices"][min(i + 1, len(it["prices"]) - 1)])
+                # Emit benchmark price rows from the listing (ungraded price = prices[0])
+                prices = [p for p in (it.get("prices") or []) if p]
+                price_tiers = [
+                    ("Ungraded", None, 0),
+                    ("PSA 9", "PSA 9", 1),
+                    ("PSA 10", "PSA 10", 2),
+                ]
+                for label, grade, idx in price_tiers:
+                    if idx < len(prices) and prices[idx]:
+                        price = parse_price(prices[idx])
                         if price > 0:
-                            tiers.append((label, grade, price))
-                # Fallback: if only one price found, treat as ungraded
-                if not tiers and it["prices"]:
-                    p0 = parse_price(it["prices"][0])
-                    if p0 > 0:
-                        tiers.append(("Ungraded", None, p0))
+                            sid = synthetic_id(it["url"], label, price, "benchmark")
+                            full_title = f"{title} [{label}]"
+                            all_rows.append(build_row(
+                                sid, full_title, driver, parallel, grade, "Used",
+                                price, None, it.get("image"), it.get("url"),
+                            ))
 
-                for label, grade, price in tiers:
-                    full_title = f"{t} [{label}]"
-                    item_id = synthetic_id(full_title, label, price)
-                    rows.append((
-                        item_id, full_title[:500], driver, parallel, grade, "Used",
-                        price, datetime.utcnow(), it.get("image") or None, it.get("url") or None,
-                        False, "F1", "SportsCardsPro", datetime.utcnow(),
+                # Queue for detail page scraping
+                if it.get("url"):
+                    detail_queue.append((it["url"], title, it.get("image", "")))
+
+            time.sleep(random.uniform(1.5, 3.0))
+
+        log.info(f"Phase 1 done: {total_cards_seen} cards across {len(LISTING_PAGES)} pages")
+        log.info(f"Phase 2: scraping detail pages (cap={MAX_DETAIL_PAGES})")
+
+        # Phase 2: per-card detail pages for real sale history
+        random.shuffle(detail_queue)  # prioritize diverse cards not just top of list
+        for card_url, card_title, card_image in detail_queue[:MAX_DETAIL_PAGES]:
+            try:
+                sales = scrape_detail_page(page, card_url, card_title)
+            except Exception as e:
+                log.debug(f"Detail error {card_url}: {e}")
+                sales = []
+
+            if sales:
+                total_detail_scraped += 1
+                driver = driver_from_title(card_title)
+                parallel = parallel_from_title(card_title)
+                for s in sales:
+                    price = s.get("price", 0)
+                    if not price or price < 0.5:
+                        continue
+                    grade = s.get("grade")
+                    condition = s.get("condition", "Used")
+                    sale_date = s.get("sale_date")
+                    sid = synthetic_id(card_url, grade or "raw", price, sale_date or "")
+                    grade_label = grade if grade else ("Ungraded" if condition == "Ungraded" else None)
+                    full_title = f"{card_title} [{grade_label or 'Ungraded'}]"
+                    all_rows.append(build_row(
+                        sid, full_title, driver, parallel, grade, condition,
+                        price, sale_date, card_image, card_url,
                     ))
-            time.sleep(2)
+
+            time.sleep(random.uniform(0.8, 2.0))
 
         browser.close()
 
-    added = upsert_sold(conn, rows)
-    log.info(f"SCP DONE: upserted {added} rows (seen {seen_count} cards)")
+    added = upsert_sold(conn, all_rows)
+    log.info(f"SCP DONE: {added} rows upserted | {total_cards_seen} cards seen | {total_detail_scraped} detail pages with sales")
 
     write_telemetry(
         conn, "SportsCardsPro", started_at,
-        queries_attempted=len(PAGES),
-        queries_succeeded=pages_succeeded,
-        rows_seen=seen_count,
+        queries_attempted=len(LISTING_PAGES) + min(len(detail_queue), MAX_DETAIL_PAGES),
+        queries_succeeded=pages_succeeded + total_detail_scraped,
+        rows_seen=total_cards_seen,
         rows_inserted=added,
-        blocked=(added == 0 and seen_count == 0),
+        blocked=(added == 0 and total_cards_seen == 0),
         error_message=block_reason,
     )
     conn.close()

@@ -35,11 +35,13 @@ jobs:
         run: python scripts/onethirtypoint_runner.py
         continue-on-error: true
 
-      - name: SportsCardsPro (price guide)
+      - name: SportsCardsPro (full set + sale history)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SCP_MAX_DETAIL: '120'
         run: python scripts/sportscardspro_runner.py
         continue-on-error: true
+        timeout-minutes: 20
 
       - name: eBay broad (driver + parallel queries)
         env:
