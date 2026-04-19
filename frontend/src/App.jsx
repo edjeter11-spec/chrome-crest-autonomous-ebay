@@ -30,6 +30,8 @@ const Compare = lazy(() => import('./pages/Compare'))
 const Today = lazy(() => import('./pages/Today'))
 const MyCards = lazy(() => import('./pages/MyCards'))
 const About = lazy(() => import('./pages/About'))
+const Arbitrage = lazy(() => import('./pages/Arbitrage'))
+const GradeProfit = lazy(() => import('./pages/GradeProfit'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -61,6 +63,8 @@ export default function App() {
           <Route path="compare" element={<Suspense fallback={<PageFallback />}><Compare /></Suspense>} />
           <Route path="today" element={<Suspense fallback={<PageFallback />}><Today /></Suspense>} />
           <Route path="about" element={<Suspense fallback={<PageFallback />}><About /></Suspense>} />
+          <Route path="arbitrage" element={<Suspense fallback={<PageFallback />}><Arbitrage /></Suspense>} />
+          <Route path="grade-profit" element={<Suspense fallback={<PageFallback />}><GradeProfit /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

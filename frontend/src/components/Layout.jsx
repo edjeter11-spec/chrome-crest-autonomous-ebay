@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
-  Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Sunrise, Camera
+  Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Sunrise, Camera,
+  ArrowLeftRight, Calculator, Sun, Moon
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
@@ -22,6 +23,8 @@ const NAV = [
   { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
   { to: '/wishlist', label: 'Watchlist', icon: Heart },
   { to: '/grade', label: 'AI Grader', icon: Sparkles },
+  { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
+  { to: '/grade-profit', label: 'Grade Profit', icon: Calculator },
   { to: '/alerts', label: 'Alerts', icon: Bell },
 ]
 
@@ -44,6 +47,15 @@ export default function Layout() {
   const [todayCount, setTodayCount] = useState(0)
   const [pushState, setPushState] = useState('idle') // idle | subscribed | busy | unsupported
   const [showTutorial, setShowTutorial] = useState(false)
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('cc_theme') || 'dark' } catch { return 'dark' }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('cc_theme', theme) } catch {}
+    if (theme === 'light') document.body.classList.add('light')
+    else document.body.classList.remove('light')
+  }, [theme])
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
   const location = useLocation()
   const { user, signOut } = useAuth()
 
@@ -176,9 +188,7 @@ export default function Layout() {
       <div className={`flex items-center ${collapsed && !mobile ? 'justify-center' : 'justify-between'} px-3 py-4 border-b border-gray-800/60`}>
         {(!collapsed || mobile) && (
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
-              <span className="text-white text-xs font-black tracking-tight">F1</span>
-            </div>
+            <img src="/logo.jpg" alt="F1 Card Hub" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" />
             <div>
               <div className="font-black text-white text-sm leading-none tracking-tight">F1 Card Hub</div>
               <div className="text-[10px] text-gray-500 mt-0.5 font-medium">Topps Chrome F1 Tracker</div>
@@ -186,9 +196,7 @@ export default function Layout() {
           </div>
         )}
         {collapsed && !mobile && (
-          <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
-            <span className="text-white text-xs font-black">F1</span>
-          </div>
+          <img src="/logo.jpg" alt="F1 Card Hub" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" />
         )}
         {mobile ? (
           <button
@@ -278,6 +286,16 @@ export default function Layout() {
             {pushState === 'subscribed' ? 'Push enabled' : pushState === 'busy' ? '…' : 'Enable push alerts'}
           </button>
         )}
+        {(!collapsed || mobile) && (
+          <button
+            onClick={toggleTheme}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] font-semibold bg-gray-800/60 text-gray-400 hover:text-white border border-gray-700/40 hover:bg-gray-800 transition-colors"
+            title="Toggle theme"
+          >
+            {theme === 'dark' ? <Sun size={12} /> : <Moon size={12} />}
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
+        )}
         {collapsed && !mobile && (
           <button
             onClick={() => setCollapsed(false)}
@@ -331,9 +349,7 @@ export default function Layout() {
             <Menu size={20} />
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-red-600 rounded-lg flex items-center justify-center">
-              <span className="text-white text-[10px] font-black">F1</span>
-            </div>
+            <img src="/logo.jpg" alt="F1 Card Hub" className="w-6 h-6 rounded-lg object-cover" />
             <span className="font-black text-white text-sm tracking-tight">F1 Card Hub</span>
           </div>
           {snipeCount > 0 ? (

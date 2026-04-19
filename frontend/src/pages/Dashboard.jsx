@@ -301,6 +301,9 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Deal of the Day hero — top STRONG_BUY snipe */}
+      <DealOfTheDay snipes={snipes} auctions={auctions} />
+
       {/* NEW: Live ticker strip */}
       {ticker.length > 0 && (
         <div className="relative overflow-hidden bg-gray-900/70 border border-gray-800/60 rounded-2xl">
@@ -736,6 +739,79 @@ export default function Dashboard() {
         </div>
       )}
     </div>
+  )
+}
+
+function DealOfTheDay({ snipes, auctions }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [])
+
+  const deal = useMemo(() => {
+    const pool = [...(snipes || []), ...(auctions || [])]
+    const strong = pool.filter(a => a && a.verdict === 'STRONG_BUY' && (a.end_time || a.time_left))
+      .filter(a => {
+        if (a.end_time) return new Date(a.end_time).getTime() > Date.now()
+        return (a.time_left || 0) > 0
+      })
+    strong.sort((a, b) => (b.snipe_score || 0) - (a.snipe_score || 0))
+    return strong[0]
+  }, [snipes, auctions])
+
+  if (!deal) return null
+
+  const secsLeft = deal.end_time
+    ? Math.max(0, Math.floor((new Date(deal.end_time).getTime() - now) / 1000))
+    : (deal.time_left || 0)
+  const h = Math.floor(secsLeft / 3600)
+  const m = Math.floor((secsLeft % 3600) / 60)
+  const s = secsLeft % 60
+  const countdown = h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`
+
+  const img = deal.image_url || deal.primary_image_url
+  const url = deal.ebay_url || deal.item_web_url || (deal.ebay_item_id ? `https://www.ebay.com/itm/${deal.ebay_item_id}` : '#')
+  const price = deal.current_price || deal.buy_it_now_price || deal.sale_price || 0
+
+  return (
+    <a href={ebayAffiliateUrl(url)} target="_blank" rel="noopener noreferrer"
+       className="block bg-gradient-to-br from-red-700 via-red-600 to-red-800 rounded-2xl border border-red-500/40 shadow-xl shadow-red-900/40 overflow-hidden hover:brightness-110 transition">
+      <div className="flex flex-col md:flex-row items-stretch">
+        {img && (
+          <div className="md:w-64 h-48 md:h-auto bg-black/30 flex items-center justify-center shrink-0">
+            <img src={img} alt={deal.title || 'Deal'} className="h-full w-full object-contain p-3" />
+          </div>
+        )}
+        <div className="flex-1 p-5 md:p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-yellow-400 text-red-900 text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">Deal of the Day</span>
+              <span className="bg-white/20 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">STRONG BUY</span>
+              {deal.snipe_score && <span className="text-[10px] text-red-100 font-mono">Score {Math.round(deal.snipe_score)}</span>}
+            </div>
+            <h2 className="text-2xl md:text-3xl font-black text-white leading-tight mb-1">
+              {deal.driver_name || 'Unknown'}
+            </h2>
+            <div className="text-sm text-red-100 mb-3 font-semibold">
+              {deal.parallel || '—'}{deal.grade ? ` · ${deal.grade}` : ''}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Current price</div>
+              <div className="text-4xl md:text-5xl font-black text-white tabular-nums">${Number(price).toFixed(0)}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Ends in</div>
+              <div className="text-2xl md:text-3xl font-black text-yellow-300 tabular-nums">{countdown}</div>
+            </div>
+            <div className="ml-auto">
+              <div className="bg-white text-red-700 font-black text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 hover:bg-yellow-50">
+                Buy on eBay <ExternalLink size={14} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </a>
   )
 }
 

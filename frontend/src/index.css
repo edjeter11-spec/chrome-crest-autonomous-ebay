@@ -29,6 +29,14 @@
   }
 
   * { box-sizing: border-box; }
+
+  /* Minimal light mode — more polish coming */
+  body.light { background: #f8fafc; color: #111827; }
+  body.light .bg-gray-950, body.light .bg-gray-900, body.light .bg-gray-900\/95 { background-color: #ffffff !important; }
+  body.light .bg-gray-800, body.light .bg-gray-800\/60, body.light .bg-gray-800\/80 { background-color: #f1f5f9 !important; }
+  body.light .text-gray-100, body.light .text-gray-200, body.light .text-gray-300 { color: #111827 !important; }
+  body.light .text-gray-400, body.light .text-gray-500, body.light .text-gray-600 { color: #475569 !important; }
+  body.light .border-gray-800, body.light .border-gray-800\/60, body.light .border-gray-700, body.light .border-gray-700\/40, body.light .border-gray-700\/50 { border-color: #e2e8f0 !important; }
 }
 
 @layer components {

@@ -383,6 +383,7 @@ export default function Drivers() {
               <Suspense fallback={<div className="h-56 skeleton rounded-xl" />}>
                 <DriverPriceChart driver={selected.driver_name} days={90} />
               </Suspense>
+              <PredictionBlock driver={selected.driver_name} />
             </div>
 
             {/* Last 10 sales */}
@@ -444,6 +445,29 @@ export default function Drivers() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function PredictionBlock({ driver }) {
+  const [data, setData] = useState(null)
+  useEffect(() => {
+    if (!driver) return
+    setData(null)
+    fetch(`${API}/api/predictions/driver/${encodeURIComponent(driver)}`)
+      .then(r => r.json()).then(setData).catch(() => {})
+  }, [driver])
+  if (!data || data.status !== "ok") return null
+  const up = (data.percent_change || 0) > 0
+  const color = up ? "text-emerald-400" : "text-red-400"
+  return (
+    <div className="mt-3 flex items-center gap-3 bg-gray-800/40 border border-gray-700/40 rounded-xl px-3 py-2">
+      <span className="text-[10px] uppercase font-black tracking-wider text-gray-500">30d Forecast</span>
+      <span className={`text-lg font-black ${color}`}>${data.predicted_30d?.toFixed(0)}</span>
+      {data.percent_change != null && (
+        <span className={`text-xs font-bold ${color}`}>{up ? "↑" : "↓"} {Math.abs(data.percent_change).toFixed(1)}%</span>
+      )}
+      <span className="text-[10px] text-gray-500 ml-auto">n={data.n} · linear trend</span>
     </div>
   )
 }
