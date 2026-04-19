@@ -75,10 +75,21 @@ export default function Auctions() {
   const handleWatchlist = (id, w) =>
     setAuctions(prev => prev.map(a => a.id === id ? { ...a, status: w ? 'watchlist' : 'active' } : a))
 
+  // Calculate true time_left from end_time — backend's stored value is stale/0.
+  const nowMs = Date.now()
+  const trueTimeLeft = (a) => {
+    if (a.end_time) {
+      const diff = Math.floor((new Date(a.end_time).getTime() - nowMs) / 1000)
+      if (!Number.isNaN(diff)) return diff
+    }
+    return a.time_left || 0
+  }
+
   const filtered = auctions
+    .map(a => ({ ...a, time_left: trueTimeLeft(a) }))
     .filter(a => {
       if (!isAuction(a)) return false
-      if ((a.time_left || 0) <= 0) return false
+      if (a.time_left <= 0) return false
       if (formulaType !== 'All' && seriesOf(a) !== formulaType) return false
       if (teamFilter !== 'All' && teamOf(a) !== teamFilter) return false
       if (!matchesParallel(a, filterParallel)) return false
