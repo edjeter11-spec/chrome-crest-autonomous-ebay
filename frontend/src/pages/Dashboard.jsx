@@ -129,7 +129,7 @@ export default function Dashboard() {
     if (showRefresh) setRefreshing(true)
 
     swrFetch(
-      `${API}/api/sales?limit=500`,
+      `${API}/api/sales?limit=500&year=2025`,
       d => {
         const all = applySeasonFilter(d.sales || d || [])
         // Prefer "notable" sales, but fall back to raw data so the feed is
@@ -157,7 +157,7 @@ export default function Dashboard() {
     )
 
     swrFetch(
-      `${API}/api/sales?limit=150`,
+      `${API}/api/sales?limit=150&year=2025`,
       d => {
         const all = applySeasonFilter(d.sales || d || [])
         const notable = all.filter(isNotable)
@@ -172,7 +172,7 @@ export default function Dashboard() {
     )
 
     swrFetch(
-      `${API}/api/sales?limit=500`,
+      `${API}/api/sales?limit=500&year=2025`,
       d => {
         const all = applySeasonFilter(d.sales || d || [])
         const cutoff = Date.now() - 24 * 3600 * 1000

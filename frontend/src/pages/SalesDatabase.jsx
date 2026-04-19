@@ -77,13 +77,15 @@ export default function SalesDatabase() {
     if (parallel !== 'All') p.set('parallel', parallel)
     if (grade !== 'All') p.set('grade', grade)
     if (minPrice) p.set('min_price', minPrice)
+    else if (onlyNotable) p.set('min_price', '25')
     if (maxPrice) p.set('max_price', maxPrice)
     if (dateFrom) p.set('date_from', dateFrom)
     if (dateTo) p.set('date_to', dateTo)
+    if (only2025) p.set('year', '2025')
     p.set('limit', PAGE_SIZE)
     p.set('offset', page * PAGE_SIZE)
     return p.toString()
-  }, [driver, parallel, grade, minPrice, maxPrice, dateFrom, dateTo, page])
+  }, [driver, parallel, grade, minPrice, maxPrice, dateFrom, dateTo, page, only2025, onlyNotable])
 
   const statsQs = useMemo(() => {
     const p = new URLSearchParams()
@@ -100,8 +102,9 @@ export default function SalesDatabase() {
     swrFetch(
       `${API}/api/sales?${qs}`,
       d => {
+        // Server already filtered by year + min_price; client only trims
+        // B&W/Base when Notable is on (server doesn't know parallel names).
         let arr = d.sales || []
-        if (only2025) arr = applySeasonFilter(arr, true)
         if (onlyNotable) arr = arr.filter(isNotable)
         setSales(arr); setTotal(d.total || 0); setLoading(false)
       },

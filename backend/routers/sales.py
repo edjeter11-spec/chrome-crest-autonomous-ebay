@@ -61,7 +61,8 @@ def _median(values: list[float]) -> float | None:
 
 
 def _apply_filters(q, driver, parallel, grade, min_price, max_price,
-                   date_from, date_to, is_auction, include_duplicates=False):
+                   date_from, date_to, is_auction, include_duplicates=False,
+                   year=None, exclude_source=None):
     if not include_duplicates:
         q = q.filter(SoldCard.is_duplicate == False)  # noqa: E712
     if driver:
@@ -93,6 +94,12 @@ def _apply_filters(q, driver, parallel, grade, min_price, max_price,
             pass
     if is_auction is not None:
         q = q.filter(SoldCard.is_auction == is_auction)
+    if year:
+        # Match a year token (e.g. "2025") in the title — cheap and works for
+        # Topps Chrome F1 sets where the year is always in the title.
+        q = q.filter(SoldCard.title.ilike(f"%{year}%"))
+    if exclude_source:
+        q = q.filter((SoldCard.source != exclude_source) | (SoldCard.source.is_(None)))
     return q
 
 
@@ -107,13 +114,16 @@ def list_sales(
     date_to: Optional[str] = None,
     is_auction: Optional[bool] = None,
     include_duplicates: bool = False,
+    year: Optional[str] = None,
+    exclude_source: Optional[str] = None,
     limit: int = Query(100, le=500),
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, min_price, max_price,
-                       date_from, date_to, is_auction, include_duplicates)
+                       date_from, date_to, is_auction, include_duplicates,
+                       year=year, exclude_source=exclude_source)
     total = q.count()
     sales = q.order_by(desc(SoldCard.sale_date)).offset(offset).limit(limit).all()
     return {
