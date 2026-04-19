@@ -20,6 +20,7 @@ async function shareSale(e, sale) {
 }
 import { swrFetch } from '../lib/cache'
 import { verdictFor, VERDICT_STYLES } from '../lib/verdict'
+import { applySeasonFilter, isNotable } from '../lib/season'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -66,6 +67,9 @@ export default function SalesDatabase() {
   const [sortField, setSortField] = useState('sale_date')
   const [sortDir, setSortDir] = useState('desc')
   const [page, setPage] = useState(0)
+  // Default-on filters for quality feed.
+  const [only2025, setOnly2025] = useState(true)
+  const [onlyNotable, setOnlyNotable] = useState(true)
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
@@ -95,14 +99,19 @@ export default function SalesDatabase() {
     if (showRefresh) setRefreshing(true)
     swrFetch(
       `${API}/api/sales?${qs}`,
-      d => { setSales(d.sales || []); setTotal(d.total || 0); setLoading(false) },
+      d => {
+        let arr = d.sales || []
+        if (only2025) arr = applySeasonFilter(arr, true)
+        if (onlyNotable) arr = arr.filter(isNotable)
+        setSales(arr); setTotal(d.total || 0); setLoading(false)
+      },
       () => setRefreshing(false)
     )
     swrFetch(
       `${API}/api/sales/stats?${statsQs}`,
       d => setStats(d),
     )
-  }, [qs, statsQs])
+  }, [qs, statsQs, only2025, onlyNotable])
 
   useEffect(() => { load() }, [load])
 
@@ -110,6 +119,7 @@ export default function SalesDatabase() {
     setDriver('All'); setParallel('All'); setGrade('All')
     setMinPrice(''); setMaxPrice(''); setDateFrom(''); setDateTo('')
     setSearch(''); setPage(0)
+    setOnly2025(true); setOnlyNotable(true)
   }
 
   const filteredSorted = useMemo(() => {
@@ -310,6 +320,31 @@ export default function SalesDatabase() {
           className="ml-auto text-xs text-cyan-400 hover:underline font-medium">
           Clear
         </button>
+      </div>
+
+      {/* Quality filters — default ON so feed shows notable 2025 F1 */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <button
+          onClick={() => setOnly2025(v => !v)}
+          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+            only2025
+              ? 'bg-red-600/20 border-red-600/40 text-red-300'
+              : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-white'
+          }`}
+        >
+          {only2025 ? '✓' : '○'} 2025 only
+        </button>
+        <button
+          onClick={() => setOnlyNotable(v => !v)}
+          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+            onlyNotable
+              ? 'bg-purple-600/20 border-purple-600/40 text-purple-300'
+              : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-white'
+          }`}
+        >
+          {onlyNotable ? '✓' : '○'} Notable ($25+, no base/B&W)
+        </button>
+        <span className="text-[10px] text-gray-600 ml-auto">{sales.length} shown</span>
       </div>
 
       {/* Mobile card list */}

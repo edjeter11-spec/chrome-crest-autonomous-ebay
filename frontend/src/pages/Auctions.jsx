@@ -6,6 +6,7 @@ import { swrFetch } from '../lib/cache'
 import { matchesParallel } from '../lib/parallels'
 import { useVisibilityInterval, useProgressiveRender, usePersistedState } from '../lib/hooks'
 import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
+import { applySeasonFilter } from '../lib/season'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -64,7 +65,7 @@ export default function Auctions() {
     if (showRefresh) setRefreshing(true)
     swrFetch(
       `${API}/api/auctions/with-verdicts?limit=500&status=active&buying=auction`,
-      d => { setAuctions(d.auctions || d || []); setLoading(false) },
+      d => { setAuctions(applySeasonFilter(d.auctions || d || [])); setLoading(false) },
       () => setRefreshing(false)
     )
   }, [])

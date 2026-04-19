@@ -9,6 +9,7 @@ import AuctionCard from '../components/AuctionCard'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
+import { applySeasonFilter } from '../lib/season'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -130,7 +131,7 @@ export default function Dashboard() {
     swrFetch(
       `${API}/api/sales?limit=500`,
       d => {
-        const all = d.sales || d || []
+        const all = applySeasonFilter(d.sales || d || [])
         // Prefer "notable" sales, but fall back to raw data so the feed is
         // never empty just because filters were too aggressive.
         const notable = all.filter(isNotable)
@@ -147,18 +148,18 @@ export default function Dashboard() {
 
     swrFetch(
       `${API}/api/auctions?buying=auction&limit=500`,
-      d => { setAuctions(d.auctions || d || []); setAuctionsLoading(false) }
+      d => { setAuctions(applySeasonFilter(d.auctions || d || [])); setAuctionsLoading(false) }
     )
 
     swrFetch(
       `${API}/api/auctions/snipe/targets`,
-      d => { setSnipes(d.targets || d.auctions || d || []); setSnipesLoading(false) }
+      d => { setSnipes(applySeasonFilter(d.targets || d.auctions || d || [])); setSnipesLoading(false) }
     )
 
     swrFetch(
       `${API}/api/sales?limit=150`,
       d => {
-        const all = d.sales || d || []
+        const all = applySeasonFilter(d.sales || d || [])
         const notable = all.filter(isNotable)
         const src = notable.length >= 3 ? notable : all
         setTicker(src.slice(0, 10))
@@ -173,7 +174,7 @@ export default function Dashboard() {
     swrFetch(
       `${API}/api/sales?limit=500`,
       d => {
-        const all = d.sales || d || []
+        const all = applySeasonFilter(d.sales || d || [])
         const cutoff = Date.now() - 24 * 3600 * 1000
         const count = all.filter(s => s.sale_date && new Date(s.sale_date).getTime() >= cutoff).length
         setRecent24hCount(count)

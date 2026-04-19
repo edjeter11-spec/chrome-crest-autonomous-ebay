@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Flame, DollarSign, BarChart3, Eye, Check, Bell, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react'
+import { applySeasonFilter } from '../lib/season'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const LS_KEY = 'cc_last_today_visit'
@@ -31,7 +32,14 @@ export default function Today() {
     document.title = 'What changed today · F1 Card Hub'
     fetch(`${API}/api/today?since=${encodeURIComponent(since)}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { setData(d); setLoading(false) })
+      .then(d => {
+        if (d) {
+          if (Array.isArray(d.new_sales)) d.new_sales = applySeasonFilter(d.new_sales)
+          if (Array.isArray(d.new_alerts)) d.new_alerts = applySeasonFilter(d.new_alerts)
+          if (Array.isArray(d.biggest_movers_24h)) d.biggest_movers_24h = applySeasonFilter(d.biggest_movers_24h)
+        }
+        setData(d); setLoading(false)
+      })
       .catch(() => setLoading(false))
   }, [since])
 
