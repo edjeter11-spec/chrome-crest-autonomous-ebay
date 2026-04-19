@@ -10,6 +10,7 @@ import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
+import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -503,10 +504,12 @@ export default function Dashboard() {
                 <p className="text-xs mt-1 opacity-60">Cron ingests every 30 min</p>
               </div>
             ) : sales.map((s, i) => (
-              <div
+              <a
                 key={s.id ?? i}
-                onClick={() => s.driver_name && navigate(`/sales?driver=${encodeURIComponent(s.driver_name)}`)}
-                className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors"
+                href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : `/sales?driver=${encodeURIComponent(s.driver_name || '')}`}
+                target={s.ebay_url ? '_blank' : undefined}
+                rel={s.ebay_url ? 'noopener sponsored' : undefined}
+                className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors no-underline"
               >
                 {s.image_url ? (
                   <img
@@ -546,7 +549,7 @@ export default function Dashboard() {
                   </div>
                   <div className="text-[10px] text-gray-600">{saleTimeLabel(s)}</div>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         </div>
