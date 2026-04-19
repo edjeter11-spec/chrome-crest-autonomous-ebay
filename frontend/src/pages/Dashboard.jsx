@@ -105,7 +105,7 @@ export default function Dashboard() {
     Promise.all([
       fetch(`${API}/api/sales?since=${encodeURIComponent(since)}&limit=500`).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`${API}/api/alerts`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`${API}/api/watchlist/changes?since=${encodeURIComponent(since)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${API}/api/watchlist/changes?since=${encodeURIComponent(since)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
     ]).then(([salesRes, alertsRes, watchRes]) => {
       // Falls back to client-side filtering if the `since` param isn't honored
       const sinceMs = new Date(since).getTime()
@@ -181,10 +181,9 @@ export default function Dashboard() {
       }
     )
 
-    fetch(`${API}/api/debug/ebay`)
-      .then(r => { if (r.status === 429) { setEbayLimited(true); return null } return r.ok ? r.json() : null })
-      .catch(() => setEbayLimited(true))
-      .finally(() => { setRefreshing(false); setLastSync(new Date()) })
+    setEbayLimited(false)
+    setRefreshing(false)
+    setLastSync(new Date())
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])

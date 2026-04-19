@@ -114,12 +114,15 @@ def list_sales(
     date_to: Optional[str] = None,
     is_auction: Optional[bool] = None,
     include_duplicates: bool = False,
-    year: Optional[str] = None,
-    exclude_source: Optional[str] = None,
+    year: Optional[str] = "2025",
+    exclude_source: Optional[str] = "SportsCardsPro",
     limit: int = Query(100, le=500),
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
+    # Default: 2025-only, exclude SCP synthetic benchmark rows (they're price-guide
+    # entries, not real sales — and emit 3 rows per card which floods the feed).
+    # Pass ?year= or ?exclude_source= explicitly to override.
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, min_price, max_price,
                        date_from, date_to, is_auction, include_duplicates,
@@ -171,12 +174,16 @@ def sales_stats(
     parallel_rows = []
     for pr, vals in par_bucket.items():
         med = _median(vals)
+        # P95 trim — single outlier $8,999 listing shouldn't define the "max"
+        svals = sorted(vals)
+        p95_idx = min(len(svals) - 1, int(len(svals) * 0.95))
+        p95 = svals[p95_idx]
         parallel_rows.append({
             "parallel": pr,
             "count": len(vals),
             "avg_price": round(sum(vals) / len(vals), 2),
             "median_price": round(med, 2) if med is not None else None,
-            "max_price": round(max(vals), 2),
+            "max_price": round(p95, 2),
             "low_confidence": len(vals) < 3,
         })
     parallel_rows.sort(key=lambda r: -r["count"])

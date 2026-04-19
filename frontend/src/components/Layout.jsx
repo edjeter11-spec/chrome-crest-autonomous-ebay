@@ -128,9 +128,7 @@ export default function Layout() {
         wsUrl = apiUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws'
       } else {
         const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-        const host = window.location.hostname
-        const port = import.meta.env.VITE_API_PORT || '8000'
-        wsUrl = `${proto}://${host}:${port}/ws`
+        wsUrl = `${proto}://${window.location.host}/ws`
       }
 
       try { ws = new WebSocket(wsUrl) } catch { setWsStatus('error'); return }
@@ -212,7 +210,7 @@ export default function Layout() {
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-        {NAV.map(({ to, label, icon: Icon, exact }) => (
+        {NAV.filter(({ to }) => user || !['/my-cards', '/portfolio', '/wishlist'].includes(to)).map(({ to, label, icon: Icon, exact }) => (
           <NavLink
             key={to}
             to={to}

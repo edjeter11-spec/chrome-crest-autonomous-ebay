@@ -18,21 +18,13 @@ function RequireAuth({ children }) {
 // Lazy-loaded pages (code-split to keep initial bundle lean)
 const Portfolio = lazy(() => import('./pages/Portfolio'))
 const Wishlist = lazy(() => import('./pages/Wishlist'))
-const PriceHistory = lazy(() => import('./pages/PriceHistory'))
 const AlertsPage = lazy(() => import('./pages/Alerts'))
-const Analytics = lazy(() => import('./pages/Analytics'))
 const Drivers = lazy(() => import('./pages/Drivers'))
-const PSA = lazy(() => import('./pages/PSA'))
-const GradedCards = lazy(() => import('./pages/GradedCards'))
 const GradedTracker = lazy(() => import('./pages/GradedTracker'))
 const SalesDatabase = lazy(() => import('./pages/SalesDatabase'))
-const Checklist = lazy(() => import('./pages/Checklist'))
-const SealedEV = lazy(() => import('./pages/SealedEV'))
 const GradePredictor = lazy(() => import('./pages/GradePredictor'))
 const SharedWatchlist = lazy(() => import('./pages/SharedWatchlist'))
 const EmbedPrice = lazy(() => import('./pages/EmbedPrice'))
-const Sellers = lazy(() => import('./pages/Sellers'))
-const ScoreListing = lazy(() => import('./pages/ScoreListing'))
 const CardPage = lazy(() => import('./pages/CardPage'))
 const Compare = lazy(() => import('./pages/Compare'))
 const Today = lazy(() => import('./pages/Today'))
@@ -60,18 +52,10 @@ export default function App() {
           <Route path="portfolio" element={<RequireAuth><Suspense fallback={<PageFallback />}><Portfolio /></Suspense></RequireAuth>} />
           <Route path="my-cards" element={<RequireAuth><Suspense fallback={<PageFallback />}><MyCards /></Suspense></RequireAuth>} />
           <Route path="wishlist" element={<RequireAuth><Suspense fallback={<PageFallback />}><Wishlist /></Suspense></RequireAuth>} />
-          <Route path="price-history" element={<Suspense fallback={<PageFallback />}><PriceHistory /></Suspense>} />
           <Route path="alerts" element={<Suspense fallback={<PageFallback />}><AlertsPage /></Suspense>} />
-          <Route path="analytics" element={<Suspense fallback={<PageFallback />}><Analytics /></Suspense>} />
-          <Route path="psa" element={<Suspense fallback={<PageFallback />}><GradedTracker /></Suspense>} />
           <Route path="graded" element={<Suspense fallback={<PageFallback />}><GradedTracker /></Suspense>} />
-          <Route path="graded-cards" element={<Suspense fallback={<PageFallback />}><GradedCards /></Suspense>} />
           <Route path="sales" element={<Suspense fallback={<PageFallback />}><SalesDatabase /></Suspense>} />
-          <Route path="checklist" element={<Suspense fallback={<PageFallback />}><Checklist /></Suspense>} />
-          <Route path="sealed" element={<Suspense fallback={<PageFallback />}><SealedEV /></Suspense>} />
           <Route path="grade" element={<Suspense fallback={<PageFallback />}><GradePredictor /></Suspense>} />
-          <Route path="sellers" element={<Suspense fallback={<PageFallback />}><Sellers /></Suspense>} />
-          <Route path="score-listing" element={<Suspense fallback={<PageFallback />}><ScoreListing /></Suspense>} />
           <Route path="card/:slug" element={<Suspense fallback={<PageFallback />}><CardPage /></Suspense>} />
           <Route path="compare" element={<Suspense fallback={<PageFallback />}><Compare /></Suspense>} />
           <Route path="today" element={<Suspense fallback={<PageFallback />}><Today /></Suspense>} />

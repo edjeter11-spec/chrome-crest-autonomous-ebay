@@ -105,7 +105,7 @@ export default function CardPage() {
     if (!driver || !parallel) { setLoading(false); return }
     let mounted = true
     setLoading(true)
-    const qs = new URLSearchParams({ driver, parallel })
+    const qs = new URLSearchParams({ driver, parallel, year: '2025' })
     Promise.all([
       fetch(`${API}/api/sales/median?${qs}`).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`${API}/api/sales?${qs}&limit=20`).then(r => r.ok ? r.json() : null).catch(() => null),

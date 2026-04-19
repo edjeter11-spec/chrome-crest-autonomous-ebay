@@ -23,18 +23,6 @@ jobs:
           pip install playwright tf-playwright-stealth psycopg2-binary httpx beautifulsoup4 sqlalchemy
           playwright install chromium --with-deps
 
-      - name: Mavin
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/mavin_runner.py
-        continue-on-error: true
-
-      - name: 130point (multi-marketplace aggregator)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/onethirtypoint_runner.py
-        continue-on-error: true
-
       - name: SportsCardsPro (full set + sale history)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -49,42 +37,6 @@ jobs:
         run: python scripts/ebay_broad_runner.py
         continue-on-error: true
         timeout-minutes: 25
-
-      - name: Heritage
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/heritage_runner.py
-        continue-on-error: true
-
-      - name: Fanatics Collect
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/fanatics_collect_runner.py
-        continue-on-error: true
-
-      - name: HEROES (GiantSportsCards)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/heroes_runner.py
-        continue-on-error: true
-
-      - name: Goldin (retry w/ new stealth)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/goldin_runner.py
-        continue-on-error: true
-
-      - name: PWCC (retry w/ new stealth)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/pwcc_runner.py
-        continue-on-error: true
-
-      - name: MySlabs (retry w/ new stealth)
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python scripts/myslabs_runner.py
-        continue-on-error: true
 
       # eBay-detail step LAST so it doesn't block the new sources.
       # Capped so it can't eat all the runtime.

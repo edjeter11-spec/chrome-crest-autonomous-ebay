@@ -95,6 +95,7 @@ def graded_sales_feed(
     grade: Optional[str] = None,
     parallel: Optional[str] = None,
     source: Optional[str] = None,
+    year: Optional[str] = "2025",
     db: Session = Depends(get_db),
 ):
     """Paginated graded-sale feed across all sources."""
@@ -107,6 +108,8 @@ def graded_sales_feed(
         q = q.filter(SoldCard.parallel == parallel)
     if source:
         q = q.filter(SoldCard.source == source)
+    if year:
+        q = q.filter(SoldCard.title.ilike(f"%{year}%"))
     total = q.count()
     rows = q.order_by(desc(SoldCard.sale_date)).offset(offset).limit(limit).all()
     sales = [{

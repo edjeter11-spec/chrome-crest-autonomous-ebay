@@ -87,7 +87,7 @@ function useCardData(driver, parallel) {
     if (!driver || !parallel) { setData({ median: null, sales: [], listings: [], momentum: null }); return }
     let mounted = true
     setLoading(true)
-    const qs = new URLSearchParams({ driver, parallel })
+    const qs = new URLSearchParams({ driver, parallel, year: '2025' })
     Promise.all([
       fetch(`${API}/api/sales/median?${qs}`).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`${API}/api/sales?${qs}&limit=50`).then(r => r.ok ? r.json() : null).catch(() => null),

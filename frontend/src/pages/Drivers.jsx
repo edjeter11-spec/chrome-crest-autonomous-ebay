@@ -127,7 +127,7 @@ export default function Drivers() {
     fetch(`${API}/api/psa/observed?driver=${encodeURIComponent(drv)}`)
       .then(r => r.ok ? r.json() : null).then(d => setObserved(d)).catch(() => {})
 
-    fetch(`${API}/api/sales?driver=${encodeURIComponent(drv)}&limit=10`)
+    fetch(`${API}/api/sales?driver=${encodeURIComponent(drv)}&limit=10&year=2025`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         const list = d?.sales || []
@@ -138,7 +138,7 @@ export default function Drivers() {
       }).catch(() => {})
 
     // Top graded sale: pull larger sample filtered to graded-only
-    fetch(`${API}/api/sales?driver=${encodeURIComponent(drv)}&grade=graded&limit=100`)
+    fetch(`${API}/api/sales?driver=${encodeURIComponent(drv)}&grade=graded&limit=100&year=2025`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         const list = d?.sales || []

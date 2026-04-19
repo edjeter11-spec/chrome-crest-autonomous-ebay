@@ -96,6 +96,7 @@ export default function GradedTracker() {
     if (filters.parallel) qs.set('parallel', filters.parallel)
     if (filters.source) qs.set('source', filters.source)
     if (filters.search) qs.set('driver', filters.search)
+    qs.set('year', '2025')
     fetch(`${API}/api/graded/sales?${qs}`).then(r => r.json()).then(d => {
       setSales(d.sales || [])
       setSalesTotal(d.total || 0)
