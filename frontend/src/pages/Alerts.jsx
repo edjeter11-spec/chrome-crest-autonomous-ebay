@@ -3,7 +3,7 @@ import { Bell, Zap, AlertCircle, X, Trash2, Heart, Flame } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const URGENCY = {
   critical: { border: 'border-red-500/40', bg: 'bg-red-900/10', badge: 'bg-red-600 text-white', icon: 'text-red-400' },

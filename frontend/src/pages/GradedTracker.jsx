@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const DriverPriceChart = lazy(() => import('../components/DriverPriceChart'))
 

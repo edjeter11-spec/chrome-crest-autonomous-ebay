@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { TrendingUp } from 'lucide-react'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 const TooltipStyle = { background: '#111827', border: '1px solid #1f2937', color: '#f9fafb', borderRadius: '12px', fontSize: 12 }
 
 export default function SnapshotTrend({ days = 90 }) {

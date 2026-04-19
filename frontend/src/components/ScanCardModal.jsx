@@ -3,7 +3,7 @@ import { Camera, Upload, X, Sparkles, Check } from 'lucide-react'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 export default function ScanCardModal({ open, onClose, onSaved }) {
   const { user } = useAuth()

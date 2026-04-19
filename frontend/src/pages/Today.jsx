@@ -4,7 +4,7 @@ import { Flame, DollarSign, BarChart3, Eye, Check, Bell, TrendingUp, TrendingDow
 import { applySeasonFilter } from '../lib/season'
 import { ebayAffiliateUrl } from '../lib/ebay'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 const LS_KEY = 'cc_last_today_visit'
 
 function formatRelative(iso) {

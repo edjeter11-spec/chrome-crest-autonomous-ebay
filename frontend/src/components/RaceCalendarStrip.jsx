@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Flag, TrendingUp } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 export default function RaceCalendarStrip() {
   const [data, setData] = useState(null)

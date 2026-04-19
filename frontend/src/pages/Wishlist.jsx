@@ -10,7 +10,7 @@ import ShareWatchlistModal from '../components/ShareWatchlistModal'
 import SmartRules from '../components/SmartRules'
 import { ebayAffiliateUrl } from '../lib/ebay'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const PRIORITY_LABELS = ['', 'Low', 'Medium', 'High', 'Very High', 'Must Have']
 const PRIORITY_STYLES = [

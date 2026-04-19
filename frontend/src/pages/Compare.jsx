@@ -4,7 +4,7 @@ import { Heart, TrendingUp, TrendingDown, Award, Scale } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import { TOP_PARALLELS } from './CardPage'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 const ALL_DRIVERS = [...DRIVERS_F1, ...DRIVERS_F2, ...DRIVERS_F3, ...DRIVERS_LEGENDS]
 
 function kebab(s) {

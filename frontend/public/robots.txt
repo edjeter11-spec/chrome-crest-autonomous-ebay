@@ -1,3 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /login
+Disallow: /portfolio
+Disallow: /wishlist
+Disallow: /my-cards
+
 Sitemap: https://chrome-crest-autonomous-ebay.vercel.app/sitemap.xml

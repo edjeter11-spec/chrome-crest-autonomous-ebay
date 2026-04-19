@@ -23,7 +23,7 @@ import { ebayAffiliateUrl } from '../lib/ebay'
 import { verdictFor, VERDICT_STYLES } from '../lib/verdict'
 import { applySeasonFilter, isNotable } from '../lib/season'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const PARALLELS = [
   'All', 'Autograph', 'Superfractor 1/1', 'Red /5', 'Black /10', 'Orange /25',

@@ -12,7 +12,7 @@ import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
 import { ebayAffiliateUrl } from '../lib/ebay'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const isAuction = a => (a.buying_options || []).includes('AUCTION')
 

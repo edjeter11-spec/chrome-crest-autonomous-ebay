@@ -28,7 +28,7 @@ function MomentumChip({ delta, small }) {
 
 const DriverPriceChart = lazy(() => import('../components/DriverPriceChart'))
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const getTier = score => score >= 90 ? 'S' : score >= 80 ? 'A' : score >= 65 ? 'B' : 'C'
 const TIER_STYLE = {

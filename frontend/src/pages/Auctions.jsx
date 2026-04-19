@@ -8,7 +8,7 @@ import { useVisibilityInterval, useProgressiveRender, usePersistedState } from '
 import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 import { applySeasonFilter } from '../lib/season'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const SORTS = [
   { value: 'ending', label: 'Ending Soonest' },

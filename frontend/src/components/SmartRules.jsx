@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, Sparkles, Zap } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const PARALLELS = [
   '', 'Refractor', 'Autograph', 'SuperFractor', 'Aqua /199', 'Pink /250', 'Teal /299',

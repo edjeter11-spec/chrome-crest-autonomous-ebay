@@ -5,7 +5,7 @@ import CSVImportModal from '../components/CSVImportModal'
 import { swrFetch } from '../lib/cache'
 
 function AIAdvisorSection() {
-  const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  const API = import.meta.env.VITE_API_URL || ''
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
@@ -82,7 +82,7 @@ function AIAdvisorSection() {
   )
 }
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const PARALLELS = [
   'Base', 'Refractor', 'Prism Refractor', 'Aqua /199', 'Blue /150',

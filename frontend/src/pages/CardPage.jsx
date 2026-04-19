@@ -4,7 +4,7 @@ import { TrendingUp, TrendingDown, ExternalLink, Tag, Award, Users, ArrowLeft } 
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import { ebayAffiliateUrl } from '../lib/ebay'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 const SITE = 'https://chrome-crest-autonomous-ebay.vercel.app'
 
 const ALL_DRIVERS = [...DRIVERS_F1, ...DRIVERS_F2, ...DRIVERS_F3, ...DRIVERS_LEGENDS]

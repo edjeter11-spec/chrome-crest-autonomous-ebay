@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { X, Upload, FileText, AlertCircle, Check } from 'lucide-react'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 // Very lightweight CSV parser — handles quoted fields with commas.
 function parseCSV(text) {

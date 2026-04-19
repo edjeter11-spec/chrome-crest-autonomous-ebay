@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react'
 import {
   ExternalLink, Zap, Clock, Tag, BookmarkPlus, BookmarkCheck,
   ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2,
-  BadgeCheck, Award, RotateCw, X
+  BadgeCheck, Award, RotateCw, X, Twitter
 } from 'lucide-react'
 import { scarcityBadgeStyle } from '../lib/hooks'
 import { verdictFor } from '../lib/verdict'
 import { ebayAffiliateUrl } from '../lib/ebay'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || ''
 
 const proxyImg = (url) => {
   if (!url) return ''
@@ -631,6 +631,28 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   const grade = auction.card?.grade
   const teamColor = auction.card?.team_color
 
+  const shareToX = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const driver = auction.card?.driver_name || 'F1 card'
+    const par = auction.card?.parallel ? ` ${auction.card.parallel}` : ''
+    const gr = auction.card?.grade && auction.card.grade !== 'Raw' ? ` ${auction.card.grade}` : ' Raw'
+    const verdictLabel = (() => {
+      const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
+      if (comp?.median_total) {
+        const v = verdictFor(totalCost, comp.median_total, comp.n)
+        if (v) return v.label
+      }
+      return 'LIVE'
+    })()
+    const price = auction.current_price?.toFixed(2) ?? '—'
+    const slug = (driver).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const url = `${window.location.origin}/card/${slug}`
+    const text = `🏎️ ${driver}${par}${gr} — ${verdictLabel} at $${price}`
+    const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`
+    window.open(intent, '_blank', 'noopener')
+  }
+
   return (
     <div
       onClick={onClick}
@@ -837,6 +859,14 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
                 Link copied!
               </span>
             )}
+          </button>
+          <button
+            onClick={shareToX}
+            title="Share on X"
+            aria-label="Share on X"
+            className="shrink-0 py-1.5 px-2.5 rounded-lg bg-gray-800/60 hover:bg-black text-gray-500 hover:text-white border border-gray-700/30 transition-colors"
+          >
+            <Twitter size={11} />
           </button>
         </div>
 
