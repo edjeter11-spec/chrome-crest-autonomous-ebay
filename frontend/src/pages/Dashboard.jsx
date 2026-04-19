@@ -14,6 +14,20 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const isAuction = a => (a.buying_options || []).includes('AUCTION')
 
+// Notable-sales filter: only show cards >= $25, exclude plain Base + B&W parallels.
+// Keeps the dashboard feed exciting instead of clogged with $2 commons.
+const BORING_PARALLELS = new Set(['Base', 'B&W Ray Wave', 'B&W Lazer', 'Floor It', 'Four & More'])
+const NOTABLE_MIN_PRICE = 25
+function isNotable(s) {
+  const price = s?.sale_price ?? s?.total_cost ?? 0
+  if (!price || price < NOTABLE_MIN_PRICE) return false
+  const parallel = s?.parallel || ''
+  if (BORING_PARALLELS.has(parallel)) return false
+  const t = (s?.title || '').toLowerCase()
+  if (/\bb\s*&\s*w\b|black\s*&\s*white|floor it|four & more/.test(t)) return false
+  return true
+}
+
 function relTime(iso) {
   if (!iso) return '—'
   const t = new Date(iso).getTime()
@@ -104,8 +118,12 @@ export default function Dashboard() {
     if (showRefresh) setRefreshing(true)
 
     swrFetch(
-      `${API}/api/sales?limit=15`,
-      d => { setSales(d.sales || d || []); setSalesLoading(false) }
+      `${API}/api/sales?limit=200`,
+      d => {
+        const all = d.sales || d || []
+        setSales(all.filter(isNotable).slice(0, 15))
+        setSalesLoading(false)
+      }
     )
 
     swrFetch(
@@ -124,8 +142,11 @@ export default function Dashboard() {
     )
 
     swrFetch(
-      `${API}/api/sales?limit=10`,
-      d => setTicker((d.sales || d || []).slice(0, 10))
+      `${API}/api/sales?limit=150`,
+      d => {
+        const all = d.sales || d || []
+        setTicker(all.filter(isNotable).slice(0, 10))
+      }
     )
 
     swrFetch(
