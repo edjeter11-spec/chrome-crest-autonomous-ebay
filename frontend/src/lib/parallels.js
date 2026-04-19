@@ -73,6 +73,18 @@ export function isHiddenByDefault(auction) {
          HIDDEN_BY_DEFAULT_PARALLELS.has(cardParallel)
 }
 
+// Autograph detection is orthogonal to the parallel ladder — a card can be
+// "Gold /50 Auto" AND an autograph. We check auto keywords directly on the
+// title so filterValue='Autograph' catches every signed card regardless of
+// what color parallel it also is.
+const AUTO_PATTERNS = [/\bauto(graph)?\b/i, /\bsigned\b/i, /\bon[- ]?card\b/i]
+export function isAutograph(auction) {
+  const t = (auction?.title || '').toLowerCase()
+  if (AUTO_PATTERNS.some(re => re.test(t))) return true
+  const p = (auction?.card?.parallel || '').toLowerCase()
+  return p.includes('auto') || p.includes('signed')
+}
+
 // True if an auction matches the selected parallel filter option.
 // Handles 'All' (pass — but applies hidden-by-default filter),
 // 'No Base' (exclude only plain Base/unknown), and every specific parallel.
@@ -81,6 +93,12 @@ export function matchesParallel(auction, filterValue) {
     // 'All' actually means "all GOOD parallels" — hide trash inserts unless
     // user explicitly picks one.
     return !isHiddenByDefault(auction)
+  }
+
+  // Autograph: orthogonal to parallel ladder — check title directly so it
+  // catches "Gold /50 Auto" etc. which otherwise matches "Gold /50" first.
+  if (filterValue === 'Autograph') {
+    return isAutograph(auction)
   }
 
   const titleMatch = parallelFromTitle(auction.title || '')
