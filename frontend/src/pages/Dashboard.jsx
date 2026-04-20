@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Gavel, Flame, Database, DollarSign, Zap, Activity,
   RefreshCw, Clock, TrendingUp, Users, Layers, ExternalLink,
-  AlertTriangle, ChevronRight, Shield, BellRing
+  AlertTriangle, ChevronRight, Shield, BellRing, Target
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
@@ -98,7 +98,11 @@ export default function Dashboard() {
   const [alertsData, setAlertsData] = useState([])
   const [recent24hCount, setRecent24hCount] = useState(null)
 
-  const [moverTab, setMoverTab] = useState('parallel')
+  const [nowTick, setNowTick] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
   const [lastSync, setLastSync] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -249,6 +253,23 @@ export default function Dashboard() {
   }, [auctions])
 
   const hotSnipes = useMemo(() => (snipes || []).slice(0, 6), [snipes])
+
+  const biggestSnipes = useMemo(() => {
+    return auctions.filter(a => {
+      const sL = secsLeft(a)
+      if (sL <= 0 || sL > 6 * 3600) return false
+      const price = a.current_price || 0
+      const title = (a.title || '').toLowerCase()
+      const lowPrintRun = /\/(?:5|10|25|50)\b/.test(title) && !/\/500\b|\/150\b/.test(title)
+      return price >= 100 || lowPrintRun || a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY'
+    })
+    .sort((a, b) => {
+      const sA = a.snipe_score || 0, sB = b.snipe_score || 0
+      if (sB !== sA) return sB - sA
+      return secsLeft(a) - secsLeft(b)
+    })
+    .slice(0, 6)
+  }, [auctions])
 
   // New enthusiast-row derivations
   const endingUnderHour = useMemo(
@@ -582,88 +603,83 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 3. Market movers */}
+        {/* 3. Biggest Snipes */}
         <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-gray-800/60">
-            <h2 className="text-sm font-black text-white flex items-center gap-2 mb-2.5">
-              <TrendingUp size={14} className="text-violet-400" />
-              Market Movers
+            <h2 className="text-sm font-black text-white flex items-center gap-2">
+              <Target size={14} className="text-red-400" />
+              Biggest Snipes
             </h2>
-            <div className="flex gap-1 bg-gray-800/60 p-0.5 rounded-xl">
-              <button
-                onClick={() => setMoverTab('parallel')}
-                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                  moverTab === 'parallel' ? 'bg-violet-600/30 text-violet-300' : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                <Layers size={10} /> By Parallel
-              </button>
-              <button
-                onClick={() => setMoverTab('driver')}
-                className={`flex-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 ${
-                  moverTab === 'driver' ? 'bg-violet-600/30 text-violet-300' : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                <Users size={10} /> By Driver
-              </button>
+            <div className="text-[10px] text-gray-500 mt-1 font-medium">
+              Ending soon · premium parallels · entry-level deals
             </div>
           </div>
           <div className="flex-1 max-h-[500px] overflow-y-auto divide-y divide-gray-800/50">
-            {statsLoading ? (
-              Array(6).fill(0).map((_, i) => (
-                <div key={i} className="px-4 py-2.5 animate-pulse">
-                  <div className="h-3 bg-gray-800 rounded w-2/3 mb-1.5" />
-                  <div className="h-2.5 bg-gray-800 rounded w-1/2" />
+            {auctionsLoading ? (
+              Array(4).fill(0).map((_, i) => (
+                <div key={i} className="px-4 py-3 animate-pulse flex gap-3">
+                  <div className="w-[60px] h-[80px] bg-gray-800 rounded" />
+                  <div className="flex-1">
+                    <div className="h-3 bg-gray-800 rounded w-2/3 mb-1.5" />
+                    <div className="h-2.5 bg-gray-800 rounded w-1/2" />
+                  </div>
                 </div>
               ))
-            ) : moverTab === 'parallel' ? (
-              (stats?.by_parallel?.length > 0 ? stats.by_parallel : []).slice(0, 12).map((p, i) => (
-                <div
-                  key={i}
-                  onClick={() => navigate(`/sales?parallel=${encodeURIComponent(p.parallel)}`)}
-                  className="px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-white truncate">{p.parallel || '—'}</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                      {p.count} sold · avg ${Math.round(p.avg_price || 0)}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-xs font-black text-emerald-400">
-                      ${Math.round(p.max_price || 0).toLocaleString()}
-                    </div>
-                    <div className="text-[9px] text-gray-600 uppercase tracking-wide">max</div>
-                  </div>
-                  <ChevronRight size={12} className="text-gray-600 shrink-0" />
-                </div>
-              ))
+            ) : biggestSnipes.length === 0 ? (
+              <EmptyRow text="No ending-soon snipes right now — check back soon." />
             ) : (
-              (stats?.top_drivers?.length > 0 ? stats.top_drivers : []).slice(0, 12).map((d, i) => (
-                <div
-                  key={i}
-                  onClick={() => navigate(`/drivers?name=${encodeURIComponent(d.driver)}`)}
-                  className="px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs font-semibold text-white truncate">{d.driver || '—'}</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">{d.count} sold</div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-xs font-black text-violet-400">
-                      ${Math.round(d.total_value || 0).toLocaleString()}
+              biggestSnipes.map((a, i) => {
+                const sL = Math.max(0, Math.floor(((a.end_time ? new Date(a.end_time).getTime() : 0) - nowTick) / 1000))
+                const h = Math.floor(sL / 3600)
+                const m = Math.floor((sL % 3600) / 60)
+                const sec = sL % 60
+                const timeStr = h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`
+                const isGoodVerdict = a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY'
+                const median = a.median_price || a.median_sold_price
+                const pctBelow = median && a.current_price ? Math.round((1 - a.current_price / median) * 100) : null
+                return (
+                  <div key={a.id || a.ebay_listing_id || i} className="px-4 py-3 hover:bg-gray-800/40 transition-colors flex gap-3">
+                    {a.image_url ? (
+                      <img src={a.image_url} alt="" className="w-[60px] h-[80px] object-cover rounded shrink-0 bg-gray-800" />
+                    ) : (
+                      <div className="w-[60px] h-[80px] rounded bg-gray-800 shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <div className="text-xs font-bold text-white truncate">
+                          {a.driver_name || a.driver || '—'}
+                          {a.parallel && a.parallel !== 'Base' && <span className="text-gray-400 font-semibold"> · {a.parallel}</span>}
+                        </div>
+                        {isGoodVerdict && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-600/30 text-emerald-300 shrink-0">
+                            {a.verdict === 'STRONG_BUY' ? 'STRONG' : 'GOOD'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-2 mb-0.5">
+                        <span className="text-base font-black text-yellow-400">${Math.round(a.current_price || 0).toLocaleString()}</span>
+                        {median ? <span className="text-[10px] text-gray-500">med ${Math.round(median).toLocaleString()}</span> : null}
+                      </div>
+                      {isGoodVerdict && pctBelow && pctBelow > 0 && (
+                        <div className="text-[10px] text-emerald-400 font-semibold mb-1">{pctBelow}% below median</div>
+                      )}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-mono text-red-400 tabular-nums">{timeStr}</span>
+                        {a.ebay_url && (
+                          <a
+                            href={ebayAffiliateUrl(a.ebay_url)}
+                            target="_blank"
+                            rel="sponsored noopener"
+                            className="text-[10px] font-black px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white transition-colors"
+                          >
+                            Buy on eBay
+                          </a>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-[9px] text-gray-600 uppercase tracking-wide">volume</div>
                   </div>
-                  <ChevronRight size={12} className="text-gray-600 shrink-0" />
-                </div>
-              ))
-            )}
-            {!statsLoading && moverTab === 'parallel' && !(stats?.by_parallel?.length) && (
-              <EmptyRow text="No parallel breakdown yet" />
-            )}
-            {!statsLoading && moverTab === 'driver' && !(stats?.top_drivers?.length) && (
-              <EmptyRow text="No driver breakdown yet" />
+                )
+              })
             )}
           </div>
         </div>

@@ -273,6 +273,17 @@ QUERIES = [
     "2025 Topps Chrome F1 Neon Nations",
     "2025 Topps Chrome F1 Helix",
     "2025 Topps Chrome F1 Vegas at Night",
+    "2025 Topps Chrome F1 Futuro",
+    "2025 Topps Chrome F1 Ultrasonic",
+    "2025 Topps Chrome F1 SuperFractor",
+    "2025 Topps Chrome F1 Speed Demons",
+    "2025 Topps Chrome F1 Grand Prix Winner",
+    "2025 Topps Chrome F1 Helmet Collection",
+    "2025 Topps Chrome F1 Orange Refractor",
+    "2025 Topps Chrome F1 Red Refractor",
+    "2025 Topps Chrome F1 Black Refractor",
+    "2025 Topps Chrome F1 Autograph",
+    "2025 Topps Chrome F1 Franco Colapinto",
 ]
 
 

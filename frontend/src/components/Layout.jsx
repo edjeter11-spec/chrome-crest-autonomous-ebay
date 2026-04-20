@@ -47,6 +47,7 @@ export default function Layout() {
   const [todayCount, setTodayCount] = useState(0)
   const [pushState, setPushState] = useState('idle') // idle | subscribed | busy | unsupported
   const [showTutorial, setShowTutorial] = useState(false)
+  const [logoOk, setLogoOk] = useState(true)
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem('cc_theme') || 'dark' } catch { return 'dark' }
   })
@@ -188,7 +189,13 @@ export default function Layout() {
       <div className={`flex items-center ${collapsed && !mobile ? 'justify-center' : 'justify-between'} px-3 py-4 border-b border-gray-800/60`}>
         {(!collapsed || mobile) && (
           <div className="flex items-center gap-2.5">
-            <img src="/logo.jpg" alt="F1 Card Hub" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" />
+            {logoOk ? (
+              <img src="/logo.jpg" alt="F1 Card Hub" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" onError={() => setLogoOk(false)} />
+            ) : (
+              <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
+                <span className="text-white text-xs font-black">F1</span>
+              </div>
+            )}
             <div>
               <div className="font-black text-white text-sm leading-none tracking-tight">F1 Card Hub</div>
               <div className="text-[10px] text-gray-500 mt-0.5 font-medium">Topps Chrome F1 Tracker</div>
@@ -196,7 +203,13 @@ export default function Layout() {
           </div>
         )}
         {collapsed && !mobile && (
-          <img src="/logo.jpg" alt="F1 Card Hub" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" />
+          logoOk ? (
+            <img src="/logo.jpg" alt="F1 Card Hub" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" onError={() => setLogoOk(false)} />
+          ) : (
+            <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
+              <span className="text-white text-xs font-black">F1</span>
+            </div>
+          )
         )}
         {mobile ? (
           <button
@@ -349,7 +362,13 @@ export default function Layout() {
             <Menu size={20} />
           </button>
           <div className="flex items-center gap-2">
-            <img src="/logo.jpg" alt="F1 Card Hub" className="w-6 h-6 rounded-lg object-cover" />
+            {logoOk ? (
+              <img src="/logo.jpg" alt="F1 Card Hub" className="w-6 h-6 rounded-lg object-cover" onError={() => setLogoOk(false)} />
+            ) : (
+              <div className="w-6 h-6 bg-red-600 rounded-lg flex items-center justify-center">
+                <span className="text-white text-[9px] font-black">F1</span>
+              </div>
+            )}
             <span className="font-black text-white text-sm tracking-tight">F1 Card Hub</span>
           </div>
           {snipeCount > 0 ? (
