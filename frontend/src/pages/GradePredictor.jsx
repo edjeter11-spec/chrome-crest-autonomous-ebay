@@ -1,7 +1,104 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Upload, Sparkles, AlertCircle, X } from 'lucide-react'
+import { supabase, supabaseReady } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 
 const API = import.meta.env.VITE_API_URL || ''
+
+function median(nums) {
+  const a = nums.filter(n => Number.isFinite(n)).sort((x, y) => x - y)
+  if (!a.length) return null
+  const m = Math.floor(a.length / 2)
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
+}
+
+function ScannedCards() {
+  const { user, loading: authLoading } = useAuth()
+  const [cards, setCards] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [comps, setComps] = useState({})
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!supabaseReady || !user) { setLoading(false); return }
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from('user_portfolio')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (cancelled) return
+      setCards(data || [])
+      setLoading(false)
+      for (const c of (data || [])) {
+        const params = new URLSearchParams()
+        if (c.driver_name) params.set('driver', c.driver_name)
+        if (c.parallel) params.set('parallel', c.parallel)
+        if (c.grade) params.set('grade', c.grade)
+        params.set('limit', '50')
+        try {
+          const r = await fetch(`${API}/api/sales?${params}`)
+          if (!r.ok) continue
+          const d = await r.json()
+          const rows = Array.isArray(d) ? d : (d.results || d.sales || [])
+          const prices = rows.map(x => Number(x.price ?? x.sold_price)).filter(Boolean)
+          const med = median(prices)
+          if (!cancelled) setComps(prev => ({ ...prev, [c.id]: { med, n: prices.length } }))
+        } catch {}
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user, authLoading])
+
+  return (
+    <div className="mt-6">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-1 h-6 bg-cyan-500 rounded-full shrink-0" />
+        <h2 className="text-lg font-black text-white tracking-tight">🗂 Your Scanned Cards</h2>
+      </div>
+
+      {authLoading || loading ? (
+        <div className="text-sm text-gray-500">Loading…</div>
+      ) : !supabaseReady || !user ? (
+        <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-5 text-sm text-gray-400">
+          <a href="/login" className="text-cyan-400 hover:text-cyan-300 font-semibold">Sign in</a> to view your cards.
+        </div>
+      ) : cards.length === 0 ? (
+        <div className="bg-gray-900/70 border border-gray-800 rounded-2xl p-5 text-sm text-gray-400">
+          No scans yet — go to <a href="/my-cards" className="text-cyan-400 hover:text-cyan-300 font-semibold">My Cards</a> to scan your first one.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {cards.map(c => {
+            const comp = comps[c.id]
+            const est = comp?.med
+            return (
+              <div key={c.id} className="bg-gray-900/70 border border-gray-800 rounded-2xl p-3 flex gap-3">
+                {c.photo_url ? (
+                  <img src={c.photo_url} alt="" className="w-20 h-28 object-cover rounded bg-gray-800 shrink-0" />
+                ) : (
+                  <div className="w-20 h-28 rounded bg-gray-800 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1 text-xs">
+                  <div className="font-bold text-white truncate">{c.driver_name || '—'}</div>
+                  <div className="text-gray-400 truncate">
+                    {c.parallel || 'Base'}{c.grade ? ` · PSA ${c.grade}` : ''}
+                  </div>
+                  <div className="mt-2 text-gray-300">
+                    Comp median: {est ? `$${Math.round(est)}` : '—'}
+                    {comp?.n ? <span className="text-gray-500"> (n={comp.n})</span> : null}
+                  </div>
+                  <div className="text-gray-300">Est. value: {est ? `$${Math.round(est)}` : '—'}</div>
+                  <div className="text-gray-500">Your paid: {c.purchase_price != null ? `$${Number(c.purchase_price).toFixed(0)}` : '—'}</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function GradePredictor() {
   const [file, setFile] = useState(null)
@@ -135,6 +232,8 @@ export default function GradePredictor() {
       <div className="text-[10px] text-gray-600 leading-relaxed">
         Note: This is an AI estimate based on visible condition in your photo. Actual PSA grades depend on factors invisible in photos (surface depth, back condition, exact centering measurements). Use as a rough guide only.
       </div>
+
+      <ScannedCards />
     </div>
   )
 }
