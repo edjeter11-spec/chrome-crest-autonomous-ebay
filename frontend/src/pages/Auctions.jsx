@@ -76,11 +76,13 @@ export default function Auctions() {
   const handleWatchlist = (id, w) =>
     setAuctions(prev => prev.map(a => a.id === id ? { ...a, status: w ? 'watchlist' : 'active' } : a))
 
-  // Calculate true time_left from end_time — backend's stored value is stale/0.
+  // end_time is naive UTC → append 'Z' so JS doesn't read as local time.
   const nowMs = Date.now()
   const trueTimeLeft = (a) => {
     if (a.end_time) {
-      const diff = Math.floor((new Date(a.end_time).getTime() - nowMs) / 1000)
+      const s = String(a.end_time)
+      const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(s)
+      const diff = Math.floor((new Date(hasTz ? s : s + 'Z').getTime() - nowMs) / 1000)
       if (!Number.isNaN(diff)) return diff
     }
     return a.time_left || 0

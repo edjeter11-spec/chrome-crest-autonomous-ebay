@@ -16,12 +16,23 @@ const API = import.meta.env.VITE_API_URL || ''
 
 const isAuction = a => (a.buying_options || []).includes('AUCTION')
 
-// `time_left` in DB is often stale/0; derive from end_time when needed.
+// Backend stores end_time as naive UTC ("2026-04-19T21:04:00") with no 'Z'.
+// JS Date parses naive ISO as LOCAL time → off by user's tz offset.
+// Append 'Z' so it's parsed as UTC (matches what the backend means).
+function parseUtc(s) {
+  if (!s) return null
+  const trimmed = String(s).replace(/(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/, (m) => m && /Z|[+-]/.test(m) ? m : (m || ''))
+  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(trimmed)
+  return new Date(hasTz ? trimmed : trimmed + 'Z')
+}
 function secsLeft(a) {
   if (!a) return 0
   if (a.end_time) {
-    const s = Math.floor((new Date(a.end_time).getTime() - Date.now()) / 1000)
-    if (!Number.isNaN(s)) return Math.max(0, s)
+    const dt = parseUtc(a.end_time)
+    if (dt) {
+      const s = Math.floor((dt.getTime() - Date.now()) / 1000)
+      if (!Number.isNaN(s)) return Math.max(0, s)
+    }
   }
   return a.time_left || 0
 }
