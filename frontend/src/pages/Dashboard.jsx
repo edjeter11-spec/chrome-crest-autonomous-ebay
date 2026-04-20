@@ -6,6 +6,7 @@ import {
   AlertTriangle, ChevronRight, Shield, BellRing, Target
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
+import BiggestSnipes from '../components/BiggestSnipes'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
@@ -604,85 +605,7 @@ export default function Dashboard() {
         </div>
 
         {/* 3. Biggest Snipes */}
-        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-800/60">
-            <h2 className="text-sm font-black text-white flex items-center gap-2">
-              <Target size={14} className="text-red-400" />
-              Biggest Snipes
-            </h2>
-            <div className="text-[10px] text-gray-500 mt-1 font-medium">
-              Ending soon · premium parallels · entry-level deals
-            </div>
-          </div>
-          <div className="flex-1 max-h-[500px] overflow-y-auto divide-y divide-gray-800/50">
-            {auctionsLoading ? (
-              Array(4).fill(0).map((_, i) => (
-                <div key={i} className="px-4 py-3 animate-pulse flex gap-3">
-                  <div className="w-[60px] h-[80px] bg-gray-800 rounded" />
-                  <div className="flex-1">
-                    <div className="h-3 bg-gray-800 rounded w-2/3 mb-1.5" />
-                    <div className="h-2.5 bg-gray-800 rounded w-1/2" />
-                  </div>
-                </div>
-              ))
-            ) : biggestSnipes.length === 0 ? (
-              <EmptyRow text="No ending-soon snipes right now — check back soon." />
-            ) : (
-              biggestSnipes.map((a, i) => {
-                const sL = Math.max(0, Math.floor(((a.end_time ? new Date(a.end_time).getTime() : 0) - nowTick) / 1000))
-                const h = Math.floor(sL / 3600)
-                const m = Math.floor((sL % 3600) / 60)
-                const sec = sL % 60
-                const timeStr = h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`
-                const isGoodVerdict = a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY'
-                const median = a.median_price || a.median_sold_price
-                const pctBelow = median && a.current_price ? Math.round((1 - a.current_price / median) * 100) : null
-                return (
-                  <div key={a.id || a.ebay_listing_id || i} className="px-4 py-3 hover:bg-gray-800/40 transition-colors flex gap-3">
-                    {a.image_url ? (
-                      <img src={a.image_url} alt="" className="w-[60px] h-[80px] object-cover rounded shrink-0 bg-gray-800" />
-                    ) : (
-                      <div className="w-[60px] h-[80px] rounded bg-gray-800 shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <div className="text-xs font-bold text-white truncate">
-                          {a.driver_name || a.driver || '—'}
-                          {a.parallel && a.parallel !== 'Base' && <span className="text-gray-400 font-semibold"> · {a.parallel}</span>}
-                        </div>
-                        {isGoodVerdict && (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-600/30 text-emerald-300 shrink-0">
-                            {a.verdict === 'STRONG_BUY' ? 'STRONG' : 'GOOD'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-baseline gap-2 mb-0.5">
-                        <span className="text-base font-black text-yellow-400">${Math.round(a.current_price || 0).toLocaleString()}</span>
-                        {median ? <span className="text-[10px] text-gray-500">med ${Math.round(median).toLocaleString()}</span> : null}
-                      </div>
-                      {isGoodVerdict && pctBelow && pctBelow > 0 && (
-                        <div className="text-[10px] text-emerald-400 font-semibold mb-1">{pctBelow}% below median</div>
-                      )}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-mono text-red-400 tabular-nums">{timeStr}</span>
-                        {a.ebay_url && (
-                          <a
-                            href={ebayAffiliateUrl(a.ebay_url)}
-                            target="_blank"
-                            rel="sponsored noopener"
-                            className="text-[10px] font-black px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white transition-colors"
-                          >
-                            Buy on eBay
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </div>
+        <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
       </div>
 
       {/* 4. Ending soonest strip */}

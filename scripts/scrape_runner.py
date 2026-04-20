@@ -284,6 +284,11 @@ QUERIES = [
     "2025 Topps Chrome F1 Black Refractor",
     "2025 Topps Chrome F1 Autograph",
     "2025 Topps Chrome F1 Franco Colapinto",
+    "2025 Topps Chrome F1 /25",
+    "2025 Topps Chrome F1 /10",
+    "2025 Topps Chrome F1 /5",
+    "Topps Chrome Formula 1 SuperFractor",
+    "Topps Chrome Formula 1 Autograph",
 ]
 
 
