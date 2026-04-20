@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 # Grade extractor for auction titles (matches PSA/BGS/SGC/CGC + numeric grade).
-_GRADE_RE = re.compile(r"\b(PSA|BGS|SGC|CGC)\s*(10|9\.5|9|8\.5|8|7|6)\b", re.I)
+# Negative lookbehind prevents "/15", "#10", "of 10" etc from matching.
+_GRADE_RE = re.compile(
+    r"(?<![/#\-\d])\b(PSA|BGS|SGC|CGC)\s*(10|9\.?5|9|8\.?5|8|7|6|5|4|3|2|1)\b(?!\s*/)",
+    re.I,
+)
 
 
 def _extract_grade_from_title(title: str) -> str | None:
@@ -24,7 +28,12 @@ def _extract_grade_from_title(title: str) -> str | None:
     m = _GRADE_RE.search(title)
     if not m:
         return None
-    return f"{m.group(1).upper()} {m.group(2)}"
+    grader = m.group(1).upper()
+    num = m.group(2).replace(".", "")
+    # Normalize 95 -> 9.5, 85 -> 8.5
+    if num in ("95", "85"):
+        num = num[0] + "." + num[1]
+    return f"{grader} {num}"
 
 
 def median_comp_price(
@@ -331,6 +340,15 @@ async def sync_real_ebay_listings(db: Session) -> int:
             existing.current_price = current_price
             existing.bid_count = listing.get("bid_count", existing.bid_count)
             existing.last_updated = datetime.utcnow()
+            # Freshness: always refresh these if scraper provided them
+            if end_time is not None:
+                existing.end_time = end_time
+            new_seller = listing.get("seller")
+            if new_seller and new_seller not in ("ebay_seller", "unknown", ""):
+                existing.seller = new_seller
+            new_fb = listing.get("seller_feedback")
+            if new_fb is not None:
+                existing.seller_feedback = new_fb
             if listing.get("shipping_cost") is not None:
                 existing.shipping_cost = listing.get("shipping_cost")
             existing.snipe_score = calculate_snipe_score(existing, card, db)
@@ -349,7 +367,7 @@ async def sync_real_ebay_listings(db: Session) -> int:
                 buy_now_price=listing.get("buy_now_price"),
                 bid_count=listing.get("bid_count", 0),
                 end_time=end_time,
-                seller=listing.get("seller", "unknown"),
+                seller=(listing.get("seller") if listing.get("seller") and listing.get("seller") not in ("ebay_seller", "unknown") else None),
                 seller_feedback=listing.get("seller_feedback", 0),
                 condition=listing.get("condition", "Used"),
                 ebay_url=listing.get("ebay_url", ""),
@@ -445,6 +463,18 @@ def run_strong_buy_alerts(db: Session) -> list:
             f"STRONG BUY: {driver}{par_frag}{grade_frag} — "
             f"${cur_total:.0f} vs ${median:.0f} median ({pct_under}% under, n={n_comps} comps)"
         )
+
+        # Dedup: skip if identical message created in the last hour
+        recent_dupe = db.query(Alert).filter(
+            Alert.message == msg,
+            Alert.created_at > (now - timedelta(hours=1)),
+        ).first() if hasattr(Alert, "created_at") else db.query(Alert).filter(
+            Alert.message == msg,
+            Alert.triggered_at > (now - timedelta(hours=1)),
+        ).first()
+        if recent_dupe:
+            existing.add((auction.id,))
+            continue
 
         alert = Alert(
             card_id=auction.card_id,
@@ -548,6 +578,17 @@ def run_snipe_alerts(db: Session) -> list:
         urgency = "critical" if mins < 15 else ("high" if mins < 60 else "normal")
         driver_name = card.driver_name if card else "F1"
 
+        snipe_msg = (
+            f"SNIPE: {driver_name} — ${auction.current_price:.2f} | "
+            f"Score: {auction.snipe_score:.0f} | {int(mins)}m left"
+        )
+        # Dedup: skip same message in last hour
+        recent_dupe = db.query(Alert).filter(
+            Alert.message == snipe_msg,
+            Alert.triggered_at > (now - timedelta(hours=1)),
+        ).first()
+        if recent_dupe:
+            continue
         alert = Alert(
             card_id=auction.card_id,
             alert_type="snipe_opportunity",
@@ -556,10 +597,7 @@ def run_snipe_alerts(db: Session) -> list:
             triggered_at=now,
             auction_id=auction.id,
             urgency=urgency,
-            message=(
-                f"SNIPE: {driver_name} — ${auction.current_price:.2f} | "
-                f"Score: {auction.snipe_score:.0f} | {int(mins)}m left"
-            ),
+            message=snipe_msg,
         )
         db.add(alert)
         alerts_created.append(alert)
@@ -700,6 +738,14 @@ def run_enhanced_snipe_alerts(db: Session) -> list:
             f"{int(mins_left)} min left, {bid_count} bids. Seller {fb_frag} feedback."
         )
 
+        # Dedup: skip if identical message fired within the last hour
+        recent_dupe = db.query(Alert).filter(
+            Alert.message == msg,
+            Alert.triggered_at > (now - timedelta(hours=1)),
+        ).first()
+        if recent_dupe:
+            existing_keys.add((auction.id,))
+            continue
         alert = Alert(
             card_id=auction.card_id,
             alert_type="snipe_opportunity",

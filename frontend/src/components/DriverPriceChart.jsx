@@ -34,7 +34,7 @@ export default function DriverPriceChart({ driver, days = 90 }) {
     setLoading(true)
     Promise.all([
       fetch(`${API}/api/psa/timeseries?driver=${encodeURIComponent(driver)}&days=${days}`).then(r => r.json()).catch(() => null),
-      fetch(`${API}/api/sales?driver=${encodeURIComponent(driver)}&limit=400`).then(r => r.json()).catch(() => ({ sales: [] })),
+      fetch(`${API}/api/sales?driver=${encodeURIComponent(driver)}&limit=400&year=2025&exclude_source=SportsCardsPro`).then(r => r.json()).catch(() => ({ sales: [] })),
     ]).then(([ts, raw]) => {
       setData(ts)
       setSalesRaw(raw?.sales || [])

@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { Heart, TrendingUp, TrendingDown, Award, Scale } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import { TOP_PARALLELS } from './CardPage'
+import { ALL_PARALLELS } from '../lib/parallels'
 
 const API = import.meta.env.VITE_API_URL || ''
 const ALL_DRIVERS = [...DRIVERS_F1, ...DRIVERS_F2, ...DRIVERS_F3, ...DRIVERS_LEGENDS]
@@ -18,11 +19,21 @@ function parseSlug(slug) {
     const dk = kebab(d)
     if (clean === dk || clean.startsWith(dk + '-')) {
       const rest = clean.slice(dk.length).replace(/^-+/, '')
-      const sortedP = [...TOP_PARALLELS].sort((a, b) => b.length - a.length)
-      for (const p of sortedP) {
-        if (rest === kebab(p) || rest.startsWith(kebab(p))) return { driver: d, parallel: p }
+      // Try ALL_PARALLELS (broader) first, then TOP_PARALLELS — longest match wins.
+      const pool = [...new Set([...(ALL_PARALLELS || []), ...TOP_PARALLELS])]
+        .sort((a, b) => kebab(b).length - kebab(a).length)
+      for (const p of pool) {
+        const pk = kebab(p)
+        if (rest === pk) return { driver: d, parallel: p }
       }
-      return { driver: d, parallel: rest }
+      for (const p of pool) {
+        const pk = kebab(p)
+        if (rest.startsWith(pk)) return { driver: d, parallel: p }
+      }
+      // No registered parallel matched — title-case the remainder so we at
+      // least round-trip what the URL said rather than silently dropping it.
+      const pretty = rest.split('-').map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ').trim()
+      return { driver: d, parallel: pretty || 'Refractor' }
     }
   }
   return { driver: null, parallel: null }

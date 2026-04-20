@@ -33,6 +33,11 @@ DRIVER_WIKIPEDIA = {
     "Isack Hadjar": "Isack Hadjar",
 }
 
+# Hard fallbacks for drivers whose Wikipedia page image fetch is flaky.
+_PHOTO_FALLBACKS: dict[str, str] = {
+    "Andrea Kimi Antonelli": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/FIA_F1_Austria_2024_Nr._12_Antonelli.jpg/330px-FIA_F1_Austria_2024_Nr._12_Antonelli.jpg",
+}
+
 # In-memory cache: driver_name -> image_url
 _photo_cache: dict[str, str] = {}
 
@@ -63,7 +68,7 @@ async def fetch_driver_photo(driver_name: str) -> str:
                     return page["original"]["source"]
     except Exception as e:
         logger.warning(f"Wikipedia fetch failed for {driver_name}: {e}")
-    return ""
+    return _PHOTO_FALLBACKS.get(driver_name, "")
 
 
 async def warm_cache() -> dict[str, str]:
@@ -94,6 +99,8 @@ async def get_photo(driver_name: str) -> str:
     if driver_name in _photo_cache:
         return _photo_cache[driver_name]
     url = await fetch_driver_photo(driver_name)
+    if not url:
+        url = _PHOTO_FALLBACKS.get(driver_name, "")
     if url:
         _photo_cache[driver_name] = url
     return url

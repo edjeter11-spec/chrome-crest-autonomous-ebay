@@ -114,9 +114,13 @@ function PsaPopPanel({ cardId }) {
   }, [cardId])
 
   if (loading) return <div className="h-8 w-full bg-gray-800 animate-pulse rounded" />
+  // Hide panel entirely if API returned error or no PSA key — avoids "No PSA key configured" noise.
+  if (!data || data.error || data.has_psa_key === false) return null
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="bg-gray-900 rounded-xl p-4 border border-gray-800/60">
+      <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">PSA Population</div>
+      <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 text-xs text-gray-400">
         <Shield size={11} className="text-blue-400" />
         {data?.has_psa_key ? (
@@ -136,6 +140,7 @@ function PsaPopPanel({ cardId }) {
           <BarChart2 size={11} /> View PSA Population Report <ExternalLink size={9} />
         </a>
       )}
+      </div>
     </div>
   )
 }
@@ -439,12 +444,9 @@ export default function AuctionModal({ auction, onClose, onWatchlistChange }) {
             </div>
           )}
 
-          {/* PSA Pop */}
+          {/* PSA Pop — PsaPopPanel returns null when no PSA key / error, so we wrap in a frag */}
           {auction.card_id && (
-            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800/60">
-              <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">PSA Population</div>
-              <PsaPopPanel cardId={auction.card_id} />
-            </div>
+            <PsaPopPanel cardId={auction.card_id} />
           )}
 
           {/* Market value comparison */}

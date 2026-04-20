@@ -360,7 +360,7 @@ export default function Drivers() {
                     <img src={topGraded.image_url} alt="" className="w-12 h-16 rounded object-cover shrink-0" onError={e => e.target.style.display='none'} />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate">{topGraded.title}</div>
+                    <div className="text-sm font-semibold text-white truncate" title={topGraded.title || ''}>{topGraded.title}</div>
                     <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
                       <span className="text-amber-400 font-bold">{topGraded.grade}</span>
                       {topGraded.parallel && <span>· {topGraded.parallel}</span>}
@@ -395,8 +395,9 @@ export default function Drivers() {
                 <div className="space-y-1 bg-gray-800/30 rounded-xl p-1 border border-gray-800/40">
                   {recentSales.slice(0, 10).map(s => (
                     <a key={s.id} href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
+                      title={s.title || ''}
                       className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-800/60 transition-colors text-xs">
-                      <span className="text-gray-300 flex-1 truncate">{s.title}</span>
+                      <span className="text-gray-300 flex-1 truncate" title={s.title || ''}>{s.title}</span>
                       {s.grade && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 font-bold shrink-0">{s.grade}</span>}
                       {s.parallel && <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/30 text-cyan-300 shrink-0">{s.parallel}</span>}
                       <span className="text-emerald-400 font-bold shrink-0">${(s.sale_price || 0).toFixed(0)}</span>

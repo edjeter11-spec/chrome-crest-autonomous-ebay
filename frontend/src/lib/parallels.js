@@ -57,6 +57,14 @@ export function parallelFromTitle(title) {
   return null
 }
 
+// Full list of supported parallel labels (includes Diamond 75th Auto combos
+// so Compare URL slugs like 'yuki-tsunoda-diamond-75th-auto' resolve cleanly).
+export const ALL_PARALLELS = [
+  ...PARALLEL_PATTERNS.map(p => p[0]),
+  'Diamond 75th Auto', 'Refractor Auto', 'Gold /50 Auto', 'Orange /25 Auto',
+  'Green /99 Auto', 'Blue /150 Auto', 'Base',
+]
+
 // Low-tier inserts hidden by default — these clog the feed with cheap base-tier
 // listings nobody actually wants to buy. User can still explicitly select them
 // from the parallel dropdown to view.

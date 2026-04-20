@@ -427,7 +427,7 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
                 buy_now,
                 0,                  # bid_count (unknown from search page)
                 end_time,
-                "ebay_seller",      # seller (unknown from search page)
+                None,               # seller (unknown from search page — leave null rather than fake placeholder)
                 0,                  # seller_feedback
                 "Used",
                 False,              # snipe_eligible

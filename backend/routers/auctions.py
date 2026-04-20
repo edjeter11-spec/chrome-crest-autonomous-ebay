@@ -22,6 +22,16 @@ def auction_to_dict(a: Auction) -> dict:
     except Exception:
         sc = {"tier": "-", "count": None, "rank": 99}
         rookie = False
+    # Safeguard: re-extract grade from title to avoid stale/bogus card.grade
+    try:
+        from scraper import _extract_grade_from_title
+        safe_grade = _extract_grade_from_title(a.title or "")
+    except Exception:
+        safe_grade = None
+    # Seller placeholder scrub
+    seller_val = a.seller
+    if seller_val in ("ebay_seller", "", None):
+        seller_val = None
     return {
         "id": a.id,
         "card_id": a.card_id,
@@ -32,7 +42,7 @@ def auction_to_dict(a: Auction) -> dict:
         "bid_count": a.bid_count,
         "end_time": a.end_time.isoformat() if a.end_time else None,
         "time_left": time_left,
-        "seller": a.seller,
+        "seller": seller_val,
         "seller_feedback": a.seller_feedback,
         "condition": a.condition,
         "snipe_eligible": a.snipe_eligible,
@@ -51,7 +61,10 @@ def auction_to_dict(a: Auction) -> dict:
         "card": {
             "driver_name": a.card.driver_name,
             "parallel": a.card.parallel,
-            "grade": a.card.grade,
+            # Trust the fresh title-derived grade as authoritative. If the
+            # title has no grade keyword, show None rather than a stale/bogus
+            # card.grade (eg. "/15" previously misparsed as "15").
+            "grade": safe_grade,
             "team_color": a.card.team_color,
             "investment_score": a.card.investment_score,
             "image_url": a.card.image_url,

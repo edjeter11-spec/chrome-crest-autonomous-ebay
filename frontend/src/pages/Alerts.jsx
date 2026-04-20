@@ -1,7 +1,24 @@
 import { useState, useEffect } from 'react'
-import { Bell, Zap, AlertCircle, X, Trash2, Heart, Flame } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Bell, Zap, AlertCircle, X, Trash2, Heart, Flame, ExternalLink } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
+
+// Pull an eBay URL out of an alert message if it's embedded
+function extractEbayUrl(msg) {
+  if (!msg) return null
+  const m = msg.match(/https?:\/\/(?:www\.)?ebay\.com\/\S+/i)
+  return m ? m[0] : null
+}
+
+function alertTarget(alert) {
+  // Prefer explicit linkage
+  if (alert.auction_id) return { to: `/auctions?alert=${alert.auction_id}` }
+  if (alert.card_id) return { to: `/card/${alert.card_id}` }
+  const u = extractEbayUrl(alert.message)
+  if (u) return { href: u }
+  return { to: '/auctions' }
+}
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -119,20 +136,31 @@ export default function AlertsPage() {
             }
             const Icon = isStrongBuy ? Flame : isWishMatch ? Heart : Zap
             const typeBadge = isStrongBuy ? 'STRONG BUY' : isWishMatch ? 'WISHLIST' : alert.urgency
+            const target = alertTarget(alert)
+            const Wrapper = target.href
+              ? ({ children, className }) => (
+                  <a href={target.href} target="_blank" rel="noopener noreferrer" className={className}>{children}</a>
+                )
+              : ({ children, className }) => (
+                  <Link to={target.to} className={className}>{children}</Link>
+                )
             return (
-              <div key={alert.id} className={`flex items-center gap-4 px-4 py-3 rounded-2xl border ${s.border} ${s.bg} group`}>
+              <div key={alert.id} className={`flex items-center gap-4 px-4 py-3 rounded-2xl border ${s.border} ${s.bg} group hover:bg-opacity-60 transition-colors`}>
                 <Icon size={13} className={`shrink-0 ${s.icon}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-200 truncate font-medium">{alert.message}</p>
+                <Wrapper className="flex-1 min-w-0 cursor-pointer">
+                  <p className="text-sm text-gray-200 truncate font-medium flex items-center gap-1.5">
+                    {alert.message}
+                    <ExternalLink size={10} className="text-gray-600 shrink-0" />
+                  </p>
                   <p className="text-[10px] text-gray-600 mt-0.5">
                     {alert.alert_type?.replace(/_/g, ' ')} · {new Date(alert.created_at).toLocaleString()}
                   </p>
-                </div>
+                </Wrapper>
                 <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg uppercase shrink-0 ${s.badge}`}>
                   {typeBadge}
                 </span>
                 <button
-                  onClick={() => dismiss(alert.id)}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismiss(alert.id) }}
                   className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-gray-300 transition-all ml-1"
                 >
                   <X size={13} />

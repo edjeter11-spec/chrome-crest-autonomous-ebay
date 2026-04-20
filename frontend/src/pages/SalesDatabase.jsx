@@ -25,6 +25,21 @@ import { applySeasonFilter, isNotable } from '../lib/season'
 
 const API = import.meta.env.VITE_API_URL || ''
 
+// Resolve the best outbound eBay URL for a sold row. Synthetic SCP / PWCC ids
+// don't resolve on eBay; for those we fall back to a sold-items search query.
+function soldEbayUrl(s) {
+  if (!s) return null
+  const rawId = s.ebay_item_id || ''
+  const urlMatch = (s.ebay_url || '').match(/\/itm\/(\d+)/)
+  const numericId = /^\d+$/.test(rawId) ? rawId : (urlMatch ? urlMatch[1] : null)
+  if (numericId) return `https://www.ebay.com/itm/${numericId}`
+  if (s.ebay_url && /^https?:\/\/(?:www\.)?ebay\.com\/itm\/\d+/.test(s.ebay_url)) return s.ebay_url
+  // Fallback: sold + completed listings search keyed on driver + parallel
+  const kw = [s.driver_name || s.driver, s.parallel, s.grade].filter(Boolean).join(' ')
+  if (!kw) return s.ebay_url || null
+  return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(kw)}&LH_Sold=1&LH_Complete=1`
+}
+
 const PARALLELS = [
   'All', 'Autograph', 'Superfractor 1/1', 'Red /5', 'Black /10', 'Orange /25',
   'Gold /50', 'F1 75th /75', 'Green /99', 'Blue /150', 'Aqua /199',
@@ -411,7 +426,7 @@ export default function SalesDatabase() {
                   )
                 })()}
                 <span className="text-[10px] text-gray-500">
-                  {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+                  {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                 </span>
                 <button
                   onClick={(e) => shareSale(e, s)}
@@ -420,12 +435,13 @@ export default function SalesDatabase() {
                 >
                   <Share2 size={11} />
                 </button>
-                {s.ebay_url && (
-                  <a href={ebayAffiliateUrl(s.ebay_url)} target="_blank" rel="sponsored noopener"
-                    className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 text-gray-400">
+                {(() => { const u = soldEbayUrl(s); return u ? (
+                  <a href={ebayAffiliateUrl(u)} target="_blank" rel="sponsored noopener"
+                    className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 text-gray-400"
+                    title={/sch\/i\.html/.test(u) ? 'Search sold listings on eBay' : 'View listing on eBay'}>
                     <ExternalLink size={11} />
                   </a>
-                )}
+                ) : null })()}
               </div>
             </div>
           </div>
@@ -469,7 +485,7 @@ export default function SalesDatabase() {
               ) : filteredSorted.map(s => (
                 <tr key={s.id} className="border-b border-gray-800/40 hover:bg-gray-800/40 transition-colors">
                   <td className="px-3 py-2 text-xs text-gray-300 whitespace-nowrap">
-                    {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+                    {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                   </td>
                   <td className="px-3 py-2">
                     {s.image_url ? (
@@ -523,12 +539,13 @@ export default function SalesDatabase() {
                       >
                         <Share2 size={12} />
                       </button>
-                      {s.ebay_url && (
-                        <a href={ebayAffiliateUrl(s.ebay_url)} target="_blank" rel="sponsored noopener"
-                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800 hover:bg-cyan-600/20 text-gray-400 hover:text-cyan-400 transition-colors">
+                      {(() => { const u = soldEbayUrl(s); return u ? (
+                        <a href={ebayAffiliateUrl(u)} target="_blank" rel="sponsored noopener"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800 hover:bg-cyan-600/20 text-gray-400 hover:text-cyan-400 transition-colors"
+                          title={/sch\/i\.html/.test(u) ? 'Search sold listings on eBay' : 'View listing on eBay'}>
                           <ExternalLink size={12} />
                         </a>
-                      )}
+                      ) : null })()}
                     </div>
                   </td>
                 </tr>

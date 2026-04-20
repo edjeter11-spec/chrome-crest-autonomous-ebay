@@ -138,15 +138,28 @@ export default function GradedTracker() {
               PSA hasn't indexed the 2025 Topps Chrome F1 set yet. We surface real graded sales from every marketplace we can reach + compute an observed pop estimate.
             </p>
             <div className="flex flex-wrap items-center gap-2 mt-2.5">
-              {Object.entries(sourceCounts?.sources || {}).sort((a,b) => (b[1]||0) - (a[1]||0)).map(([src, cnt]) => {
-                const style = SOURCE_STYLES[src] || DEFAULT_SOURCE_STYLE
-                return (
-                  <div key={src} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border ${style.bg} ${style.border}`}>
-                    <span className={`font-bold ${style.text}`}>{src}</span>
-                    <span className="text-white font-black">{cnt ?? '—'}</span>
-                  </div>
-                )
-              })}
+              {(() => {
+                // Always show the major sources even if count is 0, so users know
+                // whether the integration exists yet. Show "Coming soon" for 0 counts
+                // on partner sources; working sources (eBay, SportsCardsPro) always show counts.
+                const present = sourceCounts?.sources || {}
+                const ALWAYS_SHOW = ['eBay', 'SportsCardsPro', 'Goldin', 'PWCC', 'MySlabs']
+                const WORKING = new Set(['eBay', 'SportsCardsPro'])
+                const merged = { ...Object.fromEntries(ALWAYS_SHOW.map(s => [s, 0])), ...present }
+                return Object.entries(merged).sort((a,b) => (b[1]||0) - (a[1]||0)).map(([src, cnt]) => {
+                  const style = SOURCE_STYLES[src] || DEFAULT_SOURCE_STYLE
+                  const isZero = !cnt || cnt === 0
+                  const showComingSoon = isZero && !WORKING.has(src)
+                  return (
+                    <div key={src} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border ${style.bg} ${style.border} ${showComingSoon ? 'opacity-60' : ''}`}>
+                      <span className={`font-bold ${style.text}`}>{src}</span>
+                      <span className="text-white font-black">
+                        {showComingSoon ? 'Coming soon' : (cnt ?? '—')}
+                      </span>
+                    </div>
+                  )
+                })
+              })()}
               {sourceCounts?.myslabs_active_listings > 0 && (
                 <div className="px-2.5 py-1 rounded-lg text-[11px] border border-purple-700/40 bg-purple-900/20 text-purple-300">
                   {sourceCounts.myslabs_active_listings} active MySlabs listings

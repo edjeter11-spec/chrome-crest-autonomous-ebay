@@ -4,9 +4,11 @@ import {
   ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2,
   BadgeCheck, Award, RotateCw, X, Twitter
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { scarcityBadgeStyle } from '../lib/hooks'
 import { verdictFor } from '../lib/verdict'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import { useAuth } from '../lib/auth'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -342,9 +344,17 @@ function PricingOptions({ auction, comp }) {
   )
 }
 
-function BidHistoryPanel({ auctionId }) {
+function BidHistoryPanel({ auctionId, ebayListingId, ebayUrl }) {
   const [history, setHistory] = useState(null)
   const [loading, setLoading] = useState(true)
+  // Build proper item-page bid history link. Falls back to ebay_url.
+  const itemId = (() => {
+    if (ebayListingId && String(ebayListingId).includes('|')) return String(ebayListingId).split('|')[1]
+    if (ebayListingId && /^\d+$/.test(String(ebayListingId))) return String(ebayListingId)
+    const m = (ebayUrl || '').match(/\/itm\/(\d+)/)
+    return m ? m[1] : null
+  })()
+  const itemBidHistoryUrl = itemId ? `https://www.ebay.com/itm/${itemId}#bidHistory` : ebayUrl
 
   useEffect(() => {
     fetch(`${API}/api/auctions/${auctionId}/bid-history`)
@@ -378,8 +388,8 @@ function BidHistoryPanel({ auctionId }) {
       ) : (
         <p className="text-xs text-gray-600 italic">No bids yet — first mover advantage</p>
       )}
-      {history.ebay_bid_url && (
-        <a href={ebayAffiliateUrl(history.ebay_bid_url)} target="_blank" rel="sponsored noopener"
+      {itemBidHistoryUrl && (
+        <a href={ebayAffiliateUrl(itemBidHistoryUrl)} target="_blank" rel="sponsored noopener"
           className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
         >
           <ExternalLink size={10} /> Full history on eBay
@@ -536,6 +546,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   const [comp, setComp] = useState(null)
   const [bidIntentOpen, setBidIntentOpen] = useState(false)
   const [savedIntent, setSavedIntent] = useState(null)
+  const { user } = useAuth() || { user: null }
 
   // Fetch latest bid intent for this auction (passive — non-blocking)
   useEffect(() => {
@@ -812,14 +823,25 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
           </div>
         )}
 
-        {/* Place Bid (snipe executor) */}
+        {/* Place Bid (snipe executor) — gated behind auth */}
         {auction.snipe_eligible && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setBidIntentOpen(true) }}
-            className="w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors"
-          >
-            <Zap size={11} fill="white" /> Place Snipe Bid
-          </button>
+          user ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); setBidIntentOpen(true) }}
+              className="w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors"
+            >
+              <Zap size={11} fill="white" /> Place Snipe Bid
+            </button>
+          ) : (
+            <Link
+              to="/login"
+              onClick={(e) => { e.stopPropagation() }}
+              className="w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-600/40 transition-colors"
+              title="Sign in to set a snipe bid"
+            >
+              <Zap size={11} /> Sign in to set snipe bid
+            </Link>
+          )
         )}
 
         {bidIntentOpen && (
@@ -899,7 +921,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
         {/* Expanded content */}
         {expandedPanel && (
           <div className="pt-2 border-t border-gray-800/60 text-xs">
-            {expandedPanel === 'bids' && <BidHistoryPanel auctionId={auction.id} />}
+            {expandedPanel === 'bids' && <BidHistoryPanel auctionId={auction.id} ebayListingId={auction.ebay_listing_id} ebayUrl={auction.ebay_url} />}
             {expandedPanel === 'seller' && <SellerPanel auctionId={auction.id} />}
             {expandedPanel === 'details' && (
               <DetailsPanel

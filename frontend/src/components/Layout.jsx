@@ -97,17 +97,35 @@ export default function Layout() {
 
   const togglePush = async () => {
     setPushState('busy')
+    // Safety reset: if state is still 'busy' after 10s (permission prompt hung / denied silently),
+    // force back to idle so the button becomes usable again.
+    const safety = setTimeout(() => {
+      setPushState(s => s === 'busy' ? 'idle' : s)
+    }, 10000)
     try {
+      // Check current browser permission up-front — if already denied, don't even try to subscribe
+      if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+        alert('Notifications are blocked in your browser settings. Enable them to receive push alerts.')
+        setPushState('idle')
+        return
+      }
       if (await isSubscribed()) {
         await unsubscribePush()
         setPushState('idle')
       } else {
         await subscribePush()
-        setPushState('subscribed')
+        // If permission ended up denied after prompt, surface as idle
+        if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+          setPushState('idle')
+        } else {
+          setPushState('subscribed')
+        }
       }
     } catch (e) {
       alert('Push notification error: ' + (e?.message || 'unknown'))
       setPushState('idle')
+    } finally {
+      clearTimeout(safety)
     }
   }
 
@@ -434,16 +452,69 @@ export default function Layout() {
 
       {showTutorial && <Tutorial onClose={dismissTutorial} />}
 
-      {!showTutorial && (
+      {!showTutorial && <TopRightMenu user={user} signOut={signOut} onHelp={() => setShowTutorial(true)} />}
+    </div>
+  )
+}
+
+function TopRightMenu({ user, signOut, onHelp }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [open])
+
+  if (user) {
+    return (
+      <div className="fixed top-3 right-3 md:top-4 md:right-4 z-40">
         <button
-          onClick={() => setShowTutorial(true)}
-          className="fixed top-3 right-3 md:top-4 md:right-4 z-40 w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
-          aria-label="Help"
-          title="Show tutorial"
+          onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
+          className="w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
+          aria-label="Account menu"
+          aria-haspopup="true"
+          aria-expanded={open}
+          title={user.email || 'Account'}
         >
-          <HelpCircle size={16} />
+          <User size={16} />
         </button>
-      )}
+        {open && (
+          <div
+            className="absolute right-0 mt-1 w-44 rounded-xl bg-gray-900 border border-gray-700/60 shadow-xl py-1 text-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-3 py-2 text-[11px] text-gray-500 border-b border-gray-800 truncate">{user.email || 'Signed in'}</div>
+            <Link to="/my-cards" onClick={() => setOpen(false)} className="block px-3 py-2 text-gray-300 hover:bg-gray-800">My Cards</Link>
+            <Link to="/portfolio" onClick={() => setOpen(false)} className="block px-3 py-2 text-gray-300 hover:bg-gray-800">Portfolio</Link>
+            <button
+              onClick={() => { setOpen(false); onHelp() }}
+              className="w-full text-left px-3 py-2 text-gray-300 hover:bg-gray-800"
+            >Tutorial</button>
+            <button
+              onClick={() => { setOpen(false); signOut?.() }}
+              className="w-full text-left px-3 py-2 text-red-400 hover:bg-red-900/30 border-t border-gray-800"
+            >Sign out</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed top-3 right-3 md:top-4 md:right-4 z-40 flex items-center gap-2">
+      <Link
+        to="/login"
+        className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-600/20 text-red-300 border border-red-600/40 hover:bg-red-600/30"
+      >Sign in</Link>
+      <button
+        onClick={onHelp}
+        className="w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
+        aria-label="Help"
+        title="Show tutorial"
+      >
+        <HelpCircle size={16} />
+      </button>
     </div>
   )
 }

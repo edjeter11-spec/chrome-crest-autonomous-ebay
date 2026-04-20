@@ -173,14 +173,24 @@ export default function Auctions() {
               {filtered.length} listings
             </span>
             {snipeCount > 0 && (
-              <span className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl bg-red-600/15 text-red-400 border border-red-600/30">
+              <button
+                onClick={() => setF({ filterSnipe: !filterSnipe })}
+                className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl border transition-colors ${filterSnipe ? 'bg-red-600/40 text-red-200 border-red-500/60' : 'bg-red-600/15 text-red-400 border-red-600/30 hover:bg-red-600/25'}`}
+                aria-pressed={filterSnipe}
+                title="Filter to snipeable auctions only"
+              >
                 <Zap size={10} fill="currentColor" /> {snipeCount} snipeable
-              </span>
+              </button>
             )}
             {strongBuyCount > 0 && (
-              <span className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl bg-green-600/15 text-green-400 border border-green-600/30">
+              <button
+                onClick={() => setF({ filterStrongBuy: !filterStrongBuy })}
+                className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl border transition-colors ${filterStrongBuy ? 'bg-green-600/40 text-green-200 border-green-500/60' : 'bg-green-600/15 text-green-400 border-green-600/30 hover:bg-green-600/25'}`}
+                aria-pressed={filterStrongBuy}
+                title="Filter to strong buys only"
+              >
                 🔥 {strongBuyCount} strong buys
-              </span>
+              </button>
             )}
           </>
         )}

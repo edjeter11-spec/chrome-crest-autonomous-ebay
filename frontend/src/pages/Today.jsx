@@ -31,13 +31,31 @@ export default function Today() {
 
   useEffect(() => {
     document.title = 'What changed today · F1 Card Hub'
-    fetch(`${API}/api/today?since=${encodeURIComponent(since)}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d) {
-          if (Array.isArray(d.new_sales)) d.new_sales = applySeasonFilter(d.new_sales)
-          if (Array.isArray(d.new_alerts)) d.new_alerts = applySeasonFilter(d.new_alerts)
-          if (Array.isArray(d.biggest_movers_24h)) d.biggest_movers_24h = applySeasonFilter(d.biggest_movers_24h)
+    // Use the same /api/sales?since= source as the Dashboard banner so the
+    // "new sales" count on this page and the dashboard agree. We still hit
+    // /api/today for alerts + watchlist changes.
+    Promise.all([
+      fetch(`${API}/api/today?since=${encodeURIComponent(since)}`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${API}/api/sales?since=${encodeURIComponent(since)}&limit=500`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ])
+      .then(([d, salesResp]) => {
+        if (!d) { setLoading(false); return }
+        if (Array.isArray(d.new_sales)) d.new_sales = applySeasonFilter(d.new_sales)
+        if (Array.isArray(d.new_alerts)) d.new_alerts = applySeasonFilter(d.new_alerts)
+        if (Array.isArray(d.biggest_movers_24h)) d.biggest_movers_24h = applySeasonFilter(d.biggest_movers_24h)
+        // Overlay client-side authoritative new_sales count from /api/sales.
+        if (salesResp && Array.isArray(salesResp.sales)) {
+          const cutoff = new Date(since).getTime()
+          const fresh = salesResp.sales.filter(s => {
+            const ts = s.scraped_at || s.sale_date
+            return ts && new Date(ts).getTime() > cutoff
+          })
+          d.new_sales = applySeasonFilter(fresh)
+          d.new_sales_total = salesResp.total ?? fresh.length
+          // Recompute total_changes to keep header honest
+          d.total_changes = (d.new_sales?.length || 0)
+            + (d.new_alerts?.length || 0)
+            + (d.watchlist_changes?.length || 0)
         }
         setData(d); setLoading(false)
       })
