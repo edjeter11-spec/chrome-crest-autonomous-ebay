@@ -4,6 +4,27 @@ import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart a
 import { swrFetch } from '../lib/cache'
 import { usePersistedState } from '../lib/hooks'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import { driverPhoto, driverInitials } from '../lib/driverPhotos'
+
+function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
+  const [failed, setFailed] = useState(false)
+  const photo = driverPhoto(name)
+  const style = { width: size, height: size }
+  if (photo && !failed) {
+    return (
+      <img src={photo} alt={name}
+        style={style}
+        onError={() => setFailed(true)}
+        className={`${rounded} object-cover object-top shrink-0 shadow border border-gray-700/40`} />
+    )
+  }
+  return (
+    <div style={{ ...style, backgroundColor: teamColor || '#444' }}
+      className={`${rounded} flex items-center justify-center font-black text-white shrink-0 shadow ${textClass}`}>
+      {driverInitials(name)}
+    </div>
+  )
+}
 
 const ROOKIES_2025 = new Set([
   'Andrea Kimi Antonelli', 'Gabriel Bortoleto', 'Oliver Bearman',
@@ -224,10 +245,7 @@ export default function Drivers() {
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
                     isSelected ? 'bg-gray-800 border border-gray-700/60 shadow-sm' : 'hover:bg-gray-900/70 border border-transparent'
                   }`}>
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black text-white shrink-0 shadow"
-                    style={{ backgroundColor: d.team_color || '#444' }}>
-                    {d.driver_name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                  </div>
+                  <DriverAvatar name={d.driver_name} teamColor={d.team_color} size={36} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-white truncate flex items-center gap-1.5">
                       {d.driver_name}
@@ -258,17 +276,7 @@ export default function Drivers() {
           <div className="flex-1 panel p-4 md:p-6 min-w-0">
             <div className="flex items-start gap-3 md:gap-5 mb-6 flex-wrap">
               <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 shadow-xl border border-gray-700/50">
-                {selected.image_url && !selected.image_url.includes('placehold.co') ? (
-                  <img src={selected.image_url.includes('i.ebayimg.com') ? selected.image_url : `${API}/api/proxy/image?url=${encodeURIComponent(selected.image_url)}`}
-                    alt={selected.driver_name}
-                    className="w-full h-full object-cover object-top"
-                    onError={e => { e.target.style.display='none'; e.target.parentNode.style.backgroundColor = selected.team_color||'#333' }} />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-2xl font-black text-white"
-                    style={{ backgroundColor: selected.team_color || '#333' }}>
-                    {selected.driver_name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                  </div>
-                )}
+                <DriverAvatar name={selected.driver_name} teamColor={selected.team_color} size={80} rounded="rounded-2xl" textClass="text-2xl" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-1 flex-wrap">
