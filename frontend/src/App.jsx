@@ -64,7 +64,7 @@ export default function App() {
           <Route path="about" element={<Suspense fallback={<PageFallback />}><About /></Suspense>} />
           <Route path="arbitrage" element={<Suspense fallback={<PageFallback />}><Arbitrage /></Suspense>} />
           <Route path="grade-profit" element={<Navigate to="/arbitrage?tab=grade" replace />} />
-          <Route path="sniper" element={<RequireAuth><Suspense fallback={<PageFallback />}><Sniper /></Suspense></RequireAuth>} />
+          <Route path="sniper" element={<Suspense fallback={<PageFallback />}><Sniper /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

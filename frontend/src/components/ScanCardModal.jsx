@@ -98,7 +98,14 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
         ai_scan_json: scanResult || null,
       }
       const { error: insErr } = await supabase.from('user_portfolio').insert(row)
-      if (insErr) throw insErr
+      if (insErr) {
+        // Schema-cache error means the user_portfolio table doesn't exist on
+        // this Supabase project yet — surface a clearer prompt.
+        if (/schema cache|does not exist|relation.*user_portfolio/i.test(insErr.message || '')) {
+          throw new Error('Collection table missing — create the user_portfolio table in your Supabase project (see /setup docs).')
+        }
+        throw insErr
+      }
       if (photoWarning) setError(photoWarning)
       onSaved?.()
       if (!photoWarning) close()

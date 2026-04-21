@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Database, Download, Search, RefreshCw, ExternalLink,
   DollarSign, Package, Calendar, TrendingUp, ChevronDown, ChevronUp, Share2
@@ -71,9 +72,12 @@ export default function SalesDatabase() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
-  const [driver, setDriver] = useState('All')
-  const [parallel, setParallel] = useState('All')
-  const [grade, setGrade] = useState('All')
+  const [urlParams] = useSearchParams()
+  // Seed filters from URL (e.g. /sales?parallel=Gold%20/50&driver=Max%20Verstappen)
+  // so "Jump to Parallel" on Dashboard actually lands filtered.
+  const [driver, setDriver] = useState(() => urlParams.get('driver') || 'All')
+  const [parallel, setParallel] = useState(() => urlParams.get('parallel') || 'All')
+  const [grade, setGrade] = useState(() => urlParams.get('grade') || 'All')
   // Show all sales by default; user can filter up with $ min input.
   const [minPrice, setMinPrice] = useState('')
   const [maxPrice, setMaxPrice] = useState('')
