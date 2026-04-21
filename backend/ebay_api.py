@@ -30,6 +30,7 @@ SEARCH_QUERIES = [
 TRADING_CARDS_CATEGORY = "212"  # Sports Trading Cards
 
 _token_cache: dict = {"token": None, "expires_at": None}
+_last_oauth_error: Optional[str] = None
 
 
 def _get_credentials():
@@ -89,6 +90,8 @@ async def get_oauth_token() -> Optional[str]:
                 return token
             else:
                 logger.error(f"eBay OAuth failed: {resp.status_code} {resp.text}")
+                global _last_oauth_error
+                _last_oauth_error = f"HTTP {resp.status_code}: {resp.text[:400]}"
                 return None
         except Exception as e:
             logger.error(f"eBay OAuth error: {e}")

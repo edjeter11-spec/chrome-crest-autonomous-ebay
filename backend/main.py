@@ -1275,10 +1275,20 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
 async def debug_ebay():
     """Quota-free diagnostic: reads eBay rate-limit analytics (no search calls)."""
     from ebay_api import get_oauth_token
+    import ebay_api as _ebay_api
     import httpx as _httpx
     token = await get_oauth_token()
     if not token:
-        return {"error": "OAuth failed — credentials rejected by eBay"}
+        app_id = os.getenv("EBAY_APP_ID", "")
+        has_cert = bool(os.getenv("EBAY_CERT_ID"))
+        has_secret = bool(os.getenv("EBAY_APP_SECRET"))
+        return {
+            "error": "OAuth failed — credentials rejected by eBay",
+            "ebay_response": _ebay_api._last_oauth_error,
+            "app_id_prefix": app_id[:20] if app_id else "",
+            "has_cert_id": has_cert,
+            "has_app_secret": has_secret,
+        }
 
     async with _httpx.AsyncClient(timeout=10.0) as client:
         try:
