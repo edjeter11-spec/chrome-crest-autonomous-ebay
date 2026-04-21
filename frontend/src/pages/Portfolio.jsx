@@ -4,8 +4,137 @@ import StatCard from '../components/StatCard'
 import CSVImportModal from '../components/CSVImportModal'
 import ScanCardModal from '../components/ScanCardModal'
 import { swrFetch } from '../lib/cache'
+import { supabase, supabaseReady } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 
 const GradePredictor = lazy(() => import('./GradePredictor'))
+
+function median(nums) {
+  const a = nums.filter(n => Number.isFinite(n)).sort((x, y) => x - y)
+  if (!a.length) return null
+  const m = Math.floor(a.length / 2)
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
+}
+
+function ScannedCardsBlock({ refreshKey, onCount }) {
+  const API = import.meta.env.VITE_API_URL || ''
+  const { user, loading: authLoading } = useAuth()
+  const [cards, setCards] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [comps, setComps] = useState({})
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!supabaseReady || !user) { setLoading(false); return }
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('user_portfolio')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+      if (cancelled) return
+      if (error) { setCards([]); setLoading(false); return }
+      const rows = data || []
+      setCards(rows)
+      setLoading(false)
+      onCount?.(rows.length)
+      for (const c of rows) {
+        const params = new URLSearchParams()
+        if (c.driver_name) params.set('driver', c.driver_name)
+        if (c.parallel) params.set('parallel', c.parallel)
+        if (c.grade) params.set('grade', c.grade)
+        params.set('limit', '50')
+        try {
+          const r = await fetch(`${API}/api/sales?${params}`)
+          if (!r.ok) continue
+          const d = await r.json()
+          const salesArr = Array.isArray(d) ? d : (d.sales || d.results || [])
+          const prices = salesArr.map(x => Number(x.sale_price ?? x.price ?? x.total_cost)).filter(Boolean)
+          const m = median(prices)
+          const last30 = salesArr.filter(s => {
+            const ts = new Date(s.sale_date || s.scraped_at || 0).getTime()
+            return ts && (Date.now() - ts) < 30 * 86400 * 1000
+          }).length
+          if (!cancelled) setComps(prev => ({
+            ...prev,
+            [c.id]: { med: m, n: prices.length, last30, hi: Math.max(...prices, 0), lo: Math.min(...prices.filter(p => p > 0).concat(Infinity)) },
+          }))
+        } catch {}
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user, authLoading, refreshKey])
+
+  const remove = async (id) => {
+    if (!confirm('Delete this scanned card?')) return
+    setCards(prev => prev.filter(c => c.id !== id))
+    await supabase.from('user_portfolio').delete().eq('id', id)
+  }
+
+  if (authLoading || loading) return <div className="text-sm text-gray-500 py-4">Loading your scanned cards…</div>
+  if (!supabaseReady || !user) return null
+  if (!cards.length) return null
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Camera size={12} className="text-purple-400" />
+        <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400">Scanned Cards · {cards.length}</h3>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {cards.map(c => {
+          const comp = comps[c.id]
+          const est = comp?.med
+          const paid = c.purchase_price != null ? Number(c.purchase_price) : null
+          const pnl = est != null && paid != null ? est - paid : null
+          const pnlPct = pnl != null && paid > 0 ? (pnl / paid) * 100 : null
+          return (
+            <div key={c.id} className="bg-gray-900/70 border border-gray-800 rounded-2xl p-3 flex gap-3 relative group">
+              {c.photo_url ? (
+                <img src={c.photo_url} alt="" className="w-20 h-28 object-cover rounded bg-gray-800 shrink-0" />
+              ) : (
+                <div className="w-20 h-28 rounded bg-gray-800 shrink-0 flex items-center justify-center">
+                  <Camera size={20} className="text-gray-700" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1 text-xs">
+                <div className="font-bold text-white truncate">{c.driver_name || '—'}</div>
+                <div className="text-gray-400 truncate">{c.parallel || 'Base'}{c.grade ? ` · ${c.grade}` : ''}</div>
+                <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
+                  <span className="text-gray-500">Market value:</span>
+                  <span className="text-white font-bold text-right">{est != null ? `$${Math.round(est)}` : '—'}</span>
+                  <span className="text-gray-500">Comps (n):</span>
+                  <span className="text-gray-300 text-right">{comp?.n ?? '—'}</span>
+                  <span className="text-gray-500">Sold last 30d:</span>
+                  <span className="text-gray-300 text-right">{comp?.last30 ?? '—'}</span>
+                  <span className="text-gray-500">Range:</span>
+                  <span className="text-gray-300 text-right">
+                    {comp?.lo && Number.isFinite(comp.lo) ? `$${Math.round(comp.lo)}–$${Math.round(comp.hi)}` : '—'}
+                  </span>
+                  <span className="text-gray-500">Your paid:</span>
+                  <span className="text-gray-300 text-right">{paid != null ? `$${paid.toFixed(0)}` : '—'}</span>
+                  {pnl != null && (<>
+                    <span className="text-gray-500">P&L:</span>
+                    <span className={`${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-bold text-right`}>
+                      {pnl >= 0 ? '+' : ''}${Math.round(pnl)}{pnlPct != null ? ` (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(0)}%)` : ''}
+                    </span>
+                  </>)}
+                </div>
+              </div>
+              <button onClick={() => remove(c.id)}
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded bg-gray-800 text-gray-500 hover:text-red-400"
+                title="Delete">
+                <X size={12} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 function AIAdvisorSection() {
   const API = import.meta.env.VITE_API_URL || ''
@@ -257,6 +386,8 @@ export default function Portfolio() {
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [scanRefresh, setScanRefresh] = useState(0)
+  const [scannedCount, setScannedCount] = useState(0)
   const [tab, setTab] = useState('holdings') // 'holdings' | 'ai'
   const [drivers, setDrivers] = useState([])
 
@@ -313,8 +444,8 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {/* Scan hero — only shown when collection is empty so it doesn't clutter */}
-      {!loading && items.length === 0 && (
+      {/* Scan hero — only shown when both scan list and manual holdings are empty */}
+      {!loading && items.length === 0 && scannedCount === 0 && (
         <button onClick={() => setScanning(true)}
           className="w-full block text-left bg-gradient-to-br from-purple-900/40 to-pink-900/20 border-2 border-dashed border-purple-700/50 hover:border-purple-500 rounded-2xl p-6 transition-colors">
           <div className="flex items-center gap-3">
@@ -353,7 +484,9 @@ export default function Portfolio() {
 
       {importing && <CSVImportModal onClose={() => setImporting(false)} onImported={load} />}
       {adding && <AddCardForm drivers={drivers} onAdd={() => { setAdding(false); load() }} onCancel={() => setAdding(false)} />}
-      {scanning && <ScanCardModal open={scanning} onClose={() => setScanning(false)} onSaved={() => { setScanning(false); load() }} />}
+      {scanning && <ScanCardModal open={scanning} onClose={() => setScanning(false)} onSaved={() => { setScanning(false); setScanRefresh(x => x + 1); load() }} />}
+
+      <ScannedCardsBlock refreshKey={scanRefresh} onCount={setScannedCount} />
 
       <AIAdvisorSection />
 
