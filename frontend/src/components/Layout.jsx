@@ -26,13 +26,14 @@ const NAV = [
   { to: '/sniper', label: 'Sniper', icon: Target },
 ]
 
-// Mobile bottom tab bar — 5 most-used
+// Mobile bottom tab bar — 5 most-used. "Mine" now includes AI scan + grade predictor.
+// "Snipe" replaces standalone AI — surfaces push-notifiable snipe opportunities.
 const MOBILE_TABS = [
   { to: '/', label: 'Home', icon: LayoutDashboard, exact: true },
   { to: '/auctions', label: 'Deals', icon: Gavel },
   { to: '/sales', label: 'Sales', icon: Database },
   { to: '/portfolio', label: 'Mine', icon: Briefcase },
-  { to: '/grade', label: 'AI', icon: Sparkles },
+  { to: '/sniper', label: 'Snipe', icon: Target },
 ]
 
 export default function Layout() {

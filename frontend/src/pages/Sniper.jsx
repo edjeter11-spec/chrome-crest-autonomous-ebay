@@ -1,8 +1,38 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Target, Trash2, Pause, Play, Plus, Link as LinkIcon } from 'lucide-react'
+import { Target, Trash2, Pause, Play, Plus, Link as LinkIcon, BellRing } from 'lucide-react'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ALL_PARALLELS } from '../lib/parallels'
+import { pushSupported, isSubscribed, subscribePush } from '../lib/push'
+
+function PushCTA() {
+  const [state, setState] = useState('checking') // checking | unsupported | off | on | busy
+  useEffect(() => {
+    if (!pushSupported()) { setState('unsupported'); return }
+    isSubscribed().then(on => setState(on ? 'on' : 'off')).catch(() => setState('off'))
+  }, [])
+  if (state === 'on' || state === 'unsupported') return null
+  const enable = async () => {
+    setState('busy')
+    try { await subscribePush(); setState('on') }
+    catch { setState('off') }
+  }
+  return (
+    <div className="bg-gradient-to-r from-red-900/40 to-orange-900/30 border border-red-700/50 rounded-2xl p-4 mb-5 flex items-center gap-3">
+      <div className="w-10 h-10 rounded-full bg-red-600/40 flex items-center justify-center shrink-0">
+        <BellRing size={18} className="text-red-200" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-black text-white text-sm">Turn on snipe alerts</div>
+        <div className="text-[11px] text-red-200/80 mt-0.5">We'll push a notification to your phone the moment a listing matches your rules. No spam.</div>
+      </div>
+      <button onClick={enable} disabled={state === 'busy' || state === 'checking'}
+        className="px-3 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-black rounded-lg shrink-0">
+        {state === 'busy' ? 'Enabling…' : 'Enable'}
+      </button>
+    </div>
+  )
+}
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -149,6 +179,8 @@ export default function Sniper() {
         </h1>
         <p className="text-sm text-gray-500 mt-1">Get notified when your target cards hit a price.</p>
       </div>
+
+      <PushCTA />
 
       {/* Presets */}
       <div className="mb-4 flex flex-wrap gap-2">

@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle, Upload, Sparkles } from 'lucide-react'
+import { useState, useEffect, lazy, Suspense } from 'react'
+import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle, Upload, Sparkles, Camera, Zap } from 'lucide-react'
 import StatCard from '../components/StatCard'
 import CSVImportModal from '../components/CSVImportModal'
+import ScanCardModal from '../components/ScanCardModal'
 import { swrFetch } from '../lib/cache'
+
+const GradePredictor = lazy(() => import('./GradePredictor'))
 
 function AIAdvisorSection() {
   const API = import.meta.env.VITE_API_URL || ''
@@ -253,6 +256,8 @@ export default function Portfolio() {
   const [editing, setEditing] = useState(null)
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [tab, setTab] = useState('holdings') // 'holdings' | 'ai'
   const [drivers, setDrivers] = useState([])
 
   const load = () => swrFetch(`${API}/api/portfolio`, d => { setItems(d.items || d || []); setLoading(false) })
@@ -289,8 +294,12 @@ export default function Portfolio() {
   return (
     <div className="space-y-5 max-w-5xl">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="page-title">Portfolio</h1>
-        <div className="flex items-center gap-2">
+        <h1 className="page-title">My Cards</h1>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => setScanning(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:brightness-110 text-white text-xs font-bold rounded-lg shadow-lg shadow-purple-900/30">
+            <Camera size={14} /> Scan Card
+          </button>
           <button onClick={() => setImporting(true)}
             className="flex items-center gap-1.5 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-xs font-bold rounded-lg">
             <Upload size={14} /> Import CSV
@@ -298,14 +307,53 @@ export default function Portfolio() {
           {!adding && (
             <button onClick={() => setAdding(true)}
               className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg">
-              <Plus size={14} /> Add Card
+              <Plus size={14} /> Add Manually
             </button>
           )}
         </div>
       </div>
 
+      {/* Scan hero — only shown when collection is empty so it doesn't clutter */}
+      {!loading && holdings.length === 0 && (
+        <button onClick={() => setScanning(true)}
+          className="w-full block text-left bg-gradient-to-br from-purple-900/40 to-pink-900/20 border-2 border-dashed border-purple-700/50 hover:border-purple-500 rounded-2xl p-6 transition-colors">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-purple-600/30 flex items-center justify-center shrink-0">
+              <Camera size={22} className="text-purple-300" />
+            </div>
+            <div>
+              <div className="font-black text-white text-lg">Snap a card to get started</div>
+              <div className="text-xs text-purple-200/80 mt-0.5">AI identifies driver + parallel, finds eBay comps, saves to your collection with sold-history insights.</div>
+            </div>
+          </div>
+        </button>
+      )}
+
+      {/* Tab switcher */}
+      <div className="flex items-center gap-2 border-b border-gray-800">
+        <button onClick={() => setTab('holdings')}
+          className={`px-4 py-2 text-sm font-bold flex items-center gap-1.5 border-b-2 transition-colors ${
+            tab === 'holdings' ? 'text-white border-red-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>
+          <Package size={14} /> Holdings
+        </button>
+        <button onClick={() => setTab('ai')}
+          className={`px-4 py-2 text-sm font-bold flex items-center gap-1.5 border-b-2 transition-colors ${
+            tab === 'ai' ? 'text-white border-red-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>
+          <Sparkles size={14} /> AI Grader
+        </button>
+      </div>
+
+      {tab === 'ai' && (
+        <Suspense fallback={<div className="text-gray-500 text-sm p-4">Loading AI grader…</div>}>
+          <GradePredictor />
+        </Suspense>
+      )}
+
+      {tab === 'holdings' && <>
+
       {importing && <CSVImportModal onClose={() => setImporting(false)} onImported={load} />}
       {adding && <AddCardForm drivers={drivers} onAdd={() => { setAdding(false); load() }} onCancel={() => setAdding(false)} />}
+      {scanning && <ScanCardModal open={scanning} onClose={() => setScanning(false)} onSaved={() => { setScanning(false); load() }} />}
 
       <AIAdvisorSection />
 
@@ -437,6 +485,7 @@ export default function Portfolio() {
           </div>
         </div>
       )}
+      </>}
     </div>
   )
 }
