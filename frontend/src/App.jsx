@@ -32,6 +32,7 @@ const MyCards = lazy(() => import('./pages/MyCards'))
 const About = lazy(() => import('./pages/About'))
 const Arbitrage = lazy(() => import('./pages/Arbitrage'))
 const GradeProfit = lazy(() => import('./pages/GradeProfit'))
+const Sniper = lazy(() => import('./pages/Sniper'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="about" element={<Suspense fallback={<PageFallback />}><About /></Suspense>} />
           <Route path="arbitrage" element={<Suspense fallback={<PageFallback />}><Arbitrage /></Suspense>} />
           <Route path="grade-profit" element={<Suspense fallback={<PageFallback />}><GradeProfit /></Suspense>} />
+          <Route path="sniper" element={<RequireAuth><Suspense fallback={<PageFallback />}><Sniper /></Suspense></RequireAuth>} />
         </Route>
       </Routes>
     </BrowserRouter>

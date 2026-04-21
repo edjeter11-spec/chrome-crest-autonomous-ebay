@@ -64,6 +64,10 @@
     {
       "path": "/api/cron/sync",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/sniper/check",
+      "schedule": "0 * * * *"
     }
   ],
   "env": {

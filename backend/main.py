@@ -22,6 +22,7 @@ from routers import verdict_accuracy, sellers as sellers_router, snapshots, ai_a
 from routers import today as today_router
 from routers import digest as digest_router
 from routers import predictions as predictions_router
+from routers import sniper as sniper_router
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -59,6 +60,7 @@ app.include_router(ai_advisor.router)
 app.include_router(today_router.router)
 app.include_router(digest_router.router)
 app.include_router(predictions_router.router)
+app.include_router(sniper_router.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")

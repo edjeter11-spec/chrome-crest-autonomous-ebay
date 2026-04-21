@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
   Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Sunrise, Camera,
-  ArrowLeftRight, Calculator, Sun, Moon
+  ArrowLeftRight, Calculator, Sun, Moon, Target
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
@@ -26,6 +26,7 @@ const NAV = [
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
   { to: '/grade-profit', label: 'Grade Profit', icon: Calculator },
   { to: '/alerts', label: 'Alerts', icon: Bell },
+  { to: '/sniper', label: 'Sniper', icon: Target },
 ]
 
 // Mobile bottom tab bar — 5 most-used
@@ -249,7 +250,7 @@ export default function Layout() {
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-        {NAV.filter(({ to }) => user || !['/my-cards', '/portfolio', '/wishlist'].includes(to)).map(({ to, label, icon: Icon, exact }) => (
+        {NAV.filter(({ to }) => user || !['/my-cards', '/portfolio', '/wishlist', '/sniper'].includes(to)).map(({ to, label, icon: Icon, exact }) => (
           <NavLink
             key={to}
             to={to}
