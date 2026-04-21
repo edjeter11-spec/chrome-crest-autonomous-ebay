@@ -4,7 +4,7 @@ import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import ThemeToggle from '../components/ThemeToggle'
 import { swrFetch } from '../lib/cache'
-import { matchesParallel } from '../lib/parallels'
+import { matchesParallel, AUTO_VARIANTS } from '../lib/parallels'
 import { useVisibilityInterval, useProgressiveRender, usePersistedState } from '../lib/hooks'
 import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 import { applySeasonFilter } from '../lib/season'
@@ -65,12 +65,12 @@ export default function Auctions() {
     search: '', sortBy: 'ending', filterParallel: 'All', printRun: 'Any',
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
     filterRookie: false, formulaType: 'F1', teamFilter: 'All',
-    filterStrongBuy: false,
+    filterStrongBuy: false, autoVariant: 'Any',
   })
   const setF = (patch) => setFilters(prev => ({ ...prev, ...patch }))
   const { search, sortBy, filterParallel, printRun, listingType,
           filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter,
-          filterStrongBuy } = filters
+          filterStrongBuy, autoVariant } = filters
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -109,7 +109,7 @@ export default function Auctions() {
       if (isCardLot(a)) return false
       if (formulaType !== 'All' && seriesOf(a) !== formulaType) return false
       if (teamFilter !== 'All' && teamOf(a) !== teamFilter) return false
-      if (!matchesParallel(a, filterParallel)) return false
+      if (!matchesParallel(a, filterParallel, autoVariant)) return false
       if (printRun !== 'Any') {
         // Match exact print run like "/5" without matching "/50" or "/150"
         const re = new RegExp(`${printRun.replace('/', '\\/')}(?!\\d)`)
@@ -169,7 +169,7 @@ export default function Auctions() {
     tag.textContent = JSON.stringify(payload)
     document.head.appendChild(tag)
     return () => { const el = document.getElementById('auctions-jsonld'); if (el) el.remove() }
-  }, [auctions, search, sortBy, filterParallel, printRun, listingType, filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter, filterStrongBuy])
+  }, [auctions, search, sortBy, filterParallel, printRun, listingType, filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter, filterStrongBuy, autoVariant])
 
   const snipeCount = filtered.filter(a => a.snipe_eligible).length
   const strongBuyCount = auctions.filter(a => a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY').length
@@ -275,6 +275,23 @@ export default function Auctions() {
           </button>
         ))}
       </div>
+
+      {/* Auto-variant sub-filter — only when parent filter is Autograph */}
+      {filterParallel === 'Autograph' && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1 -mt-1">
+          <span className="text-[10px] text-gray-500 uppercase tracking-wider font-bold shrink-0 mr-1">Auto type:</span>
+          {AUTO_VARIANTS.map(v => (
+            <button key={v} onClick={() => setF({ autoVariant: v })}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 transition-colors ${
+                autoVariant === v
+                  ? 'bg-yellow-500 text-black border border-yellow-400'
+                  : 'bg-gray-800/60 text-gray-400 border border-transparent hover:border-gray-700/50 hover:text-gray-200'
+              }`}>
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Grid */}
       {loading ? (

@@ -18,12 +18,10 @@ const NAV = [
   { to: '/sales', label: 'Sales', icon: Database },
   { to: '/drivers', label: 'Drivers', icon: Users },
   { to: '/graded', label: 'Graded', icon: Shield },
-  { to: '/my-cards', label: 'My Cards', icon: Camera },
-  { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
+  { to: '/portfolio', label: 'My Cards', icon: Briefcase },
   { to: '/wishlist', label: 'Watchlist', icon: Heart },
   { to: '/grade', label: 'AI Grader', icon: Sparkles },
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
-  { to: '/grade-profit', label: 'Grade Profit', icon: Calculator },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/sniper', label: 'Sniper', icon: Target },
 ]

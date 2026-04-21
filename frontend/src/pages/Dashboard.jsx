@@ -12,6 +12,38 @@ import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import { useAuth } from '../lib/auth'
+
+function WelcomeBanner() {
+  const { user } = useAuth()
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    if (!user) return
+    try {
+      const lastId = sessionStorage.getItem('cc_welcomed_user')
+      if (lastId !== user.id) {
+        setShow(true)
+        sessionStorage.setItem('cc_welcomed_user', user.id)
+        const t = setTimeout(() => setShow(false), 6000)
+        return () => clearTimeout(t)
+      }
+    } catch {}
+  }, [user])
+  if (!show || !user) return null
+  const meta = user.user_metadata || {}
+  const first = (meta.full_name || meta.name || meta.given_name || '').split(' ')[0]
+    || (user.email || '').split('@')[0].split(/[._-]/)[0]
+  const display = first ? first.charAt(0).toUpperCase() + first.slice(1) : 'back'
+  return (
+    <div className="bg-gradient-to-r from-green-900/40 to-emerald-900/30 border border-green-700/40 rounded-2xl px-4 py-3 flex items-center gap-3">
+      <div className="text-2xl">👋</div>
+      <div>
+        <div className="text-white font-black text-lg">Welcome back, {display}</div>
+        <div className="text-[11px] text-green-300/80">Here's what moved since you were last here</div>
+      </div>
+    </div>
+  )
+}
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -294,6 +326,8 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 max-w-[1800px]">
 
+      <WelcomeBanner />
+
       {/* Race calendar strip — top */}
       <RaceCalendarStrip />
 
@@ -376,9 +410,11 @@ export default function Dashboard() {
         <div className="relative overflow-hidden bg-gray-900/70 border border-gray-800/60 rounded-2xl">
           <div className="flex gap-3 px-3 py-2.5 ticker-track whitespace-nowrap">
             {[...ticker, ...ticker].map((s, i) => (
-              <button
+              <a
                 key={i}
-                onClick={() => s.driver_name && navigate(`/sales?driver=${encodeURIComponent(s.driver_name)}`)}
+                href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : (s.driver_name ? `/sales?driver=${encodeURIComponent(s.driver_name)}` : '#')}
+                target={s.ebay_url ? '_blank' : undefined}
+                rel={s.ebay_url ? 'sponsored noopener' : undefined}
                 className="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-800/70 hover:bg-gray-800 border border-gray-700/40 text-xs text-gray-300 transition-colors"
                 title={s.title}
               >
@@ -388,7 +424,7 @@ export default function Dashboard() {
                 {s.parallel && <span className="text-cyan-400">{s.parallel}</span>}
                 {s.grade && s.grade !== 'Raw' && <span className="text-amber-400 font-bold">{s.grade}</span>}
                 <span className="text-emerald-400 font-black">${(s.sale_price ?? 0).toFixed(0)}</span>
-              </button>
+              </a>
             ))}
           </div>
         </div>

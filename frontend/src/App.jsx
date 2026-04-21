@@ -53,7 +53,7 @@ export default function App() {
           <Route path="bin" element={<BuyItNow />} />
           <Route path="drivers" element={<Suspense fallback={<PageFallback />}><Drivers /></Suspense>} />
           <Route path="portfolio" element={<RequireAuth><Suspense fallback={<PageFallback />}><Portfolio /></Suspense></RequireAuth>} />
-          <Route path="my-cards" element={<RequireAuth><Suspense fallback={<PageFallback />}><MyCards /></Suspense></RequireAuth>} />
+          <Route path="my-cards" element={<Navigate to="/portfolio" replace />} />
           <Route path="wishlist" element={<RequireAuth><Suspense fallback={<PageFallback />}><Wishlist /></Suspense></RequireAuth>} />
           <Route path="alerts" element={<Suspense fallback={<PageFallback />}><AlertsPage /></Suspense>} />
           <Route path="graded" element={<Suspense fallback={<PageFallback />}><GradedTracker /></Suspense>} />
@@ -63,7 +63,7 @@ export default function App() {
           <Route path="compare" element={<Suspense fallback={<PageFallback />}><Compare /></Suspense>} />
           <Route path="about" element={<Suspense fallback={<PageFallback />}><About /></Suspense>} />
           <Route path="arbitrage" element={<Suspense fallback={<PageFallback />}><Arbitrage /></Suspense>} />
-          <Route path="grade-profit" element={<Suspense fallback={<PageFallback />}><GradeProfit /></Suspense>} />
+          <Route path="grade-profit" element={<Navigate to="/arbitrage?tab=grade" replace />} />
           <Route path="sniper" element={<RequireAuth><Suspense fallback={<PageFallback />}><Sniper /></Suspense></RequireAuth>} />
         </Route>
       </Routes>

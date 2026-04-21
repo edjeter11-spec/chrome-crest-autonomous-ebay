@@ -4,7 +4,7 @@ import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import ThemeToggle from '../components/ThemeToggle'
 import { swrFetch } from '../lib/cache'
-import { matchesParallel } from '../lib/parallels'
+import { matchesParallel, AUTO_VARIANTS } from '../lib/parallels'
 import { useVisibilityInterval, useProgressiveRender } from '../lib/hooks'
 import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 import { applySeasonFilter } from '../lib/season'
@@ -76,6 +76,7 @@ export default function BuyItNow() {
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('best_value')
   const [filterParallel, setFilterParallel] = useState('No Base')
+  const [autoVariant, setAutoVariant] = useState('Any')
   const [printRun, setPrintRun] = useState('Any')
   const [filterWatchlist, setFilterWatchlist] = useState(false)
   const [filterRookie, setFilterRookie] = useState(false)
@@ -107,7 +108,7 @@ export default function BuyItNow() {
       if (isCardLot(a)) return false
       if (formulaType !== 'All' && seriesOf(a) !== formulaType) return false
       if (teamFilter !== 'All' && teamOf(a) !== teamFilter) return false
-      if (!matchesParallel(a, filterParallel)) return false
+      if (!matchesParallel(a, filterParallel, autoVariant)) return false
       if (printRun !== 'Any') {
         const re = new RegExp(`${printRun.replace('/', '\\/')}(?!\\d)`)
         if (!re.test(a.title || '')) return false
@@ -197,6 +198,13 @@ export default function BuyItNow() {
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {PARALLELS.map(p => <option key={p} value={p}>{p === 'All' ? 'All Parallels' : p === 'No Base' ? 'No Base Cards' : p}</option>)}
         </select>
+
+        {filterParallel === 'Autograph' && (
+          <select value={autoVariant} onChange={e => setAutoVariant(e.target.value)}
+            className="input-field px-3 py-2 text-xs cursor-pointer border-yellow-500/40">
+            {AUTO_VARIANTS.map(v => <option key={v} value={v}>{v === 'Any' ? 'Any Auto Type' : `Auto · ${v}`}</option>)}
+          </select>
+        )}
 
         <select value={printRun} onChange={e => setPrintRun(e.target.value)}
           className="input-field px-3 py-2 text-xs cursor-pointer">

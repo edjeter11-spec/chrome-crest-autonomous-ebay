@@ -102,10 +102,19 @@ export function isAutograph(auction) {
   return AUTO_POSITIVE.test(cleaned)
 }
 
+// Auto-variant labels shown as a secondary row when user filters by 'Autograph'.
+export const AUTO_VARIANTS = [
+  'Any', 'Refractor', 'Futuro', 'Diamond 75th', 'Speed Wheels', 'Neon Nations',
+  'Floor It', 'Vegas at Night', 'Red /5', 'Orange /25', 'Gold /50', 'Green /99',
+  'Blue /150', 'SuperFractor',
+]
+
 // True if an auction matches the selected parallel filter option.
 // Handles 'All' (pass — but applies hidden-by-default filter),
 // 'No Base' (exclude only plain Base/unknown), and every specific parallel.
-export function matchesParallel(auction, filterValue) {
+// When filterValue is 'Autograph' and autoVariant is provided (not 'Any'),
+// require BOTH autograph AND the variant match — e.g. "Autograph + Gold /50".
+export function matchesParallel(auction, filterValue, autoVariant) {
   if (filterValue === 'All') {
     // 'All' actually means "all GOOD parallels" — hide trash inserts unless
     // user explicitly picks one.
@@ -115,7 +124,12 @@ export function matchesParallel(auction, filterValue) {
   // Autograph: orthogonal to parallel ladder — check title directly so it
   // catches "Gold /50 Auto" etc. which otherwise matches "Gold /50" first.
   if (filterValue === 'Autograph') {
-    return isAutograph(auction)
+    if (!isAutograph(auction)) return false
+    if (!autoVariant || autoVariant === 'Any') return true
+    // Variant must match title or stored parallel
+    const titleMatch = parallelFromTitle(auction.title || '')
+    const cardParallel = auction.card?.parallel || ''
+    return titleMatch === autoVariant || cardParallel === autoVariant
   }
 
   const titleMatch = parallelFromTitle(auction.title || '')

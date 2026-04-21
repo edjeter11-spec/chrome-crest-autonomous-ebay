@@ -1,5 +1,8 @@
-import { useEffect, useState, useMemo } from 'react'
-import { ArrowLeftRight, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react'
+import { useEffect, useState, useMemo, lazy, Suspense } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { ArrowLeftRight, TrendingUp, TrendingDown, ExternalLink, Calculator } from 'lucide-react'
+
+const GradeProfit = lazy(() => import('./GradeProfit'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -25,6 +28,9 @@ function groupByKey(sales) {
 }
 
 export default function Arbitrage() {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'grade' ? 'grade' : 'arb'
+  const setTab = (t) => setParams(t === 'arb' ? {} : { tab: t })
   const [loading, setLoading] = useState(true)
   const [ebay, setEbay] = useState([])
   const [scp, setScp] = useState([])
@@ -69,13 +75,36 @@ export default function Arbitrage() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-4">
         <ArrowLeftRight className="text-red-500" size={28} />
         <div>
-          <h1 className="text-2xl font-black text-white">Arbitrage Finder</h1>
-          <p className="text-sm text-gray-500">Price gaps &gt; 30% between eBay and SportsCardsPro (n≥3 on both sides)</p>
+          <h1 className="text-2xl font-black text-white">Deal Tools</h1>
+          <p className="text-sm text-gray-500">Find arbitrage gaps + calculate grading profit</p>
         </div>
       </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-2 mb-5 border-b border-gray-800">
+        <button onClick={() => setTab('arb')}
+          className={`px-4 py-2 text-sm font-bold flex items-center gap-1.5 border-b-2 transition-colors ${
+            tab === 'arb' ? 'text-white border-red-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>
+          <ArrowLeftRight size={14} /> Arbitrage
+        </button>
+        <button onClick={() => setTab('grade')}
+          className={`px-4 py-2 text-sm font-bold flex items-center gap-1.5 border-b-2 transition-colors ${
+            tab === 'grade' ? 'text-white border-red-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>
+          <Calculator size={14} /> Grade Profit
+        </button>
+      </div>
+
+      {tab === 'grade' && (
+        <Suspense fallback={<div className="text-gray-500 text-sm">Loading…</div>}>
+          <GradeProfit />
+        </Suspense>
+      )}
+
+      {tab === 'arb' && <>
+      <p className="text-xs text-gray-500 mb-3">Price gaps &gt; 30% between eBay and SportsCardsPro (n≥3 on both sides)</p>
 
       {loading && <div className="text-gray-500">Loading…</div>}
       {error && <div className="text-red-400 text-sm">{error}</div>}
@@ -115,6 +144,7 @@ export default function Arbitrage() {
           )}
         </div>
       )}
+      </>}
     </div>
   )
 }
