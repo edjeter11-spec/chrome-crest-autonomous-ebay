@@ -483,23 +483,25 @@ def migrate_push_subscriptions():
 
 @app.get("/api/psa/timeseries")
 def psa_timeseries(driver: str, days: int = 90, db: Session = Depends(get_db)):
-    """Graded sales grouped by week for the given driver. Returns lines per grade."""
+    """Graded sales grouped by week for the given driver. Returns MEDIAN per grade per week.
+    Excludes SportsCardsPro synthetic rows and non-2025 bleed-through. Drops weeks with <2
+    samples in a grade bucket to kill single-sale noise spikes."""
     from database import SoldCard
-    from sqlalchemy import func
     from datetime import timedelta
     since = datetime.utcnow() - timedelta(days=days)
     rows = db.query(SoldCard).filter(
         SoldCard.driver_name == driver,
         SoldCard.sale_date >= since,
         SoldCard.sale_price > 0,
+        (SoldCard.source != "SportsCardsPro") | (SoldCard.source.is_(None)),
+        SoldCard.title.ilike("%2025%"),
     ).all()
 
-    # Group by (week_start, grade)
+    # Group by (week_start, grade) -> list of prices; median later
     buckets: dict = {}
     for r in rows:
         if not r.sale_date:
             continue
-        # Normalize grade bucket
         g = (r.grade or "").strip().upper()
         if g.startswith("PSA 10"):
             grade = "PSA 10"
@@ -511,22 +513,25 @@ def psa_timeseries(driver: str, days: int = 90, db: Session = Depends(get_db)):
             grade = g.split()[0] if g else "Other"
         else:
             grade = "Raw"
-        # Week start = Monday of that week
         week_start = (r.sale_date - timedelta(days=r.sale_date.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
         key = (week_start.isoformat(), grade)
-        b = buckets.setdefault(key, {"sum": 0.0, "count": 0})
-        b["sum"] += float(r.sale_price or 0)
-        b["count"] += 1
+        buckets.setdefault(key, []).append(float(r.sale_price or 0))
 
-    out = [
-        {
+    def _median(vals):
+        v = sorted(vals)
+        n = len(v)
+        return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+    out = []
+    for (week, grade), vals in buckets.items():
+        if len(vals) < 2:
+            continue  # single-sale weeks create phantom spikes
+        out.append({
             "week_start": week,
             "grade": grade,
-            "count": b["count"],
-            "avg_price": round(b["sum"] / b["count"], 2) if b["count"] else 0,
-        }
-        for (week, grade), b in buckets.items()
-    ]
+            "count": len(vals),
+            "avg_price": round(_median(vals), 2),
+        })
     out.sort(key=lambda x: (x["week_start"], x["grade"]))
     return {"driver": driver, "days": days, "total_points": len(rows), "series": out}
 

@@ -67,10 +67,17 @@ export default function DriverPriceChart({ driver, days = 90 }) {
       const n = byGrade.get(g)?.length || 0
       const v = verdictFor(total, med, n, 4)  // need >=4 in bucket
       if (!v) continue
-      const ts = new Date(s.sale_date).getTime()
+      const d = new Date(s.sale_date)
+      const ts = d.getTime()
+      // Snap to Monday-of-week so scatter shares x-axis ticks with the line series
+      const day = d.getUTCDay() // 0=Sun
+      const diff = (day + 6) % 7 // days since Monday
+      const mon = new Date(d)
+      mon.setUTCDate(d.getUTCDate() - diff)
+      const weekKey = mon.toISOString().slice(0, 10)
       points.push({
         ts,
-        week: s.sale_date.slice(0, 10),
+        week: weekKey,
         price: total,
         verdict: v.key,
         fill: v.dotColor,

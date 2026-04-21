@@ -27,7 +27,6 @@ const SharedWatchlist = lazy(() => import('./pages/SharedWatchlist'))
 const EmbedPrice = lazy(() => import('./pages/EmbedPrice'))
 const CardPage = lazy(() => import('./pages/CardPage'))
 const Compare = lazy(() => import('./pages/Compare'))
-const Today = lazy(() => import('./pages/Today'))
 const MyCards = lazy(() => import('./pages/MyCards'))
 const About = lazy(() => import('./pages/About'))
 const Arbitrage = lazy(() => import('./pages/Arbitrage'))
@@ -62,7 +61,6 @@ export default function App() {
           <Route path="grade" element={<Suspense fallback={<PageFallback />}><GradePredictor /></Suspense>} />
           <Route path="card/:slug" element={<Suspense fallback={<PageFallback />}><CardPage /></Suspense>} />
           <Route path="compare" element={<Suspense fallback={<PageFallback />}><Compare /></Suspense>} />
-          <Route path="today" element={<Suspense fallback={<PageFallback />}><Today /></Suspense>} />
           <Route path="about" element={<Suspense fallback={<PageFallback />}><About /></Suspense>} />
           <Route path="arbitrage" element={<Suspense fallback={<PageFallback />}><Arbitrage /></Suspense>} />
           <Route path="grade-profit" element={<Suspense fallback={<PageFallback />}><GradeProfit /></Suspense>} />

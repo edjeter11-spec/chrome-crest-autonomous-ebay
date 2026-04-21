@@ -292,7 +292,7 @@ QUERIES = [
 ]
 
 
-def build_url(query: str, mode: str = "sold"):
+def build_url(query: str, mode: str = "sold", min_price: int = 0):
     params = {"_nkw": query, "_ipg": "240"}
     if mode == "sold":
         params["LH_Complete"] = "1"
@@ -303,7 +303,16 @@ def build_url(query: str, mode: str = "sold"):
     elif mode == "bin":
         params["LH_BIN"] = "1"
         params["_sop"] = "10"  # newly listed
+    if min_price and min_price > 0:
+        params["_udlo"] = str(min_price)
     return f"{EBAY_BASE}?{urlencode(params)}"
+
+
+# Premium sold backfill: one query per driver at min $40 so snipe scoring has deep
+# comp history on cards that actually matter. Runs once per scrape cycle.
+PREMIUM_QUERIES = [
+    f"2025 Topps Chrome F1 {d.split()[-1]}" for d in DRIVERS
+]
 
 
 def upsert_auction(conn, rows):
@@ -643,9 +652,12 @@ def main():
 
         # SOLD ONLY — active auctions belong in /auctions table (handled by Vercel Browse sync).
         # The Sales Database must only contain actual completed sales.
-        for query in QUERIES:
-            url = build_url(query, "sold")
-            log.info(f"Scraping [sold] {query!r}")
+        # Broad queries + premium per-driver queries ($40+) so snipe scoring has
+        # deep comp history on valuable cards.
+        sold_queries = [(q, 0) for q in QUERIES] + [(q, 40) for q in PREMIUM_QUERIES]
+        for query, min_price in sold_queries:
+            url = build_url(query, "sold", min_price=min_price)
+            log.info(f"Scraping [sold] {query!r} (min=${min_price})")
             try:
                 items = scrape_search_page(page, url)
             except Exception as e:
