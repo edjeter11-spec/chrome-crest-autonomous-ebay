@@ -314,7 +314,7 @@ export default function Portfolio() {
       </div>
 
       {/* Scan hero — only shown when collection is empty so it doesn't clutter */}
-      {!loading && holdings.length === 0 && (
+      {!loading && items.length === 0 && (
         <button onClick={() => setScanning(true)}
           className="w-full block text-left bg-gradient-to-br from-purple-900/40 to-pink-900/20 border-2 border-dashed border-purple-700/50 hover:border-purple-500 rounded-2xl p-6 transition-colors">
           <div className="flex items-center gap-3">
