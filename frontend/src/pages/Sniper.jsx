@@ -36,6 +36,7 @@ export default function Sniper() {
   const { user } = useAuth()
   const [rules, setRules] = useState([])
   const [matchCounts, setMatchCounts] = useState({})
+  const [lastMatched, setLastMatched] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -62,10 +63,16 @@ export default function Sniper() {
     if (!error) setRules(data || [])
     const { data: matches } = await supabase
       .from('user_snipe_matches')
-      .select('rule_id')
+      .select('rule_id, created_at')
+      .order('created_at', { ascending: false })
     const counts = {}
-    ;(matches || []).forEach(m => { counts[m.rule_id] = (counts[m.rule_id] || 0) + 1 })
+    const last = {}
+    ;(matches || []).forEach(m => {
+      counts[m.rule_id] = (counts[m.rule_id] || 0) + 1
+      if (!last[m.rule_id]) last[m.rule_id] = m.created_at  // first seen = most recent due to ordering
+    })
     setMatchCounts(counts)
+    setLastMatched(last)
     setLoading(false)
   }
 
@@ -257,7 +264,7 @@ export default function Sniper() {
                   {' · max '}{r.max_per_day}/day
                 </div>
                 <div className="text-[10px] text-gray-600 mt-1">
-                  Last matched {timeAgo(r.last_triggered_at)} · {matchCounts[r.id] || 0} total matches
+                  Last matched {timeAgo(lastMatched[r.id] || r.last_triggered_at)} · {matchCounts[r.id] || 0} total matches
                 </div>
               </div>
               <button onClick={() => toggleRule(r)} title={r.active ? 'Pause' : 'Resume'} className="p-2 rounded-lg hover:bg-gray-800 text-gray-400">

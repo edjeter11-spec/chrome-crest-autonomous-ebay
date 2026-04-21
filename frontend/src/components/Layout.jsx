@@ -56,6 +56,12 @@ export default function Layout() {
     try { localStorage.setItem('cc_theme', theme) } catch {}
     if (theme === 'light') document.body.classList.add('light')
     else document.body.classList.remove('light')
+    try { window.dispatchEvent(new CustomEvent('cc_theme_change', { detail: theme })) } catch {}
+  }, [theme])
+  useEffect(() => {
+    const handler = (e) => { if (e?.detail && e.detail !== theme) setTheme(e.detail) }
+    window.addEventListener('cc_theme_change', handler)
+    return () => window.removeEventListener('cc_theme_change', handler)
   }, [theme])
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
   const location = useLocation()

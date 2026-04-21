@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Flame, DollarSign, BarChart3, Eye, Check, Bell, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react'
+import { Flame, DollarSign, BarChart3, Eye, Check, Bell, TrendingUp, TrendingDown, ExternalLink, Search } from 'lucide-react'
 import { applySeasonFilter } from '../lib/season'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import ThemeToggle from '../components/ThemeToggle'
 
 const API = import.meta.env.VITE_API_URL || ''
 const LS_KEY = 'cc_last_today_visit'
@@ -28,6 +29,7 @@ export default function Today() {
 
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [salesQuery, setSalesQuery] = useState('')
 
   useEffect(() => {
     document.title = 'What changed today · F1 Card Hub'
@@ -85,9 +87,12 @@ export default function Today() {
           <h1 className="page-title flex items-center gap-2"><Bell size={20} className="text-red-400" /> What changed today</h1>
           <p className="text-xs text-gray-500 mt-1">Since {new Date(since).toLocaleString()} · {total_changes} updates</p>
         </div>
-        <button onClick={markRead} className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg flex items-center gap-1.5">
-          <Check size={12} /> Mark as read
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <button onClick={markRead} className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg flex items-center gap-1.5">
+            <Check size={12} /> Mark as read
+          </button>
+        </div>
       </div>
 
       {/* New Strong Buys */}
@@ -116,12 +121,32 @@ export default function Today() {
           <p className="text-xs text-gray-600 italic py-2">No new sold listings since your last visit.</p>
         ) : (
           <div className="overflow-x-auto">
+            <div className="relative mb-2 max-w-sm">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                type="text"
+                value={salesQuery}
+                onChange={e => setSalesQuery(e.target.value)}
+                placeholder="Filter by driver, parallel, or title…"
+                className="w-full pl-7 pr-3 py-1.5 text-xs bg-gray-900/70 border border-gray-700/60 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-red-500/60"
+              />
+            </div>
             <table className="w-full data-table">
               <thead>
                 <tr><th>Driver</th><th>Parallel</th><th>Grade</th><th className="text-right">Price</th><th>When</th><th></th></tr>
               </thead>
               <tbody>
-                {new_sales.slice(0, 10).map(s => (
+                {(() => {
+                  const q = salesQuery.trim().toLowerCase()
+                  const filtered = q
+                    ? new_sales.filter(s => (
+                        (s.driver || '').toLowerCase().includes(q) ||
+                        (s.parallel || '').toLowerCase().includes(q) ||
+                        (s.title || '').toLowerCase().includes(q)
+                      ))
+                    : new_sales
+                  return filtered.slice(0, 10)
+                })().map(s => (
                   <tr key={s.id}>
                     <td className="font-semibold text-white text-xs">{s.driver || '—'}</td>
                     <td className="text-gray-400 text-xs">{s.parallel || '—'}</td>

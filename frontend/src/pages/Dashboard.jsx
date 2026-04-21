@@ -347,6 +347,30 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Scraper health strip */}
+      {scraperHealth && Array.isArray(scraperHealth.feeds) && scraperHealth.feeds.length > 0 && (
+        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-2 flex items-center gap-3 flex-wrap text-xs">
+          <span className="font-black uppercase tracking-wider text-gray-400">Data feeds</span>
+          {scraperHealth.feeds.map((f, i) => {
+            const status = f.status || (f.blocked ? 'red' : (f.stale ? 'yellow' : 'green'))
+            const dot = status === 'red' ? 'bg-red-500' : status === 'yellow' ? 'bg-yellow-400' : 'bg-emerald-500'
+            const label = f.last_ok || f.last_run || f.last_seen
+            return (
+              <span key={i} className="flex items-center gap-1.5 text-gray-300">
+                <span className={`w-2 h-2 rounded-full ${dot}`} />
+                <span className="font-semibold">{f.name || f.source}</span>
+                <span className="text-gray-500">{status === 'red' ? 'blocked' : label ? relTime(label) : ''}</span>
+              </span>
+            )
+          })}
+          {scraperHealth.feeds.some(f => (f.status || (f.blocked ? 'red' : '')) === 'red') && (
+            <button onClick={() => navigate('/alerts')} className="ml-auto text-red-300 hover:text-red-200 font-semibold">
+              View alerts →
+            </button>
+          )}
+        </div>
+      )}
+
       {/* NEW: Live ticker strip */}
       {ticker.length > 0 && (
         <div className="relative overflow-hidden bg-gray-900/70 border border-gray-800/60 rounded-2xl">

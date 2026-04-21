@@ -321,10 +321,13 @@ def upsert_auction(conn, rows):
         ON CONFLICT (ebay_listing_id) DO UPDATE SET
             current_price = EXCLUDED.current_price,
             buy_now_price = EXCLUDED.buy_now_price,
+            bid_count = EXCLUDED.bid_count,
             end_time = EXCLUDED.end_time,
+            seller = EXCLUDED.seller,
+            seller_feedback = EXCLUDED.seller_feedback,
             buying_options = EXCLUDED.buying_options,
             image_url = COALESCE(EXCLUDED.image_url, auctions.image_url),
-            last_updated = EXCLUDED.last_updated,
+            last_updated = NOW(),
             status = 'active'
     """
     with conn.cursor() as cur:

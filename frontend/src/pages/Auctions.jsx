@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
+import ThemeToggle from '../components/ThemeToggle'
 import { swrFetch } from '../lib/cache'
 import { matchesParallel } from '../lib/parallels'
 import { useVisibilityInterval, useProgressiveRender, usePersistedState } from '../lib/hooks'
@@ -207,9 +208,12 @@ export default function Auctions() {
             )}
           </>
         )}
-        <button onClick={() => load(true)} className="ml-auto p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
-          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
+          <button onClick={() => load(true)} className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       {/* Filter bar */}

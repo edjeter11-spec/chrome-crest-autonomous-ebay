@@ -594,7 +594,17 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
     return () => clearInterval(timer)
   }, [auction.time_left])
 
-  useEffect(() => { setWatching(auction.status === 'watchlist') }, [auction.status])
+  useEffect(() => {
+    // Hydrate "watching" from server status OR localStorage fallback (signed-out users).
+    if (auction.status === 'watchlist') { setWatching(true); return }
+    if (!user && auction.id) {
+      try {
+        const raw = localStorage.getItem('cc_watchlist') || '[]'
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr) && arr.includes(auction.id)) setWatching(true)
+      } catch {}
+    }
+  }, [auction.status, auction.id, user])
 
   const { text: timeText, cls: timeCls } = formatTimeLeft(timeLeft)
   const isHot = auction.snipe_eligible
@@ -603,6 +613,28 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   const toggleWatchlist = async (e) => {
     e.stopPropagation()
     e.preventDefault()
+    // Signed-out: store locally and nudge to sign in for sync / alerts.
+    if (!user) {
+      try {
+        const raw = localStorage.getItem('cc_watchlist') || '[]'
+        const arr = JSON.parse(raw)
+        const has = Array.isArray(arr) && arr.includes(auction.id)
+        const next = has ? arr.filter(id => id !== auction.id) : [...(arr || []), auction.id]
+        localStorage.setItem('cc_watchlist', JSON.stringify(next))
+        setWatching(!has)
+        onWatchlistChange?.(auction.id, !has)
+        if (!has) {
+          // Soft sign-in gate — only on add, and only once per session.
+          try {
+            if (!sessionStorage.getItem('cc_watchlist_gate_shown')) {
+              sessionStorage.setItem('cc_watchlist_gate_shown', '1')
+              setTimeout(() => alert('Saved locally. Sign in to sync across devices and get price alerts.'), 50)
+            }
+          } catch {}
+        }
+      } catch {}
+      return
+    }
     setWatchLoading(true)
     try {
       const res = await fetch(`${API}/api/auctions/${auction.id}/watch`, { method: 'POST' })
