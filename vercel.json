@@ -68,6 +68,10 @@
     {
       "path": "/api/sniper/check",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/ebay/refresh",
+      "schedule": "*/15 * * * *"
     }
   ],
   "env": {

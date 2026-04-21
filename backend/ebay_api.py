@@ -34,7 +34,8 @@ _token_cache: dict = {"token": None, "expires_at": None}
 
 def _get_credentials():
     app_id = os.getenv("EBAY_APP_ID", "")
-    app_secret = os.getenv("EBAY_APP_SECRET", "")
+    # Prefer EBAY_CERT_ID (new naming), fall back to EBAY_APP_SECRET (legacy).
+    app_secret = os.getenv("EBAY_CERT_ID", "") or os.getenv("EBAY_APP_SECRET", "")
     sandbox = os.getenv("EBAY_SANDBOX", "false").lower() == "true"
     return app_id, app_secret, sandbox
 

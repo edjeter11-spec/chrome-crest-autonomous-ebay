@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query as QueryParam
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query as QueryParam, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
@@ -1232,6 +1232,42 @@ async def cron_sync(db: Session = Depends(get_db)):
         "wishlist_match_alerts_created": wishlist_match_created,
         "auto_watchlisted": auto_watchlisted,
         "rules_auto_watched": rules_auto_watched,
+    }
+
+
+@app.api_route("/api/ebay/refresh", methods=["GET", "POST"])
+async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
+    """
+    Admin-gated live-refresh via eBay Browse API.
+    Runs on a 15-minute Vercel cron to keep bid counts + end times fresh.
+    Auth: ?token=<ADMIN_TOKEN>, X-Admin-Token header, or Vercel cron (vercel-cron/1.0 UA).
+    """
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    if not has_real_credentials():
+        return {"ok": False, "error": "no_credentials"}
+
+    from scraper import sync_real_ebay_listings
+    from ebay_api import SEARCH_QUERIES
+    try:
+        added = await sync_real_ebay_listings(db)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+    total_active = db.query(Auction).filter(Auction.status == "active").count()
+    return {
+        "ok": True,
+        "searches": len(SEARCH_QUERIES),
+        "listings_added": added,
+        "total_active": total_active,
     }
 
 
