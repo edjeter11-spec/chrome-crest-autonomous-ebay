@@ -4,11 +4,17 @@ import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart a
 import { swrFetch } from '../lib/cache'
 import { usePersistedState } from '../lib/hooks'
 import { ebayAffiliateUrl } from '../lib/ebay'
-import { driverPhoto, driverInitials } from '../lib/driverPhotos'
+import { fetchDriverPhoto, driverInitials } from '../lib/driverPhotos'
 
 function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
+  const [photo, setPhoto] = useState('')
   const [failed, setFailed] = useState(false)
-  const photo = driverPhoto(name)
+  useEffect(() => {
+    let mounted = true
+    setFailed(false)
+    fetchDriverPhoto(name).then(url => { if (mounted) setPhoto(url || '') })
+    return () => { mounted = false }
+  }, [name])
   const style = { width: size, height: size }
   if (photo && !failed) {
     return (

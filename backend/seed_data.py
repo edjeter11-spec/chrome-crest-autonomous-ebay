@@ -50,18 +50,18 @@ ALL_DRIVERS = [
     {"name": "Noah Stromsted",      "series": "F3", "rookie": True,  "team": "F3",                "team_color": "#EC4899", "nationality": "Danish",       "tier": "C", "multiplier": 1.3,  "wins": 0,   "championships": 0, "card_num": "305", "score": 37},
     {"name": "Javier Sagrera",      "series": "F3", "rookie": True,  "team": "F3",                "team_color": "#EC4899", "nationality": "Spanish",      "tier": "C", "multiplier": 1.3,  "wins": 0,   "championships": 0, "card_num": "306", "score": 37},
     # ── F1 Legends ──────────────────────────────────────────────────────────────
-    {"name": "Michael Schumacher",  "series": "Legends", "rookie": False, "team": "Ferrari (Legend)",    "team_color": "#DC0000", "nationality": "German",   "tier": "B", "multiplier": 4.0,  "wins": 91,  "championships": 7, "card_num": "401", "score": 75},
-    {"name": "Alain Prost",         "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "French",   "tier": "B", "multiplier": 3.5,  "wins": 51,  "championships": 4, "card_num": "402", "score": 70},
-    {"name": "Nigel Mansell",       "series": "Legends", "rookie": False, "team": "Williams (Legend)",   "team_color": "#005AFF", "nationality": "British",  "tier": "A", "multiplier": 5.0,  "wins": 31,  "championships": 1, "card_num": "403", "score": 80},
-    {"name": "Ayrton Senna",        "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "Brazilian","tier": "B", "multiplier": 4.5,  "wins": 41,  "championships": 3, "card_num": "404", "score": 78},
-    {"name": "Mario Andretti",      "series": "Legends", "rookie": False, "team": "Lotus (Legend)",      "team_color": "#FFD700", "nationality": "American", "tier": "A", "multiplier": 4.5,  "wins": 12,  "championships": 1, "card_num": "405", "score": 78},
-    {"name": "Mika Hakkinen",       "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "Finnish",  "tier": "A", "multiplier": 5.5,  "wins": 20,  "championships": 2, "card_num": "406", "score": 82},
-    {"name": "Damon Hill",          "series": "Legends", "rookie": False, "team": "Williams (Legend)",   "team_color": "#005AFF", "nationality": "British",  "tier": "A", "multiplier": 4.0,  "wins": 22,  "championships": 1, "card_num": "407", "score": 75},
-    {"name": "Jacques Villeneuve",  "series": "Legends", "rookie": False, "team": "Williams (Legend)",   "team_color": "#005AFF", "nationality": "Canadian", "tier": "B", "multiplier": 3.0,  "wins": 11,  "championships": 1, "card_num": "408", "score": 65},
-    {"name": "Emerson Fittipaldi",  "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "Brazilian","tier": "A", "multiplier": 4.0,  "wins": 14,  "championships": 2, "card_num": "409", "score": 72},
-    {"name": "Juan Pablo Montoya",  "series": "Legends", "rookie": False, "team": "Williams (Legend)",   "team_color": "#005AFF", "nationality": "Colombian","tier": "B", "multiplier": 3.0,  "wins": 7,   "championships": 0, "card_num": "410", "score": 63},
-    {"name": "Gerhard Berger",      "series": "Legends", "rookie": False, "team": "Ferrari (Legend)",    "team_color": "#DC0000", "nationality": "Austrian", "tier": "B", "multiplier": 3.0,  "wins": 10,  "championships": 0, "card_num": "411", "score": 62},
-    {"name": "James Hunt",          "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "British",  "tier": "A", "multiplier": 4.5,  "wins": 10,  "championships": 1, "card_num": "412", "score": 74},
+    {"name": "Michael Schumacher",  "series": "Legends", "rookie": False, "team": "Ferrari (Legend)",    "team_color": "#DC0000", "nationality": "German",   "tier": "B", "multiplier": 4.0,  "wins": 91,  "championships": 7, "card_num": "401", "score": 78},
+    {"name": "Alain Prost",         "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "French",   "tier": "B", "multiplier": 3.5,  "wins": 51,  "championships": 4, "card_num": "402", "score": 72},
+    {"name": "Nigel Mansell",       "series": "Legends", "rookie": False, "team": "Williams (Legend)",   "team_color": "#005AFF", "nationality": "British",  "tier": "B", "multiplier": 3.5,  "wins": 31,  "championships": 1, "card_num": "403", "score": 75},
+    {"name": "Ayrton Senna",        "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "Brazilian","tier": "B", "multiplier": 4.5,  "wins": 41,  "championships": 3, "card_num": "404", "score": 79},
+    {"name": "Mario Andretti",      "series": "Legends", "rookie": False, "team": "Lotus (Legend)",      "team_color": "#FFD700", "nationality": "American", "tier": "B", "multiplier": 3.0,  "wins": 12,  "championships": 1, "card_num": "405", "score": 70},
+    {"name": "Mika Hakkinen",       "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "Finnish",  "tier": "B", "multiplier": 3.5,  "wins": 20,  "championships": 2, "card_num": "406", "score": 74},
+    {"name": "Damon Hill",          "series": "Legends", "rookie": False, "team": "Williams (Legend)",   "team_color": "#005AFF", "nationality": "British",  "tier": "B", "multiplier": 3.0,  "wins": 22,  "championships": 1, "card_num": "407", "score": 68},
+    {"name": "Jacques Villeneuve",  "series": "Legends", "rookie": False, "team": "Williams (Legend)",   "team_color": "#005AFF", "nationality": "Canadian", "tier": "C", "multiplier": 2.5,  "wins": 11,  "championships": 1, "card_num": "408", "score": 60},
+    {"name": "Emerson Fittipaldi",  "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "Brazilian","tier": "B", "multiplier": 3.0,  "wins": 14,  "championships": 2, "card_num": "409", "score": 68},
+    {"name": "Juan Pablo Montoya",  "series": "Legends", "rookie": False, "team": "Williams (Legend)",   "team_color": "#005AFF", "nationality": "Colombian","tier": "C", "multiplier": 2.5,  "wins": 7,   "championships": 0, "card_num": "410", "score": 58},
+    {"name": "Gerhard Berger",      "series": "Legends", "rookie": False, "team": "Ferrari (Legend)",    "team_color": "#DC0000", "nationality": "Austrian", "tier": "C", "multiplier": 2.5,  "wins": 10,  "championships": 0, "card_num": "411", "score": 58},
+    {"name": "James Hunt",          "series": "Legends", "rookie": False, "team": "McLaren (Legend)",    "team_color": "#FF8000", "nationality": "British",  "tier": "B", "multiplier": 3.0,  "wins": 10,  "championships": 1, "card_num": "412", "score": 68},
 ]
 
 # Keep F1_DRIVERS pointing to just the F1 current grid for backward compat
@@ -143,9 +143,17 @@ def seed_missing_drivers(db: Session) -> int:
                     db.add(_make_card(driver, parallel, grade))
                     added += 1
         else:
-            # Update series/rookie on existing cards
-            db.query(Card).filter(Card.driver_name == driver["name"]).update(
-                {"series": driver.get("series", "F1"), "is_rookie": driver.get("rookie", False)}
-            )
+            # Keep existing-driver metadata in sync with seed_data so tier/score
+            # edits (e.g. demoting legends) actually show up without a full reseed.
+            db.query(Card).filter(Card.driver_name == driver["name"]).update({
+                "series": driver.get("series", "F1"),
+                "is_rookie": driver.get("rookie", False),
+                "investment_score": float(driver["score"]),
+                "team": driver["team"],
+                "team_color": driver["team_color"],
+                "nationality": driver["nationality"],
+                "career_wins": driver["wins"],
+                "championships": driver["championships"],
+            })
     db.commit()
     return added
