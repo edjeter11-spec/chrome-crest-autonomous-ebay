@@ -60,6 +60,15 @@ const rarityOf = a => RARITY[a.card?.parallel] ?? 30
 const ROOKIES = new Set(['Andrea Kimi Antonelli', 'Gabriel Bortoleto', 'Oliver Bearman', 'Jack Doohan', 'Isack Hadjar', 'Liam Lawson'])
 const isBIN = a => { const o = a.buying_options || []; return (o.includes('FIXED_PRICE') || o.includes('BEST_OFFER')) && !o.includes('AUCTION') }
 
+// Same lot filter as Auctions page — no multi-card bundles.
+const LOT_RE = /\b(lot\s*(of\s*)?\d*|lot\*?\d+|\d+\s*(card|pc|pieces?|cards?)\s*(lot|bundle|set)?|\(\d+\)\s*cards?|bundle|\d+\s*card\s*lot|pack\s*of\s*\d+|team\s*set|card\s*lot)\b/i
+const isCardLot = (a) => {
+  const t = (a?.title || '').toLowerCase()
+  if (LOT_RE.test(t)) return true
+  if (/\b[x×]\s*[2-9]\b|\b[2-9]\s*[x×]\b/.test(t)) return true
+  return false
+}
+
 export default function BuyItNow() {
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -94,6 +103,7 @@ export default function BuyItNow() {
   const filtered = auctions
     .filter(a => {
       if (!isBIN(a)) return false
+      if (isCardLot(a)) return false
       if (formulaType !== 'All' && seriesOf(a) !== formulaType) return false
       if (teamFilter !== 'All' && teamOf(a) !== teamFilter) return false
       if (!matchesParallel(a, filterParallel)) return false

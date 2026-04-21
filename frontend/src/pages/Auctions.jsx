@@ -44,6 +44,18 @@ const ROOKIES = new Set(['Andrea Kimi Antonelli', 'Gabriel Bortoleto', 'Oliver B
 const isAuction = a => { const o = a.buying_options || []; return o.includes('AUCTION') }
 const isBIN = a => { const o = a.buying_options || []; return o.includes('FIXED_PRICE') || o.includes('BEST_OFFER') }
 
+// Reject card lots / multi-card bundles — user wants single cards only.
+// Matches: "Lot of 5", "5 card lot", "2x", "Lot*7", "(3) cards", "bundle",
+// "team set", "5 cards", "2 card", "pack of", "10pc", etc.
+const LOT_RE = /\b(lot\s*(of\s*)?\d*|lot\*?\d+|\d+\s*[\-xX]\s*\d+|\d+\s*(card|pc|pieces?|cards?)\s*(lot|bundle|set)?|\(\d+\)\s*cards?|bundle|\d+\s*card\s*lot|pack\s*of\s*\d+|team\s*set|card\s*lot)\b/i
+const isCardLot = (a) => {
+  const t = (a?.title || '').toLowerCase()
+  if (LOT_RE.test(t)) return true
+  // Also catch "2x", "x2", "x 3" style
+  if (/\b[x×]\s*[2-9]\b|\b[2-9]\s*[x×]\b/.test(t)) return true
+  return false
+}
+
 export default function Auctions() {
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -93,6 +105,7 @@ export default function Auctions() {
     .filter(a => {
       if (!isAuction(a)) return false
       if (a.time_left <= 0) return false
+      if (isCardLot(a)) return false
       if (formulaType !== 'All' && seriesOf(a) !== formulaType) return false
       if (teamFilter !== 'All' && teamOf(a) !== teamFilter) return false
       if (!matchesParallel(a, filterParallel)) return false
