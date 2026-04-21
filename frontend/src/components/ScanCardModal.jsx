@@ -65,7 +65,11 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
     if (!user || !supabaseReady) { setError('Sign in required'); return }
     setSaving(true); setError(null)
     try {
+      // Photo upload is best-effort — if the `card-photos` bucket is missing or
+      // permission-denied, we still save the scanned metadata so the card lands
+      // in the user's collection instead of blocking the whole save.
       let photo_url = null
+      let photoWarning = null
       if (file) {
         const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
         const path = `${user.id}/${Date.now()}.${ext}`
@@ -73,9 +77,14 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
           contentType: file.type || 'image/jpeg',
           upsert: false,
         })
-        if (upErr) throw upErr
-        const { data: pub } = supabase.storage.from('card-photos').getPublicUrl(path)
-        photo_url = pub?.publicUrl || null
+        if (upErr) {
+          photoWarning = /bucket/i.test(upErr.message || '')
+            ? 'Saved without photo — create a "card-photos" storage bucket in Supabase to enable image uploads.'
+            : `Saved without photo — ${upErr.message}`
+        } else {
+          const { data: pub } = supabase.storage.from('card-photos').getPublicUrl(path)
+          photo_url = pub?.publicUrl || null
+        }
       }
       const row = {
         user_id: user.id,
@@ -90,8 +99,9 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
       }
       const { error: insErr } = await supabase.from('user_portfolio').insert(row)
       if (insErr) throw insErr
+      if (photoWarning) setError(photoWarning)
       onSaved?.()
-      close()
+      if (!photoWarning) close()
     } catch (e) {
       setError(e.message || 'Save failed')
     } finally {
