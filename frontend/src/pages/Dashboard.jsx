@@ -450,6 +450,11 @@ export default function Dashboard() {
       )}
 
       {/* NEW: Live ticker strip */}
+      {!salesLoading && ticker.length === 0 && (
+        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl">
+          <EmptyRow text="No recent sales in feed yet" />
+        </div>
+      )}
       {ticker.length > 0 && (
         <div className="relative overflow-hidden bg-gray-900/70 border border-gray-800/60 rounded-2xl">
           <div className="flex gap-3 px-3 py-2.5 ticker-track whitespace-nowrap">
@@ -645,11 +650,7 @@ export default function Dashboard() {
                 </div>
               ))
             ) : sales.length === 0 ? (
-              <div className="py-16 text-center text-gray-600">
-                <Database size={32} className="mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No sales logged yet</p>
-                <p className="text-xs mt-1 opacity-60">Cron ingests every 30 min</p>
-              </div>
+              <EmptyRow text="No notable sales yet today" />
             ) : sales.filter(s => s.image_url && !s.image_url.includes('placehold')).map((s, i) => (
               <a
                 key={s.id ?? i}
@@ -696,7 +697,13 @@ export default function Dashboard() {
         </div>
 
         {/* 3. Biggest Snipes */}
-        <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
+        {!auctionsLoading && biggestSnipes.length === 0 ? (
+          <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl">
+            <EmptyRow text="No high-value auctions ending in the next 6 hours" />
+          </div>
+        ) : (
+          <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
+        )}
       </div>
 
       {/* 4. Ending soonest strip */}
@@ -721,10 +728,8 @@ export default function Dashboard() {
             ))}
           </div>
         ) : endingStrip.length === 0 ? (
-          <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl py-10 text-center">
-            <AlertTriangle size={28} className="mx-auto mb-3 text-amber-600/60" />
-            <p className="text-sm text-gray-400 font-medium">No auctions ending in the next 2 hours</p>
-            <p className="text-xs text-gray-600 mt-1">Sync runs every 30m — next batch coming</p>
+          <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl">
+            <EmptyRow text="Nothing ending in the next 2 hours" />
           </div>
         ) : (
           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
@@ -759,10 +764,8 @@ export default function Dashboard() {
             ))}
           </div>
         ) : hotSnipes.length === 0 ? (
-          <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl py-10 text-center">
-            <Zap size={28} className="mx-auto mb-3 text-gray-600" />
-            <p className="text-sm text-gray-400 font-medium">No snipes flagged right now</p>
-            <p className="text-xs text-gray-600 mt-1">Check back after the next sync</p>
+          <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl">
+            <EmptyRow text="No active snipe targets right now — check back soon" />
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">

@@ -127,6 +127,7 @@ export default function Watchlist() {
       ))
       setWishlist(prev => prev.filter(i => !selectedIds.has(i.id)))
       setSelectedIds(new Set())
+      load()
     } catch (e) {
       alert(`Error deleting: ${e.message}`)
     }
@@ -150,6 +151,7 @@ export default function Watchlist() {
       setShowBulkPriceUpdate(false)
       setBulkPriceValue('')
       setSelectedIds(new Set())
+      load()
     } catch (e) {
       alert(`Error updating: ${e.message}`)
     }
