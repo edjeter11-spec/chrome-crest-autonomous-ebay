@@ -16,6 +16,59 @@ function median(nums) {
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
 }
 
+function ScanInfoModal({ item, onClose, onDelete }) {
+  const s = item._scan || {}
+  const ai = s.ai_scan_json || {}
+  const predictedGrade = ai.predicted_grade
+  const confidence = ai.confidence
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 overflow-y-auto" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md my-8 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} className="text-purple-400" />
+            <h3 className="font-bold text-white text-sm">Scanned with AI</h3>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-500 hover:text-white"><X size={14} /></button>
+        </div>
+        <div className="p-4 space-y-3">
+          {s.photo_url && (
+            <img src={s.photo_url} alt="Scanned card" className="w-full rounded-lg bg-gray-800 border border-gray-700" />
+          )}
+          <div>
+            <div className="font-black text-white text-base">{s.driver_name || '—'}</div>
+            <div className="text-xs text-gray-400">{s.parallel || 'Base'}{s.card_number ? ` · #${s.card_number}` : ''}</div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs bg-gray-950/50 rounded-lg p-3 border border-gray-800">
+            <span className="text-gray-500">AI grade prediction:</span>
+            <span className="text-white font-bold text-right">{predictedGrade != null ? `PSA ${predictedGrade}` : '—'}</span>
+            <span className="text-gray-500">Confidence:</span>
+            <span className="text-gray-300 text-right">{confidence != null ? `${Math.round(confidence * 100)}%` : '—'}</span>
+            <span className="text-gray-500">Market value (Raw comp):</span>
+            <span className="text-emerald-400 font-bold text-right">{item.has_valuation ? `$${Math.round(item.current_value)}` : '—'}</span>
+            <span className="text-gray-500">Comps (n):</span>
+            <span className="text-gray-300 text-right">{item.comps_n ?? '—'}</span>
+            <span className="text-gray-500">Your paid:</span>
+            <span className="text-gray-300 text-right">{item.purchase_price ? `$${Number(item.purchase_price).toFixed(0)}` : '—'}</span>
+          </div>
+          {ai.reasoning && (
+            <div className="text-[11px] text-gray-400 leading-relaxed bg-gray-950/50 rounded-lg p-3 border border-gray-800">
+              <div className="font-bold text-gray-300 mb-1">AI notes</div>
+              {ai.reasoning}
+            </div>
+          )}
+          <div className="text-[10px] text-gray-500 italic">
+            Market value uses sold comps for this driver + parallel (graded + raw). The AI grade is a prediction only — treat as raw for pricing until you actually send it to PSA.
+          </div>
+          <button onClick={onDelete} className="w-full px-3 py-2 bg-red-900/40 hover:bg-red-900/60 border border-red-800/50 text-red-300 text-xs font-bold rounded-lg">
+            Remove from collection
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ScannedCardsBlock({ refreshKey, onCount }) {
   const API = import.meta.env.VITE_API_URL || ''
   const { user, loading: authLoading } = useAuth()
@@ -380,6 +433,7 @@ function EditRow({ item, onSave, onCancel }) {
 }
 
 export default function Portfolio() {
+  const { user } = useAuth()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
@@ -387,13 +441,80 @@ export default function Portfolio() {
   const [importing, setImporting] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanRefresh, setScanRefresh] = useState(0)
-  const [scannedCount, setScannedCount] = useState(0)
   const [tab, setTab] = useState('holdings') // 'holdings' | 'ai'
   const [drivers, setDrivers] = useState([])
+  const [infoItem, setInfoItem] = useState(null)
 
-  const load = () => swrFetch(`${API}/api/portfolio`, d => { setItems(d.items || d || []); setLoading(false) })
+  // Merges manual /api/portfolio holdings with Supabase user_portfolio scans.
+  // Scanned cards get live median comps from /api/sales keyed on driver+parallel
+  // only — the AI-predicted grade is ignored because raw cards are almost always
+  // not actually graded yet.
+  const load = async () => {
+    let manual = []
+    try {
+      const r = await fetch(`${API}/api/portfolio`)
+      if (r.ok) {
+        const d = await r.json()
+        manual = d.items || d || []
+      }
+    } catch {}
+    manual = (manual || []).map(x => ({ ...x, _source: 'manual' }))
 
-  useEffect(() => { load() }, [])
+    let scans = []
+    if (supabaseReady && user) {
+      try {
+        const { data } = await supabase
+          .from('user_portfolio')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+        scans = data || []
+      } catch {}
+    }
+
+    // Enrich scans with comp median from /api/sales (driver+parallel, no grade).
+    const enriched = await Promise.all(scans.map(async c => {
+      let medPrice = null
+      let n = 0
+      try {
+        const params = new URLSearchParams()
+        if (c.driver_name) params.set('driver', c.driver_name)
+        if (c.parallel) params.set('parallel', c.parallel)
+        params.set('limit', '50')
+        const r = await fetch(`${API}/api/sales?${params}`)
+        if (r.ok) {
+          const d = await r.json()
+          const rows = Array.isArray(d) ? d : (d.sales || d.results || [])
+          const prices = rows.map(x => Number(x.sale_price ?? x.price ?? x.total_cost)).filter(Boolean)
+          medPrice = median(prices); n = prices.length
+        }
+      } catch {}
+      const paid = c.purchase_price != null ? Number(c.purchase_price) : 0
+      const val = medPrice || 0
+      const pnl = val - paid
+      const pnlPct = paid > 0 ? (pnl / paid) * 100 : 0
+      return {
+        id: `scan-${c.id}`,
+        _source: 'scan',
+        _scan: c,
+        quantity: 1,
+        purchase_price: paid,
+        current_value: medPrice,
+        has_valuation: medPrice != null,
+        pnl_pct: pnlPct,
+        realistic_pnl: pnl * 0.87 - 4,
+        realistic_pnl_pct: paid > 0 ? ((pnl * 0.87 - 4) / paid) * 100 : 0,
+        notes: c.notes,
+        card: { driver_name: c.driver_name, parallel: c.parallel || 'Base', grade: 'Raw' },
+        comps_n: n,
+      }
+    }))
+
+    setItems([...enriched, ...manual])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [user, scanRefresh])
 
   useEffect(() => {
     fetch(`${API}/api/cards/drivers-summary`)
@@ -444,8 +565,8 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {/* Scan hero — only shown when both scan list and manual holdings are empty */}
-      {!loading && items.length === 0 && scannedCount === 0 && (
+      {/* Scan hero — only shown when nothing in collection */}
+      {!loading && items.length === 0 && (
         <button onClick={() => setScanning(true)}
           className="w-full block text-left bg-gradient-to-br from-purple-900/40 to-pink-900/20 border-2 border-dashed border-purple-700/50 hover:border-purple-500 rounded-2xl p-6 transition-colors">
           <div className="flex items-center gap-3">
@@ -484,9 +605,12 @@ export default function Portfolio() {
 
       {importing && <CSVImportModal onClose={() => setImporting(false)} onImported={load} />}
       {adding && <AddCardForm drivers={drivers} onAdd={() => { setAdding(false); load() }} onCancel={() => setAdding(false)} />}
-      {scanning && <ScanCardModal open={scanning} onClose={() => setScanning(false)} onSaved={() => { setScanning(false); setScanRefresh(x => x + 1); load() }} />}
-
-      <ScannedCardsBlock refreshKey={scanRefresh} onCount={setScannedCount} />
+      {scanning && <ScanCardModal open={scanning} onClose={() => setScanning(false)} onSaved={() => { setScanning(false); setScanRefresh(x => x + 1) }} />}
+      {infoItem && <ScanInfoModal item={infoItem} onClose={() => setInfoItem(null)} onDelete={async () => {
+        if (!confirm('Delete this scanned card?')) return
+        await supabase.from('user_portfolio').delete().eq('id', infoItem._scan.id)
+        setInfoItem(null); setScanRefresh(x => x + 1)
+      }} />}
 
       <AIAdvisorSection />
 
@@ -575,18 +699,32 @@ export default function Portfolio() {
                   const val = (item.current_value || 0) * (item.quantity || 1)
                   const pnl = val - cost
                   const pct = cost > 0 ? pnl / cost * 100 : 0
+                  const isScan = item._source === 'scan'
                   return (
-                    <tr key={item.id} className="group">
+                    <tr key={item.id} className="group cursor-pointer hover:bg-gray-800/30" onClick={() => isScan && setInfoItem(item)}>
                       <td>
-                        <div className="w-9 h-11 rounded-lg bg-gray-800 flex items-center justify-center text-base">🏎</div>
+                        {isScan && item._scan?.photo_url ? (
+                          <img src={item._scan.photo_url} alt="" className="w-9 h-11 rounded-lg object-cover bg-gray-800" />
+                        ) : (
+                          <div className="w-9 h-11 rounded-lg bg-gray-800 flex items-center justify-center text-base">🏎</div>
+                        )}
                       </td>
                       <td>
-                        <div className="font-semibold text-white">{item.card?.driver_name}</div>
+                        <div className="font-semibold text-white flex items-center gap-1.5">
+                          {item.card?.driver_name || '—'}
+                          {isScan && (
+                            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-700/40 flex items-center gap-0.5">
+                              <Sparkles size={8} /> AI
+                            </span>
+                          )}
+                        </div>
                         {item.notes && <div className="text-[10px] text-gray-600 truncate max-w-[120px]">{item.notes}</div>}
                       </td>
                       <td className="text-gray-500 text-xs">{item.card?.parallel || '—'}</td>
                       <td>
-                        {item.card?.grade && item.card.grade !== 'Raw' ? (
+                        {isScan ? (
+                          <span className="text-[10px] text-gray-500" title="Scanned cards treated as Raw for comp lookup — AI grade is prediction only">Raw</span>
+                        ) : item.card?.grade && item.card.grade !== 'Raw' ? (
                           <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-yellow-900/30 text-yellow-400 border border-yellow-800/30">
                             {item.card.grade}
                           </span>
@@ -601,13 +739,21 @@ export default function Portfolio() {
                       </td>
                       <td><PnlCell value={pnl} pct={pct} has={item.has_valuation} realisticPnl={item.realistic_pnl} realisticPct={item.realistic_pnl_pct} /></td>
                       <td>
-                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => setEditing(item.id)} className="p-1.5 text-gray-500 hover:text-blue-400 transition-colors">
-                            <Pencil size={11} />
-                          </button>
-                          <button onClick={() => deleteItem(item.id)} className="p-1.5 text-gray-500 hover:text-red-400 transition-colors">
-                            <Trash2 size={11} />
-                          </button>
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                          {isScan ? (
+                            <button onClick={() => setInfoItem(item)} className="p-1.5 text-gray-500 hover:text-purple-400 transition-colors" title="Scan info">
+                              <Sparkles size={11} />
+                            </button>
+                          ) : (
+                            <>
+                              <button onClick={() => setEditing(item.id)} className="p-1.5 text-gray-500 hover:text-blue-400 transition-colors">
+                                <Pencil size={11} />
+                              </button>
+                              <button onClick={() => deleteItem(item.id)} className="p-1.5 text-gray-500 hover:text-red-400 transition-colors">
+                                <Trash2 size={11} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
