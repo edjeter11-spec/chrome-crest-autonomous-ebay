@@ -16,6 +16,45 @@ function median(nums) {
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
 }
 
+// Session-scoped cache so we don't re-hit the API for every row render.
+const _thumbCache = new Map()
+
+function CardThumb({ driver, parallel, fallbackEmoji = '🏎', size = 'w-9 h-11' }) {
+  const API = import.meta.env.VITE_API_URL || ''
+  const key = `${driver || ''}|${parallel || ''}`
+  const [url, setUrl] = useState(() => _thumbCache.get(key) || null)
+  useEffect(() => {
+    if (_thumbCache.has(key)) { setUrl(_thumbCache.get(key)); return }
+    if (!driver) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const params = new URLSearchParams()
+        params.set('driver', driver)
+        if (parallel && parallel !== 'Base') params.set('parallel', parallel)
+        params.set('limit', '10')
+        const r = await fetch(`${API}/api/sales?${params}`)
+        if (!r.ok) return
+        const d = await r.json()
+        const rows = Array.isArray(d) ? d : (d.sales || d.results || [])
+        // Pick the first row with a non-placeholder image
+        const img = rows.map(r => r.image_url).find(u => u && !u.includes('placehold'))
+        if (img) {
+          _thumbCache.set(key, img)
+          if (!cancelled) setUrl(img)
+        } else {
+          _thumbCache.set(key, '')
+        }
+      } catch {}
+    })()
+    return () => { cancelled = true }
+  }, [key])
+  if (url) {
+    return <img src={url} alt="" className={`${size} rounded-lg object-cover bg-gray-800 border border-gray-700/50`} />
+  }
+  return <div className={`${size} rounded-lg bg-gray-800 flex items-center justify-center text-base`}>{fallbackEmoji}</div>
+}
+
 function ScanInfoModal({ item, onClose, onDelete }) {
   const s = item._scan || {}
   const ai = s.ai_scan_json || {}
@@ -706,7 +745,7 @@ export default function Portfolio() {
                         {isScan && item._scan?.photo_url ? (
                           <img src={item._scan.photo_url} alt="" className="w-9 h-11 rounded-lg object-cover bg-gray-800" />
                         ) : (
-                          <div className="w-9 h-11 rounded-lg bg-gray-800 flex items-center justify-center text-base">🏎</div>
+                          <CardThumb driver={item.card?.driver_name} parallel={item.card?.parallel} />
                         )}
                       </td>
                       <td>

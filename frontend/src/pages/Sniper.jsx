@@ -1,22 +1,64 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Target, Trash2, Pause, Play, Plus, Link as LinkIcon, BellRing } from 'lucide-react'
+import { Target, Trash2, Pause, Play, Plus, Link as LinkIcon, BellRing, Smartphone, AlertCircle } from 'lucide-react'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
-import { ALL_PARALLELS } from '../lib/parallels'
+import { ALL_PARALLELS, AUTO_VARIANTS } from '../lib/parallels'
 import { pushSupported, isSubscribed, subscribePush } from '../lib/push'
 
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent || '')
+}
+function isStandalonePWA() {
+  return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true
+}
+
 function PushCTA() {
-  const [state, setState] = useState('checking') // checking | unsupported | off | on | busy
+  const [state, setState] = useState('checking') // checking | unsupported | off | on | busy | needs-install | denied
+  const [err, setErr] = useState('')
   useEffect(() => {
+    // iOS Safari only supports web-push when installed to home screen.
+    if (isIOS() && !isStandalonePWA()) { setState('needs-install'); return }
     if (!pushSupported()) { setState('unsupported'); return }
+    if (Notification.permission === 'denied') { setState('denied'); return }
     isSubscribed().then(on => setState(on ? 'on' : 'off')).catch(() => setState('off'))
   }, [])
-  if (state === 'on' || state === 'unsupported') return null
+
   const enable = async () => {
-    setState('busy')
+    setErr(''); setState('busy')
     try { await subscribePush(); setState('on') }
-    catch { setState('off') }
+    catch (e) {
+      setErr(e?.message || 'Could not enable — check browser permission.')
+      if (e?.message === 'Permission denied') setState('denied')
+      else setState('off')
+    }
   }
+
+  if (state === 'on' || state === 'unsupported') return null
+
+  if (state === 'needs-install') {
+    return (
+      <div className="bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-700/50 rounded-2xl p-4 mb-5 flex items-start gap-3">
+        <Smartphone size={22} className="text-indigo-300 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="font-black text-white text-sm">Install to enable push alerts</div>
+          <div className="text-[11px] text-indigo-200/80 mt-0.5 leading-relaxed">iOS only allows push notifications when this site is added to your Home Screen. Tap the <span className="font-bold">Share</span> icon in Safari → <span className="font-bold">Add to Home Screen</span>, then open it from the new icon and come back here.</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (state === 'denied') {
+    return (
+      <div className="bg-gradient-to-r from-amber-900/40 to-orange-900/30 border border-amber-700/50 rounded-2xl p-4 mb-5 flex items-start gap-3">
+        <AlertCircle size={22} className="text-amber-300 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="font-black text-white text-sm">Notifications blocked</div>
+          <div className="text-[11px] text-amber-200/80 mt-0.5">Re-enable in your browser/phone settings for this site, then refresh.</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-gradient-to-r from-red-900/40 to-orange-900/30 border border-red-700/50 rounded-2xl p-4 mb-5 flex items-center gap-3">
       <div className="w-10 h-10 rounded-full bg-red-600/40 flex items-center justify-center shrink-0">
@@ -24,7 +66,7 @@ function PushCTA() {
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-black text-white text-sm">Turn on snipe alerts</div>
-        <div className="text-[11px] text-red-200/80 mt-0.5">We'll push a notification to your phone the moment a listing matches your rules. No spam.</div>
+        <div className="text-[11px] text-red-200/80 mt-0.5">{err || "We'll push a notification the moment a listing matches your rules."}</div>
       </div>
       <button onClick={enable} disabled={state === 'busy' || state === 'checking'}
         className="px-3 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-black rounded-lg shrink-0">
@@ -121,7 +163,7 @@ export default function Sniper() {
     e.preventDefault()
     setError('')
     if (!user) { setError('Sign in first'); return }
-    if (!maxPrice && !maxPct) { setError('Set a max price or max % of median'); return }
+    // Max price / max % is now optional — leaving both blank means "alert on any match"
     setSaving(true)
     const row = {
       user_id: user.id,
@@ -209,7 +251,8 @@ export default function Sniper() {
             Parallel
             <select value={parallel} onChange={e => setParallel(e.target.value)} className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white">
               <option value="">Any parallel</option>
-              {ALL_PARALLELS.map(p => <option key={p} value={p}>{p}</option>)}
+              <option value="Autograph">Autograph (any)</option>
+              {ALL_PARALLELS.filter(p => p !== 'Autograph').map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </label>
           <label className="text-xs text-gray-400">
@@ -217,10 +260,31 @@ export default function Sniper() {
             <input value={grade} onChange={e => setGrade(e.target.value)} placeholder="PSA 10, Raw, or leave blank" className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
           </label>
         </div>
+
+        {/* Auto-variant selector — only when Autograph picked */}
+        {parallel === 'Autograph' && (
+          <div className="bg-yellow-900/15 border border-yellow-700/40 rounded-lg p-3">
+            <div className="text-[11px] font-black text-yellow-300 uppercase tracking-wider mb-2">Auto parallel type</div>
+            <div className="flex flex-wrap gap-1.5">
+              {['Any', ...AUTO_VARIANTS.filter(v => v !== 'Any')].map(v => {
+                const target = v === 'Any' ? 'Autograph' : v
+                const active = parallel === target || (v === 'Any' && parallel === 'Autograph')
+                return (
+                  <button type="button" key={v} onClick={() => setParallel(target)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                      active ? 'bg-yellow-500 text-black border border-yellow-400' : 'bg-gray-800/60 text-gray-300 border border-transparent hover:border-gray-700/50'
+                    }`}>
+                    {v === 'Any' ? 'Base Auto (any)' : `Auto · ${v}`}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <label className="text-xs text-gray-400">
-            Max price $
-            <input type="number" step="1" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="250" className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
+            Max price $ <span className="text-gray-600 normal-case">(optional)</span>
+            <input type="number" step="1" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="Any price" className="mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white" />
           </label>
           <label className="text-xs text-gray-400">
             OR Max % of median

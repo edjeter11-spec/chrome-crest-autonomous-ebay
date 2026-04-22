@@ -430,46 +430,46 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* NEW: Hot right now — 3 big tiles */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* Hot right now — compact on mobile, full-size on desktop */}
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         <button
           onClick={() => navigate('/auctions?buying=auction&sort=ending')}
-          className="text-left bg-gradient-to-br from-red-900/30 to-red-950/20 border border-red-600/40 hover:border-red-500/60 rounded-2xl p-5 transition-colors"
+          className="text-left bg-gradient-to-br from-red-900/30 to-red-950/20 border border-red-600/40 hover:border-red-500/60 rounded-xl md:rounded-2xl p-2.5 md:p-5 transition-colors"
         >
-          <div className="flex items-center gap-2 text-red-400 mb-1">
-            <Clock size={14} />
-            <span className="text-[11px] font-black uppercase tracking-wider">Ending &lt; 1h</span>
+          <div className="flex items-center gap-1.5 text-red-400 mb-0.5 md:mb-1">
+            <Clock size={11} className="md:hidden" /><Clock size={14} className="hidden md:block" />
+            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-wider">Ending &lt; 1h</span>
           </div>
-          <div className="text-4xl font-black text-red-400 tabular-nums">
+          <div className="text-xl md:text-4xl font-black text-red-400 tabular-nums leading-tight">
             {auctionsLoading ? <span className="opacity-40">…</span> : endingUnderHour}
           </div>
-          <div className="text-[11px] text-gray-500 mt-1">Auctions closing in the next hour</div>
+          <div className="hidden md:block text-[11px] text-gray-500 mt-1">Auctions closing in the next hour</div>
         </button>
         <button
           onClick={() => navigate('/alerts')}
-          className="text-left bg-gradient-to-br from-orange-900/30 to-orange-950/20 border border-orange-600/40 hover:border-orange-500/60 rounded-2xl p-5 transition-colors"
+          className="text-left bg-gradient-to-br from-orange-900/30 to-orange-950/20 border border-orange-600/40 hover:border-orange-500/60 rounded-xl md:rounded-2xl p-2.5 md:p-5 transition-colors"
         >
-          <div className="flex items-center gap-2 text-orange-400 mb-1">
-            <BellRing size={14} />
-            <span className="text-[11px] font-black uppercase tracking-wider">Active Snipes</span>
+          <div className="flex items-center gap-1.5 text-orange-400 mb-0.5 md:mb-1">
+            <BellRing size={11} className="md:hidden" /><BellRing size={14} className="hidden md:block" />
+            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-wider">Active Snipes</span>
           </div>
-          <div className="text-4xl font-black text-orange-400 tabular-nums">
+          <div className="text-xl md:text-4xl font-black text-orange-400 tabular-nums leading-tight">
             {activeSnipesCount}
           </div>
-          <div className="text-[11px] text-gray-500 mt-1">Critical + high-urgency tracking</div>
+          <div className="hidden md:block text-[11px] text-gray-500 mt-1">Critical + high-urgency tracking</div>
         </button>
         <button
           onClick={() => navigate('/sales')}
-          className="text-left bg-gradient-to-br from-emerald-900/30 to-emerald-950/20 border border-emerald-600/40 hover:border-emerald-500/60 rounded-2xl p-5 transition-colors"
+          className="text-left bg-gradient-to-br from-emerald-900/30 to-emerald-950/20 border border-emerald-600/40 hover:border-emerald-500/60 rounded-xl md:rounded-2xl p-2.5 md:p-5 transition-colors"
         >
-          <div className="flex items-center gap-2 text-emerald-400 mb-1">
-            <Flame size={14} />
-            <span className="text-[11px] font-black uppercase tracking-wider">Last 24h Sales</span>
+          <div className="flex items-center gap-1.5 text-emerald-400 mb-0.5 md:mb-1">
+            <Flame size={11} className="md:hidden" /><Flame size={14} className="hidden md:block" />
+            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-wider">24h Sales</span>
           </div>
-          <div className="text-4xl font-black text-emerald-400 tabular-nums">
+          <div className="text-xl md:text-4xl font-black text-emerald-400 tabular-nums leading-tight">
             {recent24hCount == null ? <span className="opacity-40">…</span> : recent24hCount}
           </div>
-          <div className="text-[11px] text-gray-500 mt-1">Fresh comps logged today</div>
+          <div className="hidden md:block text-[11px] text-gray-500 mt-1">Fresh comps logged today</div>
         </button>
       </div>
 
