@@ -337,7 +337,7 @@ export default function Dashboard() {
           <div className="w-1 h-7 bg-red-600 rounded-full shrink-0" />
           <div>
             <h1 className="text-2xl font-black text-white tracking-tight leading-none">Operator Dashboard</h1>
-            <p className="text-gray-500 text-xs mt-1.5 font-medium">F1 Card Hub · Live auctions, fresh sales, hot snipes</p>
+            <p className="text-gray-500 text-xs mt-1.5 font-medium">F1 Card Vault · Live auctions, fresh sales, hot snipes</p>
           </div>
         </div>
         <div className="flex items-center gap-2.5 shrink-0">
@@ -530,8 +530,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 1. KPI strip */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {/* 1. KPI strip — 5 tiles, compact on mobile (eBay API health hidden from public) */}
+      <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
         <KpiTile
           icon={Gavel}
           label="Live Auctions"
@@ -556,7 +556,7 @@ export default function Dashboard() {
         />
         <KpiTile
           icon={DollarSign}
-          label="30d Avg Sale"
+          label="30d Avg"
           value={salesLoading ? null : (avg30d != null ? `$${avg30d.toFixed(0)}` : '—')}
           sub={sales?.length ? `${sales.length} recent` : 'No data'}
           color="emerald"
@@ -567,13 +567,6 @@ export default function Dashboard() {
           value={snipesLoading ? null : (topSnipeScore != null ? Math.round(topSnipeScore) : '—')}
           sub={snipes?.length ? `${snipes.length} tracked` : 'None flagged'}
           color="red"
-        />
-        <KpiTile
-          icon={Activity}
-          label="eBay API"
-          value={ebayLimited ? 'Limited' : 'OK'}
-          sub={ebayLimited ? 'Quota · resets 07:00 UTC' : 'Nominal'}
-          color={ebayLimited ? 'yellow' : 'green'}
         />
       </div>
 
@@ -613,7 +606,7 @@ export default function Dashboard() {
                 <p className="text-sm">No sales logged yet</p>
                 <p className="text-xs mt-1 opacity-60">Cron ingests every 30 min</p>
               </div>
-            ) : sales.map((s, i) => (
+            ) : sales.filter(s => s.image_url && !s.image_url.includes('placehold')).map((s, i) => (
               <a
                 key={s.id ?? i}
                 href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : `/sales?driver=${encodeURIComponent(s.driver_name || '')}`}
@@ -621,18 +614,12 @@ export default function Dashboard() {
                 rel={s.ebay_url ? 'noopener sponsored' : undefined}
                 className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors no-underline"
               >
-                {s.image_url ? (
-                  <img
-                    src={s.image_url}
-                    alt=""
-                    className="w-10 h-14 object-cover rounded border border-gray-800 shrink-0"
-                    onError={e => { e.target.style.display = 'none' }}
-                  />
-                ) : (
-                  <div className="w-10 h-14 rounded bg-gray-800/50 border border-gray-800 shrink-0 flex items-center justify-center text-[9px] text-gray-600">
-                    —
-                  </div>
-                )}
+                <img
+                  src={s.image_url}
+                  alt=""
+                  className="w-10 h-14 object-cover rounded border border-gray-800 shrink-0"
+                  onError={e => { e.target.closest('a').style.display = 'none' }}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-semibold text-white truncate">
@@ -851,18 +838,19 @@ function KpiTile({ icon: Icon, label, value, sub, color = 'gray', onClick }) {
   return (
     <Cmp
       onClick={onClick}
-      className={`rounded-2xl border p-4 ${cls} ${onClick ? 'hover:brightness-125 cursor-pointer text-left' : ''} transition-all`}
+      className={`rounded-xl md:rounded-2xl border p-2 md:p-4 ${cls} ${onClick ? 'hover:brightness-125 cursor-pointer text-left' : ''} transition-all`}
     >
-      <div className="flex items-center gap-2 mb-2">
-        <Icon size={13} className="opacity-80" />
-        <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">{label}</span>
+      <div className="flex items-center gap-1 md:gap-2 mb-1 md:mb-2">
+        <Icon size={11} className="md:hidden opacity-80" />
+        <Icon size={13} className="hidden md:block opacity-80" />
+        <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider opacity-80 truncate">{label}</span>
       </div>
       {value === null ? (
-        <div className="h-6 w-20 bg-gray-800/60 rounded animate-pulse" />
+        <div className="h-5 md:h-6 w-16 bg-gray-800/60 rounded animate-pulse" />
       ) : (
-        <div className="text-xl font-black text-white truncate tabular-nums">{value}</div>
+        <div className="text-sm md:text-xl font-black text-white truncate tabular-nums">{value}</div>
       )}
-      {sub && <div className="text-[10px] text-gray-500 mt-0.5 truncate">{sub}</div>}
+      {sub && <div className="hidden md:block text-[10px] text-gray-500 mt-0.5 truncate">{sub}</div>}
     </Cmp>
   )
 }

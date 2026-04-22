@@ -652,8 +652,8 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
     e.preventDefault()
     const url = `${window.location.origin}/auctions?id=${auction.id}`
     const shareData = {
-      title: auction.title || 'F1 Card Hub',
-      text: `${auction.card?.driver_name || 'F1 card'} — $${auction.current_price?.toFixed(2) ?? ''} on F1 Card Hub`,
+      title: auction.title || 'F1 Card Vault',
+      text: `${auction.card?.driver_name || 'F1 card'} — $${auction.current_price?.toFixed(2) ?? ''} on F1 Card Vault`,
       url,
     }
     try {

@@ -238,7 +238,7 @@ export default function Compare() {
   }, [aDriver, aParallel, bDriver, bParallel])
 
   useEffect(() => {
-    document.title = `Compare ${aDriver || ''} ${aParallel || ''} vs ${bDriver || ''} ${bParallel || ''} · F1 Card Hub`
+    document.title = `Compare ${aDriver || ''} ${aParallel || ''} vs ${bDriver || ''} ${bParallel || ''} · F1 Card Vault`
   }, [aDriver, aParallel, bDriver, bParallel])
 
   const { data: aData, loading: aLoad } = useCardData(aDriver, aParallel)

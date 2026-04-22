@@ -41,7 +41,7 @@ def ebay_affiliate_url(url: str) -> str:
 def _build_html(picks: list[dict]) -> str:
     if not picks:
         return (
-            "<h2>F1 Card Hub — Weekly Digest</h2>"
+            "<h2>F1 Card Vault — Weekly Digest</h2>"
             "<p>No STRONG BUYs on the board right now. Check back soon.</p>"
         )
     rows = []
@@ -73,7 +73,7 @@ def _build_html(picks: list[dict]) -> str:
         )
     return (
         "<div style='font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;'>"
-        "<h2 style='color:#111;margin-bottom:4px;'>F1 Card Hub — Weekly STRONG BUYs</h2>"
+        "<h2 style='color:#111;margin-bottom:4px;'>F1 Card Vault — Weekly STRONG BUYs</h2>"
         "<p style='color:#666;margin-top:0;'>Top 5 deals below median right now on eBay.</p>"
         "<table style='width:100%;border-collapse:collapse;font-size:14px;'>"
         "<thead><tr style='text-align:left;color:#555;'>"
@@ -86,7 +86,7 @@ def _build_html(picks: list[dict]) -> str:
         f"<tbody>{''.join(rows)}</tbody>"
         "</table>"
         "<p style='color:#999;font-size:11px;margin-top:24px;'>"
-        "As an eBay Partner, F1 Card Hub may be compensated when you make a qualifying purchase. "
+        "As an eBay Partner, F1 Card Vault may be compensated when you make a qualifying purchase. "
         "Prices are informational, not investment advice."
         "</p>"
         "</div>"
@@ -128,14 +128,14 @@ def send_digest(
         })
 
     html = _build_html(picks)
-    subject = f"F1 Card Hub — {len(picks)} STRONG BUY{'s' if len(picks) != 1 else ''} this week"
+    subject = f"F1 Card Vault — {len(picks)} STRONG BUY{'s' if len(picks) != 1 else ''} this week"
 
     resend_key = os.getenv("RESEND_API_KEY")
     if not resend_key:
         return {"status": "dry_run", "count": len(picks), "preview_html": html}
 
     to_email = os.getenv("DIGEST_TO_EMAIL", "edjeter11@gmail.com")
-    from_email = os.getenv("DIGEST_FROM_EMAIL", "F1 Card Hub <digest@f1cardhub.com>")
+    from_email = os.getenv("DIGEST_FROM_EMAIL", "F1 Card Vault <digest@f1cardhub.com>")
 
     import requests
     r = requests.post(

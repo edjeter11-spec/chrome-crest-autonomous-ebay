@@ -10,7 +10,7 @@ async function shareSale(e, sale) {
   e.preventDefault()
   const url = `${window.location.origin}/sales?id=${sale.id}`
   const shareData = {
-    title: 'F1 Card Hub — sale',
+    title: 'F1 Card Vault — sale',
     text: `${sale.driver_name || 'F1 card'} sold for $${sale.sale_price?.toFixed(2) ?? ''}`,
     url,
   }
@@ -286,7 +286,7 @@ export default function SalesDatabase() {
 
       {/* Stats strip */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
           <StatBox icon={Package} label="Total Sales" value={stats.total_count?.toLocaleString() ?? 0} color="cyan" />
           <StatBox icon={DollarSign} label="Total Value" value={`$${(stats.total_value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} color="emerald" />
           <StatBox icon={Calendar} label="This Week" value={(stats.week_count || 0).toLocaleString()} color="yellow" />
@@ -609,13 +609,14 @@ function StatBox({ icon: Icon, label, value, sub, color }) {
     green: 'text-green-400 bg-green-600/10 border-green-600/30',
   }
   return (
-    <div className={`rounded-2xl border p-4 ${colors[color]}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <Icon size={14} className="opacity-80" />
-        <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">{label}</span>
+    <div className={`rounded-xl md:rounded-2xl border p-2 md:p-4 ${colors[color]}`}>
+      <div className="flex items-center gap-1 md:gap-2 mb-1 md:mb-2">
+        <Icon size={11} className="md:hidden opacity-80" />
+        <Icon size={14} className="hidden md:block opacity-80" />
+        <span className="text-[9px] md:text-[11px] font-bold uppercase tracking-wider opacity-80 truncate">{label}</span>
       </div>
-      <div className="text-xl font-black text-white truncate">{value}</div>
-      {sub && <div className="text-[10px] text-gray-500 mt-0.5 truncate">{sub}</div>}
+      <div className="text-sm md:text-xl font-black text-white truncate">{value}</div>
+      {sub && <div className="hidden md:block text-[10px] text-gray-500 mt-0.5 truncate">{sub}</div>}
     </div>
   )
 }

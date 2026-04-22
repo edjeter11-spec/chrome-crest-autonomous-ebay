@@ -1605,7 +1605,7 @@ def rss_strong_buys(db: Session = Depends(get_db)):
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<rss version="2.0"><channel>'
-        '<title>F1 Card Hub — Strong Buys</title>'
+        '<title>F1 Card Vault — Strong Buys</title>'
         f'<link>{SITE}</link>'
         '<description>Active eBay listings priced ≤60% of their 90-day sold median. 2025 Topps Chrome Formula 1.</description>'
         '<language>en-us</language>'

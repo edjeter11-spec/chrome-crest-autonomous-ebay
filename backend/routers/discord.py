@@ -45,7 +45,7 @@ def discord_price(
                 "description": "No sold comps found in the last "
                                f"{days} days for this combination.",
                 "color": 0x6B7280,
-                "footer": {"text": "F1 Card Hub · Discord bot"},
+                "footer": {"text": "F1 Card Vault · Discord bot"},
             }],
         }
 
@@ -77,7 +77,7 @@ def discord_price(
                 {"name": "Last sale", "value": f"${(last.sale_price or 0):.2f} · {last_date}", "inline": False},
             ],
             "thumbnail": {"url": last.image_url} if last.image_url else None,
-            "footer": {"text": f"F1 Card Hub · {label}"},
+            "footer": {"text": f"F1 Card Vault · {label}"},
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }],
     }

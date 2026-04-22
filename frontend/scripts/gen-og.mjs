@@ -1,5 +1,5 @@
 // Pure-Node 1200x630 OG image generator. No deps.
-// Black background, red F1 badge, "F1 Card Hub" title, tagline, stats strip.
+// Black background, red F1 badge, "F1 Card Vault" title, tagline, stats strip.
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
 import { dirname, resolve } from 'node:path'

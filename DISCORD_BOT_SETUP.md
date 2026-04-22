@@ -1,4 +1,4 @@
-# F1 Card Hub — Discord Bot Setup
+# F1 Card Vault — Discord Bot Setup
 
 The `/api/discord/price` endpoint returns a ready-to-post Discord embed payload.
 You can use it two ways:
@@ -11,7 +11,7 @@ You can use it two ways:
 ## 1. Webhook (quickest)
 
 ```bash
-# Fetch the embed JSON from F1 Card Hub
+# Fetch the embed JSON from F1 Card Vault
 PAYLOAD=$(curl -s "https://chrome-crest-autonomous-ebay.vercel.app/api/discord/price?driver=Lando+Norris&parallel=Refractor")
 
 # Post to your Discord webhook
@@ -119,7 +119,7 @@ Returns:
       { "name": "Last sale", "value": "$39.00 · Apr 15", "inline": false }
     ],
     "thumbnail": { "url": "https://i.ebayimg.com/..." },
-    "footer": { "text": "F1 Card Hub · Median reference" },
+    "footer": { "text": "F1 Card Vault · Median reference" },
     "timestamp": "2026-04-16T..."
   }]
 }

@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 
 export default function About() {
   useEffect(() => {
-    document.title = 'About — F1 Card Hub'
+    document.title = 'About — F1 Card Vault'
   }, [])
 
   const lastUpdated = new Date().toISOString().slice(0, 10)
@@ -17,7 +17,7 @@ export default function About() {
 
       <div className="panel p-6 space-y-5">
         <header>
-          <h1 className="text-3xl font-black text-white">About F1 Card Hub</h1>
+          <h1 className="text-3xl font-black text-white">About F1 Card Vault</h1>
           <p className="text-sm text-gray-400 mt-1">
             Live tracker for 2025 Topps Chrome Formula 1 cards
           </p>
@@ -47,7 +47,7 @@ export default function About() {
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">Affiliate disclosure</h2>
           <p className="text-sm text-gray-300 leading-relaxed">
-            As an eBay Partner, F1 Card Hub may be compensated when you make a qualifying purchase
+            As an eBay Partner, F1 Card Vault may be compensated when you make a qualifying purchase
             after clicking a link on this site. This does not affect the price you pay. Median
             prices and verdicts are computed from public sale data and are not investment advice.
           </p>

@@ -29,7 +29,7 @@ function InstallStep({ platform }) {
         <ol className="text-xs text-gray-300 space-y-1.5 list-decimal pl-5">
           <li>Tap the <Share size={11} className="inline text-cyan-400" /> <span className="font-semibold">Share</span> button at the bottom of Safari.</li>
           <li>Scroll and tap <span className="font-semibold text-white">Add to Home Screen</span>.</li>
-          <li>Tap <span className="font-semibold text-white">Add</span> — F1 Card Hub opens full-screen like an app, with push-alert support.</li>
+          <li>Tap <span className="font-semibold text-white">Add</span> — F1 Card Vault opens full-screen like an app, with push-alert support.</li>
         </ol>
       </div>
     )
@@ -73,7 +73,7 @@ export default function Tutorial({ onClose }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800/60 sticky top-0 bg-gray-900 z-10">
           <div>
             <h2 className="text-white font-black text-lg tracking-tight">
-              {step === 0 ? 'Welcome to F1 Card Hub' : 'Install on your phone'}
+              {step === 0 ? 'Welcome to F1 Card Vault' : 'Install on your phone'}
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
               {step === 0 ? 'Six things to know' : 'Turn this into a real app — takes 5 seconds'}

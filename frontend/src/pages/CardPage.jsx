@@ -111,11 +111,11 @@ export default function CardPage() {
   const [loading, setLoading] = useState(true)
 
   useSeo({
-    title: driver && parallel ? `${driver} ${parallel} — 2025 Topps Chrome F1 Prices · F1 Card Hub` : 'Card — F1 Card Hub',
+    title: driver && parallel ? `${driver} ${parallel} — 2025 Topps Chrome F1 Prices · F1 Card Vault` : 'Card — F1 Card Vault',
     description: median?.n
       ? `${driver} ${parallel} median sold price: $${median.median_total?.toFixed(0)} across ${median.n} recent sales. Live eBay listings + 90-day trend.`
       : `Live 2025 Topps Chrome Formula 1 card prices for ${driver || ''} ${parallel || ''}.`,
-    ogTitle: driver && parallel ? `${driver} ${parallel} — F1 Card Hub` : 'F1 Card Hub',
+    ogTitle: driver && parallel ? `${driver} ${parallel} — F1 Card Vault` : 'F1 Card Vault',
     ogDescription: driver && parallel
       ? `Live eBay prices, verdict, and median comps for ${driver} ${parallel}. 2025 Topps Chrome F1.`
       : 'Live eBay prices and median comps for 2025 Topps Chrome F1.',

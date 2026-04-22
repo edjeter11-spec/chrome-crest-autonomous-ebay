@@ -49,7 +49,7 @@ export default function SharedWatchlist() {
           <div>
             <h1 className="text-2xl font-black text-white tracking-tight">{data.name}</h1>
             <p className="text-xs text-gray-500">
-              F1 Card Hub · Shared watchlist · {data.items.length} items · {data.view_count} view{data.view_count !== 1 ? 's' : ''}
+              F1 Card Vault · Shared watchlist · {data.items.length} items · {data.view_count} view{data.view_count !== 1 ? 's' : ''}
             </p>
           </div>
         </div>
@@ -114,7 +114,7 @@ export default function SharedWatchlist() {
 
         <div className="text-center pt-6">
           <a href="/" className="text-xs text-gray-500 hover:text-white">
-            Built on F1 Card Hub →
+            Built on F1 Card Vault →
           </a>
         </div>
       </div>

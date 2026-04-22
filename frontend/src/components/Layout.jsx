@@ -190,21 +190,21 @@ export default function Layout() {
         {(!collapsed || mobile) && (
           <div className="flex items-center gap-2.5">
             {logoOk ? (
-              <img src="/logo.jpg" alt="F1 Card Hub" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" onError={() => setLogoOk(false)} />
+              <img src="/logo.jpg" alt="F1 Card Vault" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" onError={() => setLogoOk(false)} />
             ) : (
               <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
                 <span className="text-white text-xs font-black">F1</span>
               </div>
             )}
             <div>
-              <div className="font-black text-white text-sm leading-none tracking-tight">F1 Card Hub</div>
+              <div className="font-black text-white text-sm leading-none tracking-tight">F1 Card Vault</div>
               <div className="text-[10px] text-gray-500 mt-0.5 font-medium">Topps Chrome F1 Tracker</div>
             </div>
           </div>
         )}
         {collapsed && !mobile && (
           logoOk ? (
-            <img src="/logo.jpg" alt="F1 Card Hub" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" onError={() => setLogoOk(false)} />
+            <img src="/logo.jpg" alt="F1 Card Vault" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" onError={() => setLogoOk(false)} />
           ) : (
             <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
               <span className="text-white text-xs font-black">F1</span>
@@ -358,13 +358,13 @@ export default function Layout() {
           </button>
           <div className="flex items-center gap-2">
             {logoOk ? (
-              <img src="/logo.jpg" alt="F1 Card Hub" className="w-6 h-6 rounded-lg object-cover" onError={() => setLogoOk(false)} />
+              <img src="/logo.jpg" alt="F1 Card Vault" className="w-6 h-6 rounded-lg object-cover" onError={() => setLogoOk(false)} />
             ) : (
               <div className="w-6 h-6 bg-red-600 rounded-lg flex items-center justify-center">
                 <span className="text-white text-[9px] font-black">F1</span>
               </div>
             )}
-            <span className="font-black text-white text-sm tracking-tight">F1 Card Hub</span>
+            <span className="font-black text-white text-sm tracking-tight">F1 Card Vault</span>
           </div>
           {snipeCount > 0 ? (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-600/20">
@@ -392,7 +392,7 @@ export default function Layout() {
           {/* FTC-required affiliate disclosure */}
           <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-gray-800/60">
             <p className="text-[10px] text-gray-600 leading-relaxed">
-              <strong className="text-gray-500">Disclosure:</strong> As an eBay Partner, F1 Card Hub may be compensated
+              <strong className="text-gray-500">Disclosure:</strong> As an eBay Partner, F1 Card Vault may be compensated
               when you make a qualifying purchase after clicking a link on this site. This does not affect the price
               you pay. Median prices and verdicts are computed from public sale data and are not investment advice.
             </p>

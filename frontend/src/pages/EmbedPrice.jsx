@@ -52,7 +52,7 @@ export default function EmbedPrice() {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', fontWeight: 800, letterSpacing: 0.8 }}>
         <span style={{ width: 6, height: 6, background: '#ef4444', borderRadius: '50%' }} />
-        F1 Card Hub
+        F1 Card Vault
       </div>
       <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         {driver}{parallel && <span style={{ color: '#67e8f9', marginLeft: 6 }}>{parallel}</span>}
