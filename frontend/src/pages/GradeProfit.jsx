@@ -23,6 +23,15 @@ export default function GradeProfit() {
     }).catch(() => {})
   }, [])
 
+  // Prefill median on driver+parallel selection (non-blocking)
+  useEffect(() => {
+    if (!driver || !parallel) return
+    // Fire async prefill without blocking UI
+    fetch(`${API}/api/sales/median?driver=${encodeURIComponent(driver)}&parallel=${encodeURIComponent(parallel)}`).then(r => r.json()).then(data => {
+      setCurrentMed(data)
+    }).catch(() => {})
+  }, [driver, parallel])
+
   useEffect(() => {
     if (!driver || !parallel) return
     setLoading(true)
