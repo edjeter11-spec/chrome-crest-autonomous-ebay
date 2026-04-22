@@ -189,23 +189,20 @@ export default function Layout() {
       {/* Logo */}
       <div className={`flex items-center ${collapsed && !mobile ? 'justify-center' : 'justify-between'} px-3 py-4 border-b border-gray-800/60`}>
         {(!collapsed || mobile) && (
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-col items-start gap-1">
             {logoOk ? (
-              <img src="/logo.jpg" alt="F1 Card Vault" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" onError={() => setLogoOk(false)} />
+              <img src="/logo.png" alt="F1 Card Vault" className="h-12 w-auto object-contain drop-shadow-[0_4px_12px_rgba(185,28,28,0.35)]" onError={() => setLogoOk(false)} />
             ) : (
               <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
                 <span className="text-white text-xs font-black">F1</span>
               </div>
             )}
-            <div>
-              <div className="font-black text-white text-sm leading-none tracking-tight">F1 Card Vault</div>
-              <div className="text-[10px] text-gray-500 mt-0.5 font-medium light:text-gray-600">Topps Chrome F1 Tracker</div>
-            </div>
+            <div className="text-[10px] text-gray-500 font-medium light:text-gray-600 pl-1">Topps Chrome F1 Tracker</div>
           </div>
         )}
         {collapsed && !mobile && (
           logoOk ? (
-            <img src="/logo.jpg" alt="F1 Card Vault" className="w-8 h-8 rounded-xl object-cover shadow-lg shadow-red-900/40" onError={() => setLogoOk(false)} />
+            <img src="/logo.png" alt="F1 Card Vault" className="w-10 h-10 object-contain" onError={() => setLogoOk(false)} />
           ) : (
             <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
               <span className="text-white text-xs font-black">F1</span>
@@ -359,13 +356,15 @@ export default function Layout() {
           </button>
           <div className="flex items-center gap-2">
             {logoOk ? (
-              <img src="/logo.jpg" alt="F1 Card Vault" className="w-6 h-6 rounded-lg object-cover" onError={() => setLogoOk(false)} />
+              <img src="/logo.png" alt="F1 Card Vault" className="h-7 w-auto object-contain" onError={() => setLogoOk(false)} />
             ) : (
-              <div className="w-6 h-6 bg-red-600 rounded-lg flex items-center justify-center">
-                <span className="text-white text-[9px] font-black">F1</span>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 bg-red-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white text-[9px] font-black">F1</span>
+                </div>
+                <span className="font-black text-white text-sm tracking-tight">F1 Card Vault</span>
               </div>
             )}
-            <span className="font-black text-white text-sm tracking-tight">F1 Card Vault</span>
           </div>
           {snipeCount > 0 ? (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-600/20">
