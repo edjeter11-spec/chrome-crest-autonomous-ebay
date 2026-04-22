@@ -60,6 +60,12 @@ export default function Watchlist() {
   const [filterMaxPrice, setFilterMaxPrice] = useState('')
   const [showFilterPanel, setShowFilterPanel] = useState(false)
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [showBulkPriceUpdate, setShowBulkPriceUpdate] = useState(false)
+  const [bulkPriceValue, setBulkPriceValue] = useState('')
+  const [bulkUpdating, setBulkUpdating] = useState(false)
+
   const load = useCallback(() => {
     swrFetch(`${API}/api/auctions/watchlist/all`,
       d => setWatching(d.auctions || d || []))
@@ -94,6 +100,60 @@ export default function Watchlist() {
   const removeWishItem = async (id) => {
     await fetch(`${API}/api/wishlist/${id}`, { method: 'DELETE' })
     setWishlist(prev => prev.filter(i => i.id !== id))
+  }
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredWishlist.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredWishlist.map(i => i.id)))
+    }
+  }
+
+  const bulkDelete = async () => {
+    if (!window.confirm(`Delete ${selectedIds.size} card${selectedIds.size !== 1 ? 's' : ''} from wishlist? This cannot be undone.`)) return
+    try {
+      await Promise.all(Array.from(selectedIds).map(id =>
+        fetch(`${API}/api/wishlist/${id}`, { method: 'DELETE' })
+      ))
+      setWishlist(prev => prev.filter(i => !selectedIds.has(i.id)))
+      setSelectedIds(new Set())
+    } catch (e) {
+      alert(`Error deleting: ${e.message}`)
+    }
+  }
+
+  const bulkUpdatePrice = async () => {
+    if (!bulkPriceValue || isNaN(parseFloat(bulkPriceValue))) { alert('Enter a valid price'); return }
+    setBulkUpdating(true)
+    try {
+      const newPrice = parseFloat(bulkPriceValue)
+      await Promise.all(Array.from(selectedIds).map(id =>
+        fetch(`${API}/api/wishlist/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ max_price: newPrice })
+        })
+      ))
+      setWishlist(prev => prev.map(i =>
+        selectedIds.has(i.id) ? { ...i, max_price: newPrice } : i
+      ))
+      setShowBulkPriceUpdate(false)
+      setBulkPriceValue('')
+      setSelectedIds(new Set())
+    } catch (e) {
+      alert(`Error updating: ${e.message}`)
+    }
+    setBulkUpdating(false)
   }
 
   const toggleAutoSnipe = async (id, current) => {
@@ -302,17 +362,75 @@ export default function Watchlist() {
 
       {/* SECTION 2 — Wishlist */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Heart size={14} className="text-pink-400" />
             <h2 className="text-sm font-black uppercase tracking-wider text-gray-300">Wishlist</h2>
             <span className="text-xs text-gray-500">({totalWish})</span>
+            {selectedIds.size > 0 && <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-600/20 border border-blue-600/40 text-blue-300">{selectedIds.size} selected</span>}
           </div>
           <button onClick={() => setShowAdd(s => !s)}
                   className="px-3 py-1.5 rounded-lg bg-pink-600/15 border border-pink-600/40 text-pink-300 text-xs font-bold hover:bg-pink-600/25 flex items-center gap-1.5">
             <Plus size={11} /> Add card
           </button>
         </div>
+
+        {/* Bulk actions bar */}
+        {selectedIds.size > 0 && (
+          <div className="mb-3 p-3 bg-blue-900/20 border border-blue-700/40 rounded-xl flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-blue-300 font-semibold">{selectedIds.size} card{selectedIds.size !== 1 ? 's' : ''} selected</span>
+            <button
+              onClick={() => setShowBulkPriceUpdate(!showBulkPriceUpdate)}
+              className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/40 text-blue-300 text-xs font-bold border border-blue-600/50 transition-colors"
+            >
+              Update Price
+            </button>
+            <button
+              onClick={bulkDelete}
+              className="px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs font-bold border border-red-600/40 transition-colors flex items-center gap-1"
+            >
+              <Trash2 size={10} /> Delete
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="px-2.5 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-bold transition-colors ml-auto"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
+        {/* Bulk price update form */}
+        {showBulkPriceUpdate && selectedIds.size > 0 && (
+          <div className="mb-3 p-3 bg-gray-900/60 border border-blue-700/40 rounded-xl space-y-2">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="text-[9px] uppercase tracking-wider text-gray-500 font-bold mb-1 block">New Max Price ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={bulkPriceValue}
+                  onChange={e => setBulkPriceValue(e.target.value)}
+                  placeholder="e.g. 50.00"
+                  className="w-full px-2 py-1.5 bg-gray-800/60 border border-gray-700/40 text-gray-300 text-xs rounded-lg focus:outline-none focus:border-blue-600/40"
+                />
+              </div>
+              <button
+                onClick={bulkUpdatePrice}
+                disabled={bulkUpdating}
+                className="px-3 py-1.5 rounded-lg bg-blue-600/25 hover:bg-blue-600/35 text-blue-300 text-xs font-bold border border-blue-600/40 transition-colors disabled:opacity-50"
+              >
+                {bulkUpdating ? 'Updating…' : 'Update'}
+              </button>
+              <button
+                onClick={() => { setShowBulkPriceUpdate(false); setBulkPriceValue('') }}
+                className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 text-xs font-bold transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {showAdd && <AddWishlistForm onClose={() => setShowAdd(false)} onAdded={load} />}
 
@@ -346,11 +464,35 @@ export default function Watchlist() {
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Select All / Deselect All controls */}
+            {filteredWishlist.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-gray-500">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size > 0 && selectedIds.size === filteredWishlist.length}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded cursor-pointer accent-blue-600"
+                />
+                <button
+                  onClick={toggleSelectAll}
+                  className="text-blue-400 hover:text-blue-300 font-semibold transition-colors"
+                >
+                  {selectedIds.size > 0 && selectedIds.size === filteredWishlist.length ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+            )}
             {filteredWishlist.map(item => {
               const matches = matchesFor(item)
+              const isSelected = selectedIds.has(item.id)
               return (
-                <div key={item.id} className="bg-gray-900/70 border border-gray-800/60 rounded-2xl p-3">
+                <div key={item.id} className={`bg-gray-900/70 border rounded-2xl p-3 transition-colors ${isSelected ? 'border-blue-600/50 bg-blue-900/10' : 'border-gray-800/60'}`}>
                   <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(item.id)}
+                      className="w-4 h-4 rounded cursor-pointer accent-blue-600 shrink-0 mt-0.5"
+                    />
                     <div className="w-12 h-16 rounded-lg flex items-center justify-center shrink-0"
                          style={{ background: `linear-gradient(135deg, #1a1a2e, ${item.card?.team_color || '#444'}55)` }}>
                       <Heart size={14} className="text-pink-400 opacity-50" />
