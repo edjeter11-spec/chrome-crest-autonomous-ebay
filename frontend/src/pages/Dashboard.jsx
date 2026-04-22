@@ -602,7 +602,7 @@ export default function Dashboard() {
         <KpiTile
           icon={TrendingUp}
           label="Price Trending"
-          value={salesLoading ? null : (priceTrending ? `${priceTrending.arrow} ${priceTrending.pctChange.toFixed(0)}%` : '—')}
+          value={salesLoading ? null : (priceTrending && priceTrending.pctChange != null ? `${priceTrending.arrow} ${priceTrending.pctChange.toFixed(0)}%` : '—')}
           sub={priceTrending?.trend || 'No data'}
           color={priceTrending?.trend === 'Up' ? 'green' : priceTrending?.trend === 'Down' ? 'red' : 'cyan'}
         />
