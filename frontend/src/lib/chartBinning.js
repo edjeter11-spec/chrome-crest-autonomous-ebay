@@ -86,7 +86,7 @@ export function detectBinType(series, minBins = 5) {
  * Helper: get day-of-year for a Date
  */
 function getDayOfYear(date) {
-  const start = new Date(Date.UTC(date.getUTCFullYear(), 0, 0))
+  const start = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
   const diff = date.getTime() - start.getTime()
   const oneDay = 1000 * 60 * 60 * 24
   return Math.floor(diff / oneDay)

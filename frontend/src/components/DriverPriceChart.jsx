@@ -134,8 +134,25 @@ export default function DriverPriceChart({ driver, days = 90 }) {
 
   // Merge scatter points into the same row-set keyed by appropriate bin
   for (const sp of scatter) {
-    if (!pivot.has(sp.week)) {
-      const binKey = binType === 'weekly' ? sp.week : sp.week // scatter already aligned to Monday
+    let binKey = sp.week
+    if (binType === 'biweekly' || binType === 'rolling14d') {
+      const date = new Date(sp.week + 'T00:00:00Z')
+      if (binType === 'biweekly') {
+        const dayOfYear = Math.floor((date.getTime() - new Date(Date.UTC(date.getUTCFullYear(), 0, 1)).getTime()) / (1000 * 60 * 60 * 24))
+        const weekNum = Math.floor(dayOfYear / 7)
+        const biweekNum = Math.floor(weekNum / 2)
+        const snapDate = new Date(date)
+        snapDate.setUTCDate(date.getUTCDate() - ((weekNum % 2) * 7))
+        binKey = snapDate.toISOString().slice(0, 10)
+      } else if (binType === 'rolling14d') {
+        const ms = date.getTime()
+        const day14ms = 14 * 86400 * 1000
+        const snappedMs = Math.floor(ms / day14ms) * day14ms
+        const snappedDate = new Date(snappedMs)
+        binKey = snappedDate.toISOString().slice(0, 10)
+      }
+    }
+    if (!pivot.has(binKey)) {
       pivot.set(binKey, { bin: binKey, week: binKey })
     }
   }

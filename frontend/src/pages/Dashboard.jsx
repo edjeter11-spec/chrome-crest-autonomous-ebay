@@ -293,7 +293,8 @@ export default function Dashboard() {
       s => s.sale_date && new Date(s.sale_date).getTime() >= lastWeekStart && new Date(s.sale_date).getTime() < lastWeekEnd && s.sale_price
     ).map(s => s.sale_price).sort((a, b) => a - b)
 
-    if (!thisWeekSales.length || !lastWeekSales.length) return null
+    if (!thisWeekSales.length && !lastWeekSales.length) return { trend: 'No data', pctChange: null, arrow: '—' }
+    if (!thisWeekSales.length || !lastWeekSales.length) return { trend: 'No data', pctChange: null, arrow: '—' }
 
     // Compute medians
     const median = (arr) => arr.length % 2 === 0
