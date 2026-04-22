@@ -1,0 +1,14 @@
+{
+  "name": "f1-card-vault",
+  "version": "1.0.0",
+  "description": "F1 Card Vault — live auctions, sold comps, graded pop",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "build": "npm --prefix frontend run build",
+    "start": "node backend/main.py"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
