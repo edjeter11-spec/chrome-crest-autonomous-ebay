@@ -269,6 +269,24 @@ class ScraperRun(Base):
     run_id = Column(String, nullable=True)  # GH Actions run id
 
 
+class VerdictFeedback(Base):
+    """User feedback on verdict accuracy — tracks if a STRONG_BUY/GOOD_BUY actually profited."""
+    __tablename__ = "user_verdict_feedback"
+    id = Column(Integer, primary_key=True, index=True)
+    sold_card_id = Column(Integer, ForeignKey("sold_cards.id"), index=True, nullable=False)
+    ebay_item_id = Column(String, index=True, nullable=True)  # denorm for quick lookups
+    verdict_key = Column(String, nullable=False)  # STRONG_BUY, GOOD_BUY, etc.
+    feedback = Column(String, nullable=False)  # 'up', 'down', 'neutral'
+    actual_sale_price = Column(Float, nullable=True)  # optional: user's actual profit/loss
+    notes = Column(Text, nullable=True)  # user can add context
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_verdict_feedback_card_user", "sold_card_id"),
+    )
+
+
 class SystemState(Base):
     """Key-value store for flags that must survive Vercel cold starts (e.g. eBay rate-limit cooldowns)."""
     __tablename__ = "system_state"

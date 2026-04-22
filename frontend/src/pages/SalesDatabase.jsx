@@ -4,6 +4,7 @@ import {
   Database, Download, Search, RefreshCw, ExternalLink,
   DollarSign, Package, Calendar, TrendingUp, ChevronDown, ChevronUp, Share2
 } from 'lucide-react'
+import { VerdictFeedback } from '../components/VerdictFeedback'
 
 async function shareSale(e, sale) {
   e.stopPropagation()
@@ -69,6 +70,7 @@ export default function SalesDatabase() {
   const [sales, setSales] = useState([])
   const [total, setTotal] = useState(0)
   const [stats, setStats] = useState(null)
+  const [accuracyStats, setAccuracyStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -133,6 +135,10 @@ export default function SalesDatabase() {
     swrFetch(
       `${API}/api/sales/stats?${statsQs}`,
       d => setStats(d),
+    )
+    swrFetch(
+      `${API}/api/verdicts/accuracy?days=90`,
+      d => setAccuracyStats(d),
     )
   }, [qs, statsQs, only2025, onlyNotable])
 
@@ -286,7 +292,7 @@ export default function SalesDatabase() {
 
       {/* Stats strip */}
       {stats && (
-        <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
           <StatBox icon={Package} label="Total Sales" value={stats.total_count?.toLocaleString() ?? 0} color="cyan" />
           <StatBox icon={DollarSign} label="Total Value" value={`$${(stats.total_value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`} color="emerald" />
           <StatBox icon={Calendar} label="This Week" value={(stats.week_count || 0).toLocaleString()} color="yellow" />
@@ -298,6 +304,12 @@ export default function SalesDatabase() {
             value={strongBuyPct ? `${strongBuyPct.pct}%` : '—'}
             sub={strongBuyPct ? `${strongBuyPct.strong} of ${strongBuyPct.scored} scored` : 'building backtest…'}
             color="green" />
+          {accuracyStats?.overall?.total > 0 && (
+            <StatBox icon={TrendingUp} label="Verdict Accuracy"
+              value={accuracyStats.overall.accuracy_pct ? `${accuracyStats.overall.accuracy_pct}%` : '—'}
+              sub={`${accuracyStats.overall.up} wins of ${accuracyStats.overall.total} feedback`}
+              color="blue" />
+          )}
         </div>
       )}
 
@@ -421,12 +433,17 @@ export default function SalesDatabase() {
                   const total = s.total_cost ?? s.sale_price
                   const med = total / v.ratio
                   return (
-                    <span
-                      className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
-                      title={`Sold for $${total.toFixed(2)} vs $${Math.round(med)} median`}
-                    >
-                      {v.label}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
+                        title={`Sold for $${total.toFixed(2)} vs $${Math.round(med)} median`}
+                      >
+                        {v.label}
+                      </span>
+                      {(v.key === 'STRONG_BUY' || v.key === 'GOOD_BUY') && (
+                        <VerdictFeedback saleId={s.id} verdictKey={v.key} />
+                      )}
+                    </div>
                   )
                 })()}
                 <span className="text-[10px] text-gray-500">
@@ -519,20 +536,27 @@ export default function SalesDatabase() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-center whitespace-nowrap">
-                    {(() => {
-                      const v = verdictForSale(s)
-                      if (!v) return <span className="text-[9px] text-gray-600 italic">thin</span>
-                      const total = s.total_cost ?? s.sale_price
-                      const med = total / v.ratio
-                      return (
-                        <span
-                          className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
-                          title={`Sold for $${total.toFixed(2)} vs $${Math.round(med)} median`}
-                        >
-                          {v.label}
-                        </span>
-                      )
-                    })()}
+                    <div className="flex items-center justify-center gap-2">
+                      {(() => {
+                        const v = verdictForSale(s)
+                        if (!v) return <span className="text-[9px] text-gray-600 italic">thin</span>
+                        const total = s.total_cost ?? s.sale_price
+                        const med = total / v.ratio
+                        return (
+                          <>
+                            <span
+                              className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
+                              title={`Sold for $${total.toFixed(2)} vs $${Math.round(med)} median`}
+                            >
+                              {v.label}
+                            </span>
+                            {(v.key === 'STRONG_BUY' || v.key === 'GOOD_BUY') && (
+                              <VerdictFeedback saleId={s.id} verdictKey={v.key} />
+                            )}
+                          </>
+                        )
+                      })()}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-center">
                     <div className="inline-flex items-center gap-1">
@@ -607,6 +631,7 @@ function StatBox({ icon: Icon, label, value, sub, color }) {
     yellow: 'text-yellow-400 bg-yellow-600/10 border-yellow-600/30',
     violet: 'text-violet-400 bg-violet-600/10 border-violet-600/30',
     green: 'text-green-400 bg-green-600/10 border-green-600/30',
+    blue: 'text-blue-400 bg-blue-600/10 border-blue-600/30',
   }
   return (
     <div className={`rounded-xl md:rounded-2xl border p-2 md:p-4 ${colors[color]}`}>

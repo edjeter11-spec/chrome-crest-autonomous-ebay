@@ -105,6 +105,7 @@ export default function Auctions() {
     .map(a => ({ ...a, time_left: trueTimeLeft(a) }))
     .filter(a => {
       if (!isAuction(a)) return false
+      // Real-time expiry detection: hide ended auctions from active list
       if (a.time_left <= 0) return false
       if (isCardLot(a)) return false
       if (formulaType !== 'All' && seriesOf(a) !== formulaType) return false
@@ -310,7 +311,18 @@ export default function Auctions() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
             {filtered.slice(0, visibleCount).map(a => (
-              <AuctionCard key={a.id} auction={a} onWatchlistChange={handleWatchlist} onClick={() => setSelected(a)} />
+              <AuctionCard
+                key={a.id}
+                auction={a}
+                onWatchlistChange={handleWatchlist}
+                onClick={() => setSelected(a)}
+                onExpiry={(id) => {
+                  // Auto-remove expired listing after 3s fade
+                  setTimeout(() => {
+                    setAuctions(prev => prev.filter(x => x.id !== id))
+                  }, 3000)
+                }}
+              />
             ))}
           </div>
           {visibleCount < filtered.length && (

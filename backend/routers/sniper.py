@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, Request, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, Header, Body
 from sqlalchemy.orm import Session
 
 from database import get_db, Auction, Card, PushSubscription
@@ -44,17 +44,23 @@ def _sb_get(path: str, params: Optional[dict] = None, service: bool = True, jwt:
     return r.json()
 
 
-def _sb_post(path: str, body, service: bool = True):
+def _sb_post(path: str, body, service: bool = True, jwt: Optional[str] = None):
     url = f"{SUPABASE_URL}/rest/v1/{path}"
-    r = requests.post(url, headers=_sb_headers(service=service), data=json.dumps(body), timeout=15)
+    headers = _sb_headers(service=service)
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
+    r = requests.post(url, headers=headers, data=json.dumps(body), timeout=15)
     if r.status_code >= 300:
         log.warning(f"supabase POST {path} -> {r.status_code}: {r.text[:200]}")
     return r
 
 
-def _sb_patch(path: str, body, service: bool = True):
+def _sb_patch(path: str, body, service: bool = True, jwt: Optional[str] = None):
     url = f"{SUPABASE_URL}/rest/v1/{path}"
-    r = requests.patch(url, headers=_sb_headers(service=service), data=json.dumps(body), timeout=15)
+    headers = _sb_headers(service=service)
+    if jwt:
+        headers["Authorization"] = f"Bearer {jwt}"
+    r = requests.patch(url, headers=headers, data=json.dumps(body), timeout=15)
     if r.status_code >= 300:
         log.warning(f"supabase PATCH {path} -> {r.status_code}: {r.text[:200]}")
     return r
@@ -317,6 +323,187 @@ def check_url(
             "end_time": auction.end_time.isoformat() if auction.end_time else None,
         },
         "matches": results,
+    }
+
+
+@router.patch("/rules/{rule_id}")
+def update_rule(
+    rule_id: str,
+    driver_name: Optional[str] = None,
+    parallel: Optional[str] = None,
+    grade: Optional[str] = None,
+    max_price: Optional[float] = None,
+    max_percent_of_median: Optional[float] = None,
+    ending_soon_only: Optional[bool] = None,
+    max_per_day: Optional[int] = None,
+    active: Optional[bool] = None,
+    authorization: Optional[str] = Header(None),
+):
+    """Update a snipe rule. User must own the rule (enforce via JWT validation)."""
+    if not (SUPABASE_URL and SUPABASE_ANON_KEY):
+        raise HTTPException(500, "supabase not configured")
+
+    jwt = None
+    if authorization and authorization.lower().startswith("bearer "):
+        jwt = authorization.split(None, 1)[1]
+    if not jwt:
+        raise HTTPException(401, "missing auth")
+
+    try:
+        # Fetch the rule to verify ownership
+        rules = _sb_get(f"user_snipe_rules?id=eq.{rule_id}&select=*", service=False, jwt=jwt)
+        if not rules:
+            raise HTTPException(404, "rule not found or not accessible")
+    except Exception as e:
+        log.error(f"failed to fetch rule: {e}")
+        raise HTTPException(401, "auth failed")
+
+    # Build update payload (only include provided fields)
+    update_data = {}
+    if driver_name is not None:
+        update_data["driver_name"] = driver_name or None
+    if parallel is not None:
+        update_data["parallel"] = parallel or None
+    if grade is not None:
+        update_data["grade"] = grade or None
+    if max_price is not None:
+        update_data["max_price"] = max_price or None
+    if max_percent_of_median is not None:
+        update_data["max_percent_of_median"] = max_percent_of_median or None
+    if ending_soon_only is not None:
+        update_data["ending_soon_only"] = ending_soon_only
+    if max_per_day is not None:
+        update_data["max_per_day"] = max_per_day
+    if active is not None:
+        update_data["active"] = active
+
+    if update_data:
+        resp = _sb_patch(f"user_snipe_rules?id=eq.{rule_id}", update_data, service=False, jwt=jwt)
+        if resp.status_code >= 300:
+            log.warning(f"update rule {rule_id} failed: {resp.text[:200]}")
+            raise HTTPException(resp.status_code, "failed to update rule")
+
+    return {"status": "ok", "message": "rule updated"}
+
+
+@router.get("/rules/export")
+def export_rules(
+    authorization: Optional[str] = Header(None),
+):
+    """Export user's active snipe rules as JSON for backup/sharing."""
+    if not (SUPABASE_URL and SUPABASE_ANON_KEY):
+        raise HTTPException(500, "supabase not configured")
+
+    jwt = None
+    if authorization and authorization.lower().startswith("bearer "):
+        jwt = authorization.split(None, 1)[1]
+    if not jwt:
+        raise HTTPException(401, "missing auth")
+
+    try:
+        rules = _sb_get("user_snipe_rules", {"active": "eq.true", "select": "*"}, service=False, jwt=jwt)
+    except Exception as e:
+        log.error(f"export rules failed: {e}")
+        raise HTTPException(401, "auth failed")
+
+    # Return clean rule objects without internal IDs/timestamps
+    export_data = []
+    for rule in rules:
+        export_data.append({
+            "driver_name": rule.get("driver_name"),
+            "parallel": rule.get("parallel"),
+            "grade": rule.get("grade"),
+            "max_price": rule.get("max_price"),
+            "max_percent_of_median": rule.get("max_percent_of_median"),
+            "ending_soon_only": rule.get("ending_soon_only", False),
+            "max_per_day": rule.get("max_per_day", 3),
+            "name": rule.get("name"),
+        })
+
+    return {
+        "status": "ok",
+        "exported_at": datetime.utcnow().isoformat(),
+        "count": len(export_data),
+        "rules": export_data,
+    }
+
+
+@router.post("/rules/import")
+def import_rules(
+    body: dict = Body(...),
+    authorization: Optional[str] = Header(None),
+):
+    """Import snipe rules from JSON file. Validates structure, creates active rules."""
+    if not (SUPABASE_URL and SUPABASE_ANON_KEY):
+        raise HTTPException(500, "supabase not configured")
+
+    jwt = None
+    if authorization and authorization.lower().startswith("bearer "):
+        jwt = authorization.split(None, 1)[1]
+    if not jwt:
+        raise HTTPException(401, "missing auth")
+
+    # Get current user from JWT via Supabase
+    try:
+        user_resp = requests.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"Authorization": f"Bearer {jwt}"}
+        )
+        if user_resp.status_code != 200:
+            raise HTTPException(401, "invalid token")
+        user_data = user_resp.json()
+        user_id = user_data.get("id")
+    except Exception as e:
+        log.error(f"failed to get user from JWT: {e}")
+        raise HTTPException(401, "auth failed")
+
+    rules_to_import = body.get("rules", [])
+    if not isinstance(rules_to_import, list):
+        raise HTTPException(400, "rules must be an array")
+
+    created = 0
+    errors = []
+
+    for idx, rule in enumerate(rules_to_import):
+        try:
+            # Validate required fields exist (allow empty)
+            if not isinstance(rule, dict):
+                errors.append(f"Rule {idx}: not an object")
+                continue
+
+            # Build insert row
+            row = {
+                "user_id": user_id,
+                "driver_name": rule.get("driver_name"),
+                "parallel": rule.get("parallel"),
+                "grade": rule.get("grade"),
+                "max_price": rule.get("max_price"),
+                "max_percent_of_median": rule.get("max_percent_of_median"),
+                "ending_soon_only": bool(rule.get("ending_soon_only", False)),
+                "max_per_day": int(rule.get("max_per_day", 3)),
+                "active": True,
+                "name": rule.get("name") or "Imported rule",
+            }
+
+            # Validate numeric fields
+            if row["max_price"] is not None:
+                row["max_price"] = float(row["max_price"])
+            if row["max_percent_of_median"] is not None:
+                row["max_percent_of_median"] = float(row["max_percent_of_median"])
+
+            resp = _sb_post("user_snipe_rules", row, service=False, jwt=jwt)
+            if resp.status_code >= 300:
+                errors.append(f"Rule {idx}: {resp.text[:100]}")
+            else:
+                created += 1
+        except Exception as e:
+            errors.append(f"Rule {idx}: {str(e)[:100]}")
+
+    return {
+        "status": "ok" if created > 0 else "partial",
+        "created": created,
+        "errors": errors if errors else None,
+        "total_attempted": len(rules_to_import),
     }
 
 

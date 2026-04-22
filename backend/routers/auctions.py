@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Optional
 import asyncio
 import json
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auctions", tags=["auctions"])
 
 
@@ -332,6 +334,41 @@ async def get_seller_info(auction_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/{auction_id}/refresh")
+async def refresh_listing_status(auction_id: int, db: Session = Depends(get_db)):
+    """
+    Fetch fresh listing status from eBay to detect real-time changes
+    (auction ended, price updated, bid count changed).
+
+    Called by frontend when user notices a listing is stale or approaching expiry.
+    Returns updated auction data + expiry status.
+    """
+    a = db.query(Auction).filter(Auction.id == auction_id).first()
+    if not a:
+        raise HTTPException(404, "Auction not found")
+
+    # Optionally refresh from eBay API if it's a real listing
+    if a.is_real_ebay and a.ebay_listing_id:
+        try:
+            from ebay_api import get_item_details
+            item = await get_item_details(a.ebay_listing_id)
+            if item:
+                # Update auction fields from fresh eBay data
+                a.current_price = item.get("current_price", a.current_price)
+                a.bid_count = item.get("bid_count", a.bid_count)
+                a.buying_options = json.dumps(item.get("buying_options", []))
+                db.commit()
+        except Exception:
+            # If eBay API fails, just return DB data
+            pass
+
+    data = auction_to_dict(a)
+    now = datetime.utcnow()
+    data["is_expired"] = (a.end_time is not None) and (a.end_time <= now)
+    data["freshly_fetched"] = True
+    return data
+
+
 @router.get("/{auction_id}/bid-history")
 def get_bid_history(auction_id: int, db: Session = Depends(get_db)):
     """Return synthetic bid history derived from stored auction data."""
@@ -369,3 +406,23 @@ def get_bid_history(auction_id: int, db: Session = Depends(get_db)):
         "note": "Live bid-by-bid history requires eBay user OAuth. Showing estimated timeline.",
         "ebay_bid_url": f"{a.ebay_url}#bidHistory" if a.ebay_url else None,
     }
+
+
+@router.get("/api/status/usage")
+def get_api_usage_status():
+    """Return eBay API usage stats and rate-limit status."""
+    try:
+        from scheduler import get_api_usage_status
+        return get_api_usage_status()
+    except Exception as e:
+        logger.warning(f"Failed to fetch API usage status: {e}")
+        return {
+            "api_calls_today": 0,
+            "daily_limit": 5000,
+            "usage_percent": 0,
+            "warning": False,
+            "rate_limited": False,
+            "cooldown_until": None,
+            "time_to_reset_seconds": 0,
+            "next_reset_at": None,
+        }

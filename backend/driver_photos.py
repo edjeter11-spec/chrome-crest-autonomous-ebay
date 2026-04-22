@@ -95,9 +95,30 @@ def get_cached_photo(driver_name: str) -> str:
 
 
 async def get_photo(driver_name: str) -> str:
-    """Return cached photo or fetch if missing."""
+    """Return cached photo or fetch if missing.
+
+    Priority:
+    1. In-memory cache
+    2. Database cache (image_url from Card table)
+    3. Wikipedia API fetch
+    4. Hardcoded fallbacks
+    """
     if driver_name in _photo_cache:
         return _photo_cache[driver_name]
+
+    # Check database for cached photo
+    try:
+        from database import SessionLocal, Card
+        db = SessionLocal()
+        card = db.query(Card).filter(Card.driver_name == driver_name).first()
+        db.close()
+        if card and card.image_url:
+            _photo_cache[driver_name] = card.image_url
+            return card.image_url
+    except Exception as e:
+        logger.debug(f"Database photo lookup failed for {driver_name}: {e}")
+
+    # Fetch from Wikipedia if not in DB
     url = await fetch_driver_photo(driver_name)
     if not url:
         url = _PHOTO_FALLBACKS.get(driver_name, "")

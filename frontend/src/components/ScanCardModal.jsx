@@ -188,30 +188,46 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
               </div>
               {scanResult.top_guesses && scanResult.top_guesses.length > 0 ? (
                 <div className="space-y-2">
-                  {scanResult.top_guesses.map((guess, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        setForm({
-                          ...form,
-                          driver_name: guess.driver_name || '',
-                          parallel: guess.parallel || '',
-                          grade: guess.predicted_grade != null ? `PSA ${guess.predicted_grade}` : '',
-                        })
-                      }}
-                      className="w-full text-left bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 rounded-lg p-2 transition-colors"
-                    >
-                      <div className="text-xs font-semibold text-white flex items-center justify-between">
-                        <div>
-                          {guess.driver_name || '?'} {guess.parallel && `· ${guess.parallel}`}
+                  {scanResult.top_guesses.map((guess, i) => {
+                    const isTopGuess = i === 0
+                    const confidence = Math.round((guess.confidence || 0) * 100)
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setForm({
+                            ...form,
+                            driver_name: guess.driver_name || '',
+                            parallel: guess.parallel || '',
+                            grade: guess.predicted_grade != null ? `PSA ${guess.predicted_grade}` : '',
+                          })
+                        }}
+                        className={`w-full text-left rounded-lg p-3 transition-colors border-2 ${
+                          isTopGuess
+                            ? 'bg-green-900/30 border-green-600/60 hover:bg-green-900/40'
+                            : 'bg-gray-800/50 hover:bg-gray-800 border-gray-700/50'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-white">
+                              {guess.driver_name || '?'} {guess.parallel && `· ${guess.parallel}`}
+                            </div>
+                            {guess.predicted_grade != null && (
+                              <div className="text-[10px] text-gray-300 mt-1">
+                                Grade: PSA {guess.predicted_grade}
+                                <span className="ml-1 font-semibold text-green-400">({guess.grade_confidence ? Math.round((guess.grade_confidence || 0) * 100) : '?'}% conf)</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                            <span className="text-lg font-bold text-green-400">{confidence}%</span>
+                            {isTopGuess && <span className="text-[9px] font-bold uppercase tracking-wider text-green-400">Top</span>}
+                          </div>
                         </div>
-                        <span className="text-gray-500 text-[10px]">
-                          {Math.round((guess.confidence || 0) * 100)}%
-                          {guess.predicted_grade != null && ` · PSA ${guess.predicted_grade}`}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="text-xs text-gray-500">

@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from database import SessionLocal, Alert, Wishlist, Auction, Card
 from scraper import sync_real_ebay_listings, run_snipe_alerts
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,35 @@ async def _broadcast(msg: dict):
             await _broadcast_fn(msg)
         except Exception:
             pass
+
+
+def get_api_usage_status() -> dict:
+    """Return current eBay API usage and rate-limit status."""
+    from ebay_api import _api_call_count, _api_call_reset_at, _rate_limited_until, _next_ebay_reset
+
+    now = datetime.utcnow()
+    reset_time = _next_ebay_reset()
+    time_to_reset = max(0, int((reset_time - now).total_seconds()))
+
+    daily_limit = 5000
+    usage_pct = (_api_call_count / daily_limit * 100) if daily_limit > 0 else 0
+    warning = _api_call_count >= 4000
+    rate_limited = _rate_limited_until and now < _rate_limited_until
+
+    cooldown_until = None
+    if rate_limited:
+        cooldown_until = _rate_limited_until.isoformat()
+
+    return {
+        "api_calls_today": _api_call_count,
+        "daily_limit": daily_limit,
+        "usage_percent": round(usage_pct, 1),
+        "warning": warning,
+        "rate_limited": rate_limited,
+        "cooldown_until": cooldown_until,
+        "time_to_reset_seconds": time_to_reset,
+        "next_reset_at": reset_time.isoformat(),
+    }
 
 
 async def job_ebay_sync():

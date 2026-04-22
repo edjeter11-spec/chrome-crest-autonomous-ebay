@@ -621,7 +621,7 @@ function SellerPanel({ auctionId }) {
 
 export { ShareMenu }
 
-export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
+export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry }) {
   const [timeLeft, setTimeLeft] = useState(auction.time_left || 0)
   const [watching, setWatching] = useState(auction.status === 'watchlist')
   const [watchLoading, setWatchLoading] = useState(false)
@@ -630,6 +630,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   const [comp, setComp] = useState(null)
   const [bidIntentOpen, setBidIntentOpen] = useState(false)
   const [savedIntent, setSavedIntent] = useState(null)
+  const [fadeOut, setFadeOut] = useState(false)
   const { user } = useAuth() || { user: null }
 
   // Fetch latest bid intent for this auction (passive — non-blocking)
@@ -643,6 +644,26 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
       })
       .catch(() => {})
   }, [auction.id])
+
+  // Refresh listing status when time hits 0 to confirm expiry
+  const refreshStatus = async (e) => {
+    if (e) { e.stopPropagation(); e.preventDefault() }
+    try {
+      const res = await fetch(`${API}/api/auctions/${auction.id}/refresh`)
+      const fresh = await res.json()
+      if (fresh.is_expired) {
+        setFadeOut(true)
+        onExpiry?.(auction.id)
+      }
+    } catch {}
+  }
+
+  // Auto-refresh when time hits 0 to detect real-time expiry
+  useEffect(() => {
+    if (isEnded) {
+      refreshStatus()
+    }
+  }, [isEnded])
 
   // Pull median comp for this driver+parallel (+grade if present in title).
   // Server-side prefetch: when the parent already supplied verdict_comp on the
@@ -671,12 +692,22 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
     if (auction.card?.image_url) return [auction.card.image_url]
     return []
   })
-  // Sync time
+  // Sync time + real-time expiry detection
   useEffect(() => {
     setTimeLeft(auction.time_left || 0)
-    const timer = setInterval(() => setTimeLeft(t => Math.max(0, t - 1)), 1000)
+    const timer = setInterval(() => {
+      setTimeLeft(t => {
+        const newTime = Math.max(0, t - 1)
+        // Trigger parent re-render when listing expires mid-session
+        if (newTime === 0 && t > 0) {
+          // Optionally trigger a refresh callback or visual indicator
+          onExpiry?.(auction.id)
+        }
+        return newTime
+      })
+    }, 1000)
     return () => clearInterval(timer)
-  }, [auction.time_left])
+  }, [auction.time_left, auction.id])
 
   useEffect(() => {
     // Hydrate "watching" from server status OR localStorage fallback (signed-out users).
@@ -786,7 +817,9 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   return (
     <div
       onClick={onClick}
-      className={`relative bg-gray-900 rounded-2xl border overflow-hidden card-hover flex flex-col group cursor-pointer
+      className={`relative bg-gray-900 rounded-2xl border overflow-hidden card-hover flex flex-col group cursor-pointer transition-all duration-500
+        ${fadeOut ? 'opacity-20' : 'opacity-100'}
+        ${isEnded ? 'border-gray-700/60 grayscale' : ''}
         ${isHot ? 'border-red-500/50 snipe-pulse' : watching ? 'border-yellow-600/40' : 'border-gray-800/80'}
       `}>
 
@@ -806,12 +839,17 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
 
         {/* Badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
-          {isHot && (
+          {isEnded && (
+            <div className="flex items-center gap-1 bg-gray-700 text-gray-200 text-[10px] font-black px-2 py-1 rounded-lg shadow-lg">
+              ✓ ENDED
+            </div>
+          )}
+          {isHot && !isEnded && (
             <div className="flex items-center gap-1 bg-red-600 text-white text-[10px] font-black px-2 py-1 rounded-lg shadow-lg">
               <Zap size={9} fill="white" /> SNIPE
             </div>
           )}
-          {watching && !isHot && (
+          {watching && !isHot && !isEnded && (
             <div className="flex items-center gap-1 bg-yellow-700/90 text-white text-[10px] font-bold px-2 py-1 rounded-lg">
               <BookmarkCheck size={9} /> SAVED
             </div>
@@ -836,7 +874,11 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
               <RotateCw size={10} />
             </span>
           )}
-          {!isEnded && (
+          {isEnded ? (
+            <div className="bg-gray-900/80 backdrop-blur-sm text-gray-500 text-[10px] font-bold px-2 py-1 rounded-lg border border-gray-700/50">
+              CLOSED
+            </div>
+          ) : (
             <div className="bg-gray-900/80 backdrop-blur-sm text-blue-400 text-[10px] font-bold px-2 py-1 rounded-lg border border-blue-900/50">
               LIVE
             </div>
@@ -927,8 +969,8 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
           <SellerBadge feedback={auction.seller_feedback} />
         </div>
 
-        {/* Pricing options */}
-        <PricingOptions auction={auction} comp={comp} />
+        {/* Pricing options — disable if ended */}
+        {!isEnded && <PricingOptions auction={auction} comp={comp} />}
 
         {/* Saved intent chip */}
         {savedIntent && (
@@ -977,17 +1019,26 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
 
         {/* Watchlist + share buttons */}
         <div className="flex gap-1.5">
-          <button
-            onClick={toggleWatchlist}
-            disabled={watchLoading}
-            className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
-              watching
-                ? 'bg-yellow-700/25 text-yellow-400 hover:bg-yellow-700/40 border border-yellow-700/30'
-                : 'bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700/30'
-            }`}
-          >
-            {watching ? <><BookmarkCheck size={11} /> Watching</> : <><BookmarkPlus size={11} /> Watch</>}
-          </button>
+          {isEnded ? (
+            <button
+              onClick={refreshStatus}
+              className="flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700/30 transition-colors"
+            >
+              <RotateCw size={11} /> Verify Ended
+            </button>
+          ) : (
+            <button
+              onClick={toggleWatchlist}
+              disabled={watchLoading}
+              className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+                watching
+                  ? 'bg-yellow-700/25 text-yellow-400 hover:bg-yellow-700/40 border border-yellow-700/30'
+                  : 'bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700/30'
+              }`}
+            >
+              {watching ? <><BookmarkCheck size={11} /> Watching</> : <><BookmarkPlus size={11} /> Watch</>}
+            </button>
+          )}
           <button
             onClick={shareListing}
             title="Share listing"

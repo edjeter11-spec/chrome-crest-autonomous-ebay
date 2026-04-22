@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { TrendingUp, TrendingDown, ExternalLink, Tag, Award, Users, ArrowLeft, Share2 } from 'lucide-react'
+import { TrendingUp, TrendingDown, ExternalLink, Tag, Award, Users, ArrowLeft, Share2, BarChart2 } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { ShareMenu } from '../components/AuctionCard'
@@ -42,6 +42,16 @@ function parseSlug(slug) {
     }
   }
   return { driver: null, parallel: null }
+}
+
+function getPsaPopUrl(driver, parallel, grade) {
+  // PSA population report URL format: https://www.psacard.com/pop
+  // Query params: card_name, parallel (optional), grade (optional)
+  const params = new URLSearchParams()
+  params.set('card_name', `${driver} 2025 Topps Chrome`)
+  if (parallel && parallel !== 'Base') params.set('parallel', parallel)
+  if (grade && grade !== 'Raw') params.set('grade', grade)
+  return `https://www.psacard.com/pop?${params.toString()}`
 }
 
 function upsertMeta(selector, attr, name, content) {
@@ -292,7 +302,21 @@ export default function CardPage() {
                 {recent.map(s => (
                   <tr key={s.id}>
                     <td className="text-gray-400 text-xs">{s.sale_date ? new Date(s.sale_date).toLocaleDateString() : '—'}</td>
-                    <td className="text-xs">{s.grade || <span className="text-gray-600">Raw</span>}</td>
+                    <td className="text-xs">
+                      {s.grade ? (
+                        <div className="flex items-center gap-1.5">
+                          <span>{s.grade}</span>
+                          {s.grade !== 'Raw' && (
+                            <a href={getPsaPopUrl(driver, parallel, s.grade)} target="_blank" rel="noopener noreferrer"
+                              className="text-blue-400 hover:text-blue-300 transition-colors" title="View PSA population report">
+                              <BarChart2 size={11} />
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-600">Raw</span>
+                      )}
+                    </td>
                     <td className="text-right text-white font-semibold">${(s.sale_price || 0).toFixed(0)}</td>
                     <td className="text-right text-green-400 font-semibold">${(s.total_cost || 0).toFixed(0)}</td>
                     <td className="text-[10px] text-gray-500">{s.is_auction ? 'auction' : 'bin'}</td>

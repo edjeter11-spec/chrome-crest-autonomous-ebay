@@ -31,16 +31,39 @@ function SourceBadge({ source }) {
   )
 }
 
-function GradeBadge({ grade }) {
+function GradeBadge({ grade, driver, parallel, clickable = false }) {
   if (!grade) return null
   const color = grade === 'PSA 10' ? 'text-yellow-400 bg-yellow-900/30 border-yellow-800/40'
     : grade?.startsWith('PSA 9') ? 'text-green-400 bg-green-900/30 border-green-800/40'
     : 'text-gray-300 bg-gray-800/60 border-gray-700/50'
-  return (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${color}`}>
+
+  const psaPopUrl = clickable && driver && parallel ? getPsaPopUrl(driver, parallel, grade) : null
+
+  const badge = (
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${color} ${psaPopUrl ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}>
       {grade}
     </span>
   )
+
+  if (psaPopUrl) {
+    return (
+      <a href={psaPopUrl} target="_blank" rel="noopener noreferrer" title="View PSA population report">
+        {badge}
+      </a>
+    )
+  }
+
+  return badge
+}
+
+function getPsaPopUrl(driver, parallel, grade) {
+  // PSA population report URL format: https://www.psacard.com/pop
+  // Query params: card_name, parallel (optional), grade (optional)
+  const params = new URLSearchParams()
+  params.set('card_name', `${driver} 2025 Topps Chrome`)
+  if (parallel && parallel !== 'Base') params.set('parallel', parallel)
+  if (grade && grade !== 'Raw') params.set('grade', grade)
+  return `https://www.psacard.com/pop?${params.toString()}`
 }
 
 function Countdown({ endTime }) {
@@ -328,7 +351,7 @@ export default function GradedTracker() {
                   <div className="text-xs text-white truncate">{s.driver_name || s.title?.slice(0, 60)}</div>
                   <div className="text-[10px] text-gray-500 flex items-center gap-1.5 mt-0.5">
                     <span className="truncate">{s.parallel}</span>
-                    <GradeBadge grade={s.grade} />
+                    <GradeBadge grade={s.grade} driver={s.driver_name} parallel={s.parallel} clickable={true} />
                   </div>
                 </div>
                 <div className="text-sm font-black text-green-400 shrink-0 w-20 text-right">${s.sale_price?.toFixed(2)}</div>
@@ -390,7 +413,7 @@ function DriverDrawer({ driver, onClose }) {
                     {(data.breakdown || []).slice(0, 30).map((r, i) => (
                       <tr key={i} className="border-b border-gray-800/50">
                         <td className="py-1.5 text-gray-300">{r.parallel}</td>
-                        <td className="py-1.5"><GradeBadge grade={r.grade} /></td>
+                        <td className="py-1.5"><GradeBadge grade={r.grade} driver={driver} parallel={r.parallel} clickable={true} /></td>
                         <td className="py-1.5 text-right text-white">{r.count}</td>
                         <td className="py-1.5 text-right text-green-400 font-bold">${r.avg_price?.toLocaleString()}</td>
                       </tr>
@@ -417,7 +440,7 @@ function DriverDrawer({ driver, onClose }) {
                       <div className="flex-1 min-w-0">
                         <div className="text-xs text-white truncate">{s.title}</div>
                         <div className="text-[10px] text-gray-500 flex items-center gap-2 mt-0.5">
-                          {s.parallel} <GradeBadge grade={s.grade} /> <SourceBadge source={s.source} />
+                          {s.parallel} <GradeBadge grade={s.grade} driver={driver} parallel={s.parallel} clickable={true} /> <SourceBadge source={s.source} />
                         </div>
                       </div>
                       <div className="text-sm font-black text-green-400">${s.sale_price?.toLocaleString()}</div>

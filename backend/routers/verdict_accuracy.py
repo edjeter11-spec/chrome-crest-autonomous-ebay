@@ -1,147 +1,239 @@
 """
-Verdict accuracy tracker — backtests STRONG BUY alerts against actual sold data.
-
-For every alert of type='strong_buy' created >14 days ago, we look for sold_cards
-rows for the same (driver, parallel) sold within 14 days of the alert creation
-time. We then classify:
-  Hit      — sold <= our predicted "fair" (median) price
-  Miss     — sold > our predicted "fair" price
-  No data  — no comp sale found in the window
+Verdict Accuracy Feedback — track how user-reviewed verdicts actually performed.
+Enables closed-loop feedback: "Was this a win?" buttons on sold cards.
 """
-import re
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
+from datetime import datetime
+from typing import Optional
 
-from database import get_db, Alert, Auction, Card, SoldCard
+from database import get_db, VerdictFeedback, SoldCard
 
-router = APIRouter(prefix="/api/admin", tags=["verdict_accuracy"])
-
-
-# Pull ratios and median out of the alert's message string:
-#   "STRONG BUY: Verstappen Gold /50 PSA 10 — $120 vs $200 median (40% under, n=12 comps)"
-_MED_RE = re.compile(r"\$([\d.]+)\s*vs\s*\$([\d.]+)\s*median", re.I)
-_N_RE = re.compile(r"n=(\d+)\s*comps", re.I)
+router = APIRouter(prefix="/api/verdicts", tags=["verdicts"])
 
 
-def _parse_alert_message(msg: str):
-    """Return (cur_total, median, n_comps) parsed from the strong-buy message."""
-    if not msg:
-        return (None, None, None)
-    m = _MED_RE.search(msg)
-    n = _N_RE.search(msg)
-    cur = float(m.group(1)) if m else None
-    med = float(m.group(2)) if m else None
-    ncomps = int(n.group(1)) if n else None
-    return (cur, med, ncomps)
-
-
-@router.get("/verdict-accuracy")
-def verdict_accuracy(days: int = Query(30, ge=7, le=365), db: Session = Depends(get_db)):
+@router.post("/feedback")
+def submit_verdict_feedback(
+    sold_card_id: int,
+    verdict_key: str,
+    feedback: str = Query(..., regex="^(up|down|neutral)$"),
+    actual_sale_price: Optional[float] = None,
+    notes: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """
-    Backtest strong-buy alerts that are at least 14 days old.
-    `days` limits how far back we look.
+    Record user feedback on a verdict's accuracy.
+    - feedback: 'up' (verdict was right/underpriced), 'down' (verdict was wrong/overpriced), 'neutral'
+    - actual_sale_price: optional — user's actual final price if different from listed
+    - notes: optional user context
     """
-    now = datetime.utcnow()
-    horizon = now - timedelta(days=14)  # alerts older than 14 days are evaluable
-    lookback = now - timedelta(days=days)
+    # Verify the sold card exists
+    card = db.query(SoldCard).filter(SoldCard.id == sold_card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Sold card not found")
 
-    alerts = db.query(Alert).filter(
-        Alert.alert_type == "strong_buy",
-        Alert.created_at <= horizon,
-        Alert.created_at >= lookback,
-    ).order_by(Alert.created_at.desc()).all()
+    # Check for existing feedback on this card
+    existing = db.query(VerdictFeedback).filter(
+        VerdictFeedback.sold_card_id == sold_card_id
+    ).first()
 
-    total = len(alerts)
-    hits = 0
-    misses = 0
-    no_data = 0
-
-    by_driver: dict = {}
-    by_parallel: dict = {}
-    recent_misses: list = []
-
-    for al in alerts:
-        cur_total, median, ncomps = _parse_alert_message(al.message or "")
-        card = db.query(Card).filter(Card.id == al.card_id).first() if al.card_id else None
-        driver = (card.driver_name if card else None) or "Unknown"
-        parallel = (card.parallel if card else None) or "Base"
-
-        # Lookup actual sold comps in the 14-day window post-alert
-        win_start = al.created_at
-        win_end = (al.created_at or now) + timedelta(days=14)
-        q = db.query(SoldCard).filter(
-            SoldCard.driver_name == driver,
-            SoldCard.sale_date >= win_start,
-            SoldCard.sale_date <= win_end,
-            SoldCard.sale_price > 0,
-            SoldCard.is_duplicate == False,  # noqa: E712
+    if existing:
+        # Update
+        existing.verdict_key = verdict_key
+        existing.feedback = feedback
+        existing.actual_sale_price = actual_sale_price
+        existing.notes = notes
+        existing.updated_at = datetime.utcnow()
+    else:
+        # Create
+        existing = VerdictFeedback(
+            sold_card_id=sold_card_id,
+            ebay_item_id=card.ebay_item_id,
+            verdict_key=verdict_key,
+            feedback=feedback,
+            actual_sale_price=actual_sale_price,
+            notes=notes,
         )
-        if parallel and parallel != "Base":
-            q = q.filter(SoldCard.parallel == parallel)
-        post_sales = q.all()
+        db.add(existing)
 
-        # Driver/Parallel buckets
-        d_b = by_driver.setdefault(driver, {"driver": driver, "total": 0, "hits": 0, "misses": 0, "no_data": 0})
-        p_b = by_parallel.setdefault(parallel, {"parallel": parallel, "total": 0, "hits": 0, "misses": 0, "no_data": 0})
-        d_b["total"] += 1
-        p_b["total"] += 1
+    db.commit()
+    db.refresh(existing)
+    return {
+        "id": existing.id,
+        "sold_card_id": existing.sold_card_id,
+        "verdict_key": existing.verdict_key,
+        "feedback": existing.feedback,
+        "created_at": existing.created_at.isoformat(),
+        "updated_at": existing.updated_at.isoformat(),
+    }
 
-        if not post_sales or median is None:
-            no_data += 1
-            d_b["no_data"] += 1
-            p_b["no_data"] += 1
-            continue
 
-        # Use the median of post-alert sales as the actual settled price
-        prices = sorted(
-            [float(s.sale_price or 0) + float(s.shipping_cost or 0) for s in post_sales]
-        )
-        n = len(prices)
-        actual_med = prices[n // 2] if n % 2 else (prices[n // 2 - 1] + prices[n // 2]) / 2
+@router.get("/feedback/{sold_card_id}")
+def get_verdict_feedback(sold_card_id: int, db: Session = Depends(get_db)):
+    """Get feedback for a specific sold card (if any)."""
+    feedback = db.query(VerdictFeedback).filter(
+        VerdictFeedback.sold_card_id == sold_card_id
+    ).first()
 
-        if actual_med <= median * 1.05:  # within 5% = still a hit
-            hits += 1
-            d_b["hits"] += 1
-            p_b["hits"] += 1
-        else:
-            misses += 1
-            d_b["misses"] += 1
-            p_b["misses"] += 1
-            if len(recent_misses) < 10:
-                recent_misses.append({
-                    "alert_id": al.id,
-                    "created_at": al.created_at.isoformat() if al.created_at else None,
-                    "driver": driver,
-                    "parallel": parallel,
-                    "predicted_median": round(median, 2),
-                    "actual_median": round(actual_med, 2),
-                    "overshoot_pct": round((actual_med / median - 1) * 100, 1),
-                    "comps_found": n,
-                    "message": (al.message or "")[:180],
-                })
-
-    evaluable = hits + misses
-    hit_rate = round(hits / evaluable * 100, 1) if evaluable else 0.0
-
-    def _sort_buckets(bs):
-        out = []
-        for b in bs.values():
-            ev = b["hits"] + b["misses"]
-            b["hit_rate_pct"] = round(b["hits"] / ev * 100, 1) if ev else 0.0
-            out.append(b)
-        out.sort(key=lambda x: (-x["total"], x.get("driver") or x.get("parallel") or ""))
-        return out
+    if not feedback:
+        return {"feedback": None}
 
     return {
-        "total_strong_buys": total,
-        "evaluable": evaluable,
-        "hits": hits,
-        "misses": misses,
-        "no_data": no_data,
-        "hit_rate_pct": hit_rate,
+        "feedback": {
+            "id": feedback.id,
+            "verdict_key": feedback.verdict_key,
+            "feedback_type": feedback.feedback,
+            "actual_sale_price": feedback.actual_sale_price,
+            "notes": feedback.notes,
+            "created_at": feedback.created_at.isoformat(),
+            "updated_at": feedback.updated_at.isoformat(),
+        }
+    }
+
+
+@router.get("/accuracy")
+def verdict_accuracy_stats(
+    verdict_key: Optional[str] = None,
+    days: int = 90,
+    db: Session = Depends(get_db),
+):
+    """
+    Aggregate accuracy stats: % of STRONG_BUY/GOOD_BUY verdicts that got 'up' feedback.
+
+    Returns:
+    - overall: {total_verdicts, up_count, down_count, neutral_count, accuracy_pct}
+    - by_verdict_key: {STRONG_BUY, GOOD_BUY, ...} with same breakdown
+    """
+    cutoff = datetime.utcnow()
+    if days:
+        from datetime import timedelta
+
+        cutoff = cutoff - timedelta(days=days)
+
+    # Base query: all feedbacks in timeframe
+    base_q = db.query(VerdictFeedback).filter(VerdictFeedback.created_at >= cutoff)
+    if verdict_key:
+        base_q = base_q.filter(VerdictFeedback.verdict_key == verdict_key)
+
+    all_feedback = base_q.all()
+    if not all_feedback:
+        return {
+            "days": days,
+            "overall": {
+                "total": 0,
+                "up": 0,
+                "down": 0,
+                "neutral": 0,
+                "accuracy_pct": None,
+            },
+            "by_verdict_key": {},
+        }
+
+    # Overall
+    up_count = sum(1 for f in all_feedback if f.feedback == "up")
+    down_count = sum(1 for f in all_feedback if f.feedback == "down")
+    neutral_count = sum(1 for f in all_feedback if f.feedback == "neutral")
+    total = len(all_feedback)
+    accuracy_pct = round((up_count / total * 100), 1) if total > 0 else None
+
+    # By verdict key
+    by_key = {}
+    for f in all_feedback:
+        key = f.verdict_key
+        if key not in by_key:
+            by_key[key] = {"up": 0, "down": 0, "neutral": 0, "total": 0}
+        by_key[key][f.feedback] += 1
+        by_key[key]["total"] += 1
+
+    by_verdict_key = {}
+    for key, counts in sorted(by_key.items()):
+        pct = (
+            round((counts["up"] / counts["total"] * 100), 1)
+            if counts["total"] > 0
+            else None
+        )
+        by_verdict_key[key] = {
+            "total": counts["total"],
+            "up": counts["up"],
+            "down": counts["down"],
+            "neutral": counts["neutral"],
+            "accuracy_pct": pct,
+        }
+
+    return {
         "days": days,
-        "by_driver": _sort_buckets(by_driver)[:15],
-        "by_parallel": _sort_buckets(by_parallel)[:15],
-        "recent_misses": recent_misses,
+        "overall": {
+            "total": total,
+            "up": up_count,
+            "down": down_count,
+            "neutral": neutral_count,
+            "accuracy_pct": accuracy_pct,
+        },
+        "by_verdict_key": by_verdict_key,
+    }
+
+
+@router.get("/leaderboard")
+def verdict_leaderboard(
+    top_n: int = Query(10, le=50),
+    min_samples: int = Query(3, ge=1),
+    days: int = 90,
+    db: Session = Depends(get_db),
+):
+    """
+    Top-performing parallel+grade combos by verdict accuracy.
+    Useful for "which parallels have best STRONG_BUY track record?".
+    """
+    cutoff = datetime.utcnow()
+    from datetime import timedelta
+
+    if days:
+        cutoff = cutoff - timedelta(days=days)
+
+    # Join feedback to sold_cards to group by parallel+grade
+    rows = (
+        db.query(
+            SoldCard.driver_name,
+            SoldCard.parallel,
+            SoldCard.grade,
+            func.count(VerdictFeedback.id).label("total"),
+            func.sum(
+                func.case(
+                    (VerdictFeedback.feedback == "up", 1),
+                    else_=0,
+                )
+            ).label("up_count"),
+        )
+        .join(VerdictFeedback, SoldCard.id == VerdictFeedback.sold_card_id)
+        .filter(
+            VerdictFeedback.created_at >= cutoff,
+            VerdictFeedback.verdict_key.in_(["STRONG_BUY", "GOOD_BUY"]),
+        )
+        .group_by(SoldCard.driver_name, SoldCard.parallel, SoldCard.grade)
+        .all()
+    )
+
+    results = []
+    for driver, parallel, grade, total, up_count in rows:
+        if total < min_samples:
+            continue
+        accuracy = round((up_count / total * 100), 1) if total > 0 else 0
+        results.append(
+            {
+                "driver": driver,
+                "parallel": parallel or "Raw",
+                "grade": grade or "Ungraded",
+                "total_feedback": total,
+                "up_count": up_count,
+                "accuracy_pct": accuracy,
+            }
+        )
+
+    # Sort by accuracy descending, then by total descending
+    results.sort(key=lambda r: (-r["accuracy_pct"], -r["total_feedback"]))
+    return {
+        "days": days,
+        "min_samples": min_samples,
+        "leaderboard": results[:top_n],
     }

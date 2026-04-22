@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Target, Trash2, Pause, Play, Plus, Link as LinkIcon, BellRing, Smartphone, AlertCircle } from 'lucide-react'
+import { Target, Trash2, Pause, Play, Plus, Link as LinkIcon, BellRing, Smartphone, AlertCircle, Edit2, Download, Upload } from 'lucide-react'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ALL_PARALLELS, AUTO_VARIANTS } from '../lib/parallels'
@@ -115,6 +115,7 @@ export default function Sniper() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const [editingId, setEditingId] = useState(null)
   const [driver, setDriver] = useState('')
   const [parallel, setParallel] = useState('')
   const [grade, setGrade] = useState('')
@@ -126,6 +127,11 @@ export default function Sniper() {
   const [urlInput, setUrlInput] = useState('')
   const [urlResult, setUrlResult] = useState(null)
   const [urlLoading, setUrlLoading] = useState(false)
+
+  const [exporting, setExporting] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState(null)
+  const fileInputRef = useRef(null)
 
   // Pre-fill form from URL params (coming from driver detail)
   useEffect(() => {
@@ -194,11 +200,40 @@ export default function Sniper() {
       active: true,
       name: [driver || 'Any', parallel || 'any', grade, maxPrice ? `<$${maxPrice}` : '', maxPct ? `<${maxPct}%` : ''].filter(Boolean).join(' '),
     }
-    const { error } = await supabase.from('user_snipe_rules').insert(row)
-    setSaving(false)
-    if (error) { setError(error.message); return }
-    setDriver(''); setParallel(''); setGrade(''); setMaxPrice(''); setMaxPct(''); setEndingSoon(false); setMaxPerDay(3)
+
+    if (editingId) {
+      // Update existing rule
+      const { error: err } = await supabase.from('user_snipe_rules').update(row).eq('id', editingId)
+      setSaving(false)
+      if (err) { setError(err.message); return }
+    } else {
+      // Create new rule
+      const { error: err } = await supabase.from('user_snipe_rules').insert(row)
+      setSaving(false)
+      if (err) { setError(err.message); return }
+    }
+
+    setDriver(''); setParallel(''); setGrade(''); setMaxPrice(''); setMaxPct(''); setEndingSoon(false); setMaxPerDay(3); setEditingId(null)
     loadRules()
+  }
+
+  const startEdit = (r) => {
+    setEditingId(r.id)
+    setDriver(r.driver_name || '')
+    setParallel(r.parallel || '')
+    setGrade(r.grade || '')
+    setMaxPrice(r.max_price ? String(r.max_price) : '')
+    setMaxPct(r.max_percent_of_median ? String(r.max_percent_of_median) : '')
+    setEndingSoon(r.ending_soon_only || false)
+    setMaxPerDay(r.max_per_day || 3)
+    setError('')
+    document.querySelector('form')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setDriver(''); setParallel(''); setGrade(''); setMaxPrice(''); setMaxPct(''); setEndingSoon(false); setMaxPerDay(3)
+    setError('')
   }
 
   const toggleRule = async (r) => {
@@ -206,8 +241,9 @@ export default function Sniper() {
     loadRules()
   }
   const deleteRule = async (r) => {
-    if (!confirm('Delete this rule?')) return
+    if (!confirm('Delete this rule? This cannot be undone.')) return
     await supabase.from('user_snipe_rules').delete().eq('id', r.id)
+    if (editingId === r.id) cancelEdit()
     loadRules()
   }
 
@@ -227,6 +263,70 @@ export default function Sniper() {
       setUrlResult({ status: 'error', message: String(e) })
     }
     setUrlLoading(false)
+  }
+
+  const exportRules = async () => {
+    if (!user) return
+    setExporting(true)
+    try {
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      const r = await fetch(`${API}/api/sniper/rules/export`, {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const data = await r.json()
+      if (data.status === 'ok') {
+        const json = JSON.stringify(data, null, 2)
+        const blob = new Blob([json], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `sniper-rules-${new Date().toISOString().split('T')[0]}.json`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      } else {
+        setError('Export failed: ' + (data.message || 'unknown error'))
+      }
+    } catch (e) {
+      setError('Export error: ' + String(e))
+    }
+    setExporting(false)
+  }
+
+  const importRules = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const rules = Array.isArray(data.rules) ? data.rules : Array.isArray(data) ? data : []
+
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      const r = await fetch(`${API}/api/sniper/rules/import`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ rules }),
+      })
+      const result = await r.json()
+      setImportResult(result)
+      if (result.status === 'ok' || result.status === 'partial') {
+        loadRules()
+      }
+    } catch (e) {
+      setImportResult({ status: 'error', message: String(e) })
+    }
+    setImporting(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
@@ -255,7 +355,7 @@ export default function Sniper() {
       </div>
 
       {/* Rule builder */}
-      <form onSubmit={createRule} className="bg-gray-900 border border-gray-800/60 rounded-xl p-4 mb-6 space-y-3">
+      <form onSubmit={createRule} className={`rounded-xl p-4 mb-6 space-y-3 border ${editingId ? 'bg-blue-950 border-blue-700/60' : 'bg-gray-900 border-gray-800/60'}`}>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <label className="text-xs text-gray-400">
             Driver
@@ -317,9 +417,12 @@ export default function Sniper() {
           Only alert when auction has &lt;6h left
         </label>
         {error && <div className="text-xs text-red-400">{error}</div>}
-        <button type="submit" disabled={saving || !user} className="bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2">
-          <Plus size={14} /> {saving ? 'Saving…' : 'Create rule'}
-        </button>
+        <div className="flex gap-2">
+          <button type="submit" disabled={saving || !user} className={`font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 text-white ${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'} disabled:bg-gray-700 disabled:cursor-not-allowed`}>
+            {editingId ? '✓ Update Rule' : <><Plus size={14} /> Create rule</>}
+          </button>
+          {editingId && <button type="button" onClick={cancelEdit} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white font-semibold text-sm rounded-lg">Cancel</button>}
+        </div>
         {!user && <div className="text-xs text-gray-500">Sign in to save rules.</div>}
       </form>
 
@@ -355,7 +458,44 @@ export default function Sniper() {
       </div>
 
       {/* Active rules */}
-      <h2 className="text-sm font-bold text-white mb-3">Your rules</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-bold text-white">Your rules</h2>
+        {rules.length > 0 && (
+          <div className="flex gap-2">
+            <button
+              onClick={exportRules}
+              disabled={exporting || !user}
+              title="Download your rules as JSON"
+              className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-xs flex items-center gap-1.5 bg-gray-800/40"
+            >
+              <Download size={14} /> {exporting ? 'Exporting...' : 'Export'}
+            </button>
+            <label className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed text-xs flex items-center gap-1.5 bg-gray-800/40 cursor-pointer">
+              <Upload size={14} /> {importing ? 'Importing...' : 'Import'}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={importRules}
+                disabled={importing || !user}
+                className="hidden"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+      {importResult && (
+        <div className={`mb-4 p-3 rounded-lg text-xs ${importResult.status === 'error' ? 'bg-red-900/30 border border-red-700/50 text-red-300' : importResult.status === 'ok' ? 'bg-green-900/30 border border-green-700/50 text-green-300' : 'bg-yellow-900/30 border border-yellow-700/50 text-yellow-300'}`}>
+          <div className="font-semibold">{importResult.status === 'ok' ? 'Import successful' : importResult.status === 'partial' ? 'Import partial' : 'Import failed'}</div>
+          {importResult.created > 0 && <div>Created {importResult.created} rule(s)</div>}
+          {importResult.errors?.length > 0 && (
+            <div className="mt-2 opacity-80">
+              {importResult.errors.slice(0, 3).map((e, i) => <div key={i}>{e}</div>)}
+              {importResult.errors.length > 3 && <div>... and {importResult.errors.length - 3} more</div>}
+            </div>
+          )}
+        </div>
+      )}
       {loading ? (
         <div className="text-sm text-gray-500">Loading…</div>
       ) : rules.length === 0 ? (
@@ -387,6 +527,9 @@ export default function Sniper() {
                   Last matched {timeAgo(lastMatched[r.id] || r.last_triggered_at)} · {matchCounts[r.id] || 0} total matches
                 </div>
               </div>
+              <button onClick={() => startEdit(r)} title="Edit" className="p-2 rounded-lg hover:bg-blue-900/40 text-blue-400">
+                <Edit2 size={14} />
+              </button>
               <button onClick={() => toggleRule(r)} title={r.active ? 'Pause' : 'Resume'} className="p-2 rounded-lg hover:bg-gray-800 text-gray-400">
                 {r.active ? <Pause size={14} /> : <Play size={14} />}
               </button>

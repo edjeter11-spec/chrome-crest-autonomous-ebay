@@ -13,6 +13,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Rate limit tracking
+_api_call_count = 0
+_api_call_reset_at = None
+
 EBAY_OAUTH_URL = "https://api.ebay.com/identity/v1/oauth2/token"
 EBAY_BROWSE_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
 EBAY_SANDBOX_OAUTH_URL = "https://api.sandbox.ebay.com/identity/v1/oauth2/token"
@@ -104,6 +108,36 @@ _rate_limited_until: Optional[datetime] = None
 _cooldown_loaded = False
 
 
+def _track_api_call():
+    """Track API call count towards daily 5000 limit. Returns True if warning threshold exceeded."""
+    global _api_call_count, _api_call_reset_at
+    now = datetime.utcnow()
+
+    # Reset counter at daily boundary (07:05 UTC when eBay quota resets)
+    reset_time = now.replace(hour=7, minute=5, second=0, microsecond=0)
+    if reset_time > now:
+        reset_time -= timedelta(days=1)
+
+    if _api_call_reset_at is None or now >= _api_call_reset_at + timedelta(days=1):
+        _api_call_count = 0
+        _api_call_reset_at = reset_time
+
+    _api_call_count += 1
+
+    # Warn at 80% of daily quota
+    if _api_call_count == 4000:
+        logger.warning(f"eBay API usage: {_api_call_count}/5000 calls — 80% quota reached")
+        return True
+    elif _api_call_count == 4500:
+        logger.warning(f"eBay API usage: {_api_call_count}/5000 calls — 90% quota reached")
+        return True
+    elif _api_call_count > 5000:
+        logger.error(f"eBay API usage: {_api_call_count}/5000 calls — QUOTA EXCEEDED")
+        return True
+
+    return False
+
+
 def _load_cooldown_from_db():
     """Read persisted cooldown from system_state table. Safe to call repeatedly."""
     global _rate_limited_until, _cooldown_loaded
@@ -172,7 +206,7 @@ async def search_f1_cards(
     sort: str = "endingSoonest",
     buying_options_filter: str = "buyingOptions:{AUCTION|FIXED_PRICE}",
 ) -> list[dict]:
-    """Search eBay for 2025 Topps Chrome F1 cards."""
+    """Search eBay for 2025 Topps Chrome F1 cards with exponential backoff on rate limits."""
     if _is_rate_limited():
         logger.warning("eBay rate-limit cooldown active — skipping search")
         return []
@@ -194,34 +228,56 @@ async def search_f1_cards(
         "fieldgroups": "MATCHING_ITEMS,EXTENDED",
     }
 
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                browse_url,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-                    "Content-Type": "application/json",
-                },
-                params=params,
-                timeout=15.0,
-            )
+    max_retries = 3
+    backoff_seconds = [1, 2, 4]  # 1s, 2s, 4s exponential backoff
 
-            if resp.status_code == 200:
-                data = resp.json()
-                items = data.get("itemSummaries", [])
-                logger.info(f"eBay returned {len(items)} items for query: {query}")
-                return items
-            elif resp.status_code == 429:
-                logger.error(f"eBay Browse API 429 rate-limited on '{query}' — entering 10-min cooldown")
-                _mark_rate_limited_until_reset()
+    async with httpx.AsyncClient() as client:
+        for attempt in range(max_retries + 1):
+            try:
+                resp = await client.get(
+                    browse_url,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+                        "Content-Type": "application/json",
+                    },
+                    params=params,
+                    timeout=15.0,
+                )
+
+                if resp.status_code == 200:
+                    _track_api_call()
+                    data = resp.json()
+                    items = data.get("itemSummaries", [])
+                    logger.info(f"eBay returned {len(items)} items for query: {query}")
+                    return items
+
+                elif resp.status_code in (429, 503):
+                    # 429: Too Many Requests, 503: Service Unavailable
+                    if attempt < max_retries:
+                        wait_time = backoff_seconds[attempt]
+                        logger.warning(
+                            f"eBay {resp.status_code} on '{query}' (attempt {attempt + 1}/{max_retries + 1}) "
+                            f"— backoff {wait_time}s before retry"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        # Max retries exhausted, mark rate limited
+                        logger.error(
+                            f"eBay Browse API 429/503 exhausted retries on '{query}' "
+                            f"— entering cooldown until next daily reset"
+                        )
+                        _mark_rate_limited_until_reset()
+                        return []
+                else:
+                    logger.error(f"eBay Browse API error: {resp.status_code} {resp.text[:200]}")
+                    return []
+            except Exception as e:
+                logger.error(f"eBay search error (attempt {attempt + 1}): {e}")
                 return []
-            else:
-                logger.error(f"eBay Browse API error: {resp.status_code} {resp.text[:200]}")
-                return []
-        except Exception as e:
-            logger.error(f"eBay search error: {e}")
-            return []
+
+        return []
 
 
 def parse_ebay_item(item: dict) -> dict:
@@ -357,7 +413,7 @@ EBAY_SANDBOX_ITEM_URL = "https://api.sandbox.ebay.com/buy/browse/v1/item"
 
 
 async def get_item_details(item_id: str) -> Optional[dict]:
-    """Fetch full item details from eBay Browse API, including additional images and item specifics."""
+    """Fetch full item details from eBay Browse API with exponential backoff on rate limits."""
     if _is_rate_limited():
         return None
     token = await get_oauth_token()
@@ -367,70 +423,89 @@ async def get_item_details(item_id: str) -> Optional[dict]:
     _, _, sandbox = _get_credentials()
     base_url = EBAY_SANDBOX_ITEM_URL if sandbox else EBAY_ITEM_URL
 
+    max_retries = 3
+    backoff_seconds = [1, 2, 4]
+
     async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                f"{base_url}/{item_id}",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-                    "Content-Type": "application/json",
-                },
-                timeout=15.0,
-            )
-            if resp.status_code == 429:
-                _mark_rate_limited_until_reset()
-                logger.error("eBay item details 429 — entering cooldown")
+        for attempt in range(max_retries + 1):
+            try:
+                resp = await client.get(
+                    f"{base_url}/{item_id}",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=15.0,
+                )
+
+                if resp.status_code == 200:
+                    _track_api_call()
+                    data = resp.json()
+                    images = [data.get("image", {}).get("imageUrl", "")]
+                    for img in data.get("additionalImages", []):
+                        url = img.get("imageUrl", "")
+                        if url and url not in images:
+                            images.append(url)
+                    images = [u for u in images if u]
+
+                    specifics = {}
+                    for spec in data.get("localizedAspects", []):
+                        name = spec.get("name", "")
+                        value = spec.get("value", "")
+                        if name and value:
+                            specifics[name] = value
+
+                    seller = data.get("seller", {})
+                    seller_feedback_pct = seller.get("feedbackPercentage")
+
+                    return {
+                        "item_id": item_id,
+                        "title": data.get("title", ""),
+                        "description": data.get("shortDescription", data.get("description", "")),
+                        "images": images,
+                        "condition": data.get("condition", ""),
+                        "condition_description": data.get("conditionDescription", ""),
+                        "item_specifics": specifics,
+                        "seller": seller.get("username", ""),
+                        "seller_feedback_score": seller.get("feedbackScore", 0),
+                        "seller_feedback_pct": seller_feedback_pct,
+                        "categories": [c.get("categoryName") for c in data.get("categories", [])],
+                        "buying_options": data.get("buyingOptions", []),
+                        "bid_count": data.get("bidCount", 0),
+                        "quantity_sold": data.get("estimatedAvailabilities", [{}])[0].get("soldQuantity", 0)
+                        if data.get("estimatedAvailabilities") else 0,
+                        "returns_accepted": data.get("returnTerms", {}).get("returnsAccepted", False),
+                        "item_location": data.get("itemLocation", {}).get("country", ""),
+                        "ebay_url": data.get("itemWebUrl", ""),
+                    }
+
+                elif resp.status_code in (429, 503):
+                    if attempt < max_retries:
+                        wait_time = backoff_seconds[attempt]
+                        logger.warning(
+                            f"eBay {resp.status_code} on item {item_id} (attempt {attempt + 1}/{max_retries + 1}) "
+                            f"— backoff {wait_time}s before retry"
+                        )
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error(
+                            f"eBay item details 429/503 exhausted retries on {item_id} "
+                            f"— entering cooldown until next daily reset"
+                        )
+                        _mark_rate_limited_until_reset()
+                        return None
+
+                else:
+                    logger.error(f"eBay item details error: {resp.status_code} {resp.text[:200]}")
+                    return None
+
+            except Exception as e:
+                logger.error(f"eBay item details fetch error (attempt {attempt + 1}): {e}")
                 return None
-            if resp.status_code == 200:
-                data = resp.json()
-                images = [data.get("image", {}).get("imageUrl", "")]
-                for img in data.get("additionalImages", []):
-                    url = img.get("imageUrl", "")
-                    if url and url not in images:
-                        images.append(url)
-                images = [u for u in images if u]
 
-                specifics = {}
-                for spec in data.get("localizedAspects", []):
-                    name = spec.get("name", "")
-                    value = spec.get("value", "")
-                    if name and value:
-                        specifics[name] = value
-
-                seller = data.get("seller", {})
-                seller_feedback_pct = None
-                for rating in data.get("sellerLegalInfo", {}).get("sellerProvidedLegalInfo", []):
-                    pass
-                # feedbackPercentage comes directly on seller object in some API versions
-                seller_feedback_pct = seller.get("feedbackPercentage")
-
-                return {
-                    "item_id": item_id,
-                    "title": data.get("title", ""),
-                    "description": data.get("shortDescription", data.get("description", "")),
-                    "images": images,
-                    "condition": data.get("condition", ""),
-                    "condition_description": data.get("conditionDescription", ""),
-                    "item_specifics": specifics,
-                    "seller": seller.get("username", ""),
-                    "seller_feedback_score": seller.get("feedbackScore", 0),
-                    "seller_feedback_pct": seller_feedback_pct,
-                    "categories": [c.get("categoryName") for c in data.get("categories", [])],
-                    "buying_options": data.get("buyingOptions", []),
-                    "bid_count": data.get("bidCount", 0),
-                    "quantity_sold": data.get("estimatedAvailabilities", [{}])[0].get("soldQuantity", 0)
-                    if data.get("estimatedAvailabilities") else 0,
-                    "returns_accepted": data.get("returnTerms", {}).get("returnsAccepted", False),
-                    "item_location": data.get("itemLocation", {}).get("country", ""),
-                    "ebay_url": data.get("itemWebUrl", ""),
-                }
-            else:
-                logger.error(f"eBay item details error: {resp.status_code} {resp.text[:200]}")
-                return None
-        except Exception as e:
-            logger.error(f"eBay item details fetch error: {e}")
-            return None
+        return None
 
 
 def extract_driver_from_title(title: str) -> Optional[str]:
