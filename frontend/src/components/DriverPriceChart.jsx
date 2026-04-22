@@ -90,6 +90,10 @@ export default function DriverPriceChart({ driver, days = 90 }) {
     return { scatter: points, streak30d: strongRecent }
   }, [salesRaw])
 
+  // Detect sparsity and choose bin type — must stay above any conditional return to keep hook order stable
+  const series = data?.series || []
+  const binType = useMemo(() => detectBinType(series, 5), [series])
+
   if (loading) return <div className="h-56 skeleton rounded-xl" />
 
   if (!data || (data.total_points || 0) < 5) {
@@ -102,10 +106,6 @@ export default function DriverPriceChart({ driver, days = 90 }) {
       )
     }
   }
-
-  // Detect sparsity and choose bin type
-  const series = data?.series || []
-  const binType = useMemo(() => detectBinType(series, 5), [series])
 
   // Pivot grade-line series with adaptive binning
   const pivot = new Map()

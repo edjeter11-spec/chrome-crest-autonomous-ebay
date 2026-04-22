@@ -2,7 +2,7 @@
 // Backend serves cached photos from database, falls back to Wikipedia if missing.
 // Frontend caches URLs locally for 30 days to minimize backend requests.
 
-const CACHE_KEY = 'cc_driver_photos_v2'
+const CACHE_KEY = 'cc_driver_photos_v3'
 const TTL_MS = 30 * 24 * 3600 * 1000
 const API = import.meta.env.VITE_API_URL || ''
 

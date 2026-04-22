@@ -106,13 +106,13 @@ async def get_photo(driver_name: str) -> str:
     if driver_name in _photo_cache:
         return _photo_cache[driver_name]
 
-    # Check database for cached photo
+    # Check database for cached photo — skip placeholder URLs so Wikipedia fetch runs.
     try:
         from database import SessionLocal, Card
         db = SessionLocal()
         card = db.query(Card).filter(Card.driver_name == driver_name).first()
         db.close()
-        if card and card.image_url:
+        if card and card.image_url and "placehold.co" not in card.image_url:
             _photo_cache[driver_name] = card.image_url
             return card.image_url
     except Exception as e:
