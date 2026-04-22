@@ -198,7 +198,7 @@ export default function Layout() {
             )}
             <div>
               <div className="font-black text-white text-sm leading-none tracking-tight">F1 Card Vault</div>
-              <div className="text-[10px] text-gray-500 mt-0.5 font-medium">Topps Chrome F1 Tracker</div>
+              <div className="text-[10px] text-gray-500 mt-0.5 font-medium light:text-gray-600">Topps Chrome F1 Tracker</div>
             </div>
           </div>
         )}
@@ -241,7 +241,7 @@ export default function Layout() {
               `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative ${
                 isActive
                   ? 'bg-red-600/15 text-red-400 border border-red-600/20'
-                  : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-200'
+                  : 'text-gray-500 hover:bg-gray-800/60 hover:text-gray-200 light:text-gray-600 light:hover:text-gray-800'
               }`
             }
           >
@@ -268,8 +268,8 @@ export default function Layout() {
               <div className="w-6 h-6 rounded-full bg-red-600 flex items-center justify-center text-white text-[10px] font-black shrink-0">
                 {(user.email || '?')[0].toUpperCase()}
               </div>
-              <span className="text-[11px] text-gray-300 truncate flex-1">{user.email}</span>
-              <button onClick={signOut} title="Sign out" className="text-gray-500 hover:text-red-400">
+              <span className="text-[11px] text-gray-300 truncate flex-1 light:text-gray-700">{user.email}</span>
+              <button onClick={signOut} title="Sign out" className="text-gray-500 hover:text-red-400 light:text-gray-600 light:hover:text-red-400">
                 <LogOut size={12} />
               </button>
             </div>
@@ -286,8 +286,8 @@ export default function Layout() {
             disabled={pushState === 'busy'}
             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
               pushState === 'subscribed'
-                ? 'bg-green-900/30 text-green-400 border border-green-800/40 hover:bg-green-900/50'
-                : 'bg-gray-800/60 text-gray-400 hover:text-white border border-gray-700/40 hover:bg-gray-800'
+                ? 'bg-green-900/30 text-green-400 border border-green-800/40 hover:bg-green-900/50 light:bg-green-100/40 light:text-green-700 light:border-green-300/50'
+                : 'bg-gray-800/60 text-gray-400 hover:text-white border border-gray-700/40 hover:bg-gray-800 light:bg-gray-100 light:text-gray-700 light:border-gray-300 light:hover:bg-gray-200'
             }`}
           >
             <BellRing size={12} />
@@ -297,7 +297,7 @@ export default function Layout() {
         {(!collapsed || mobile) && (
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] font-semibold bg-gray-800/60 text-gray-400 hover:text-white border border-gray-700/40 hover:bg-gray-800 transition-colors"
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] font-semibold bg-gray-800/60 text-gray-400 hover:text-white border border-gray-700/40 hover:bg-gray-800 transition-colors light:bg-gray-100 light:text-gray-700 light:border-gray-300 light:hover:bg-gray-200 light:hover:text-gray-800"
             title="Toggle theme"
           >
             {theme === 'dark' ? <Sun size={12} /> : <Moon size={12} />}
@@ -390,16 +390,16 @@ export default function Layout() {
         <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-20 md:pb-6">
           <Outlet />
           {/* FTC-required affiliate disclosure */}
-          <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-gray-800/60">
-            <p className="text-[10px] text-gray-600 leading-relaxed">
-              <strong className="text-gray-500">Disclosure:</strong> As an eBay Partner, F1 Card Vault may be compensated
+          <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-gray-800/60 light:border-gray-300">
+            <p className="text-[10px] text-gray-600 leading-relaxed light:text-gray-700">
+              <strong className="text-gray-500 light:text-gray-600">Disclosure:</strong> As an eBay Partner, F1 Card Vault may be compensated
               when you make a qualifying purchase after clicking a link on this site. This does not affect the price
               you pay. Median prices and verdicts are computed from public sale data and are not investment advice.
             </p>
-            <p className="text-[10px] text-gray-500 mt-2">
-              <Link to="/about" className="text-gray-500 hover:underline">About</Link>
+            <p className="text-[10px] text-gray-500 mt-2 light:text-gray-700">
+              <Link to="/about" className="text-gray-500 hover:underline light:text-gray-700 light:hover:text-gray-900">About</Link>
               {' · '}
-              <a href="mailto:edjeter11@gmail.com" className="text-gray-500 hover:underline">Contact</a>
+              <a href="mailto:edjeter11@gmail.com" className="text-gray-500 hover:underline light:text-gray-700 light:hover:text-gray-900">Contact</a>
             </p>
           </div>
         </main>

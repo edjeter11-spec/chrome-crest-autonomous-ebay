@@ -61,15 +61,15 @@ export default function MyCards() {
       {loading && <div className="text-gray-500 text-sm">Loading…</div>}
 
       {!loading && cards.length === 0 && (
-        <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-8 text-center">
-          <Sparkles size={32} className="text-purple-400 mx-auto mb-3" />
-          <h3 className="text-white font-bold mb-1">Scan your first card</h3>
-          <p className="text-gray-500 text-xs mb-4">Take a photo — AI will detect the driver, parallel, and predict a grade.</p>
+        <div className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-700/40 rounded-2xl p-8 text-center">
+          <div className="text-4xl mb-4">📸</div>
+          <h3 className="text-white font-bold text-lg mb-2">No cards scanned yet</h3>
+          <p className="text-gray-400 text-sm mb-5 max-w-sm mx-auto">Start your collection! Snap a photo — our AI identifies the driver, parallel, and predicts the grade instantly.</p>
           <button
             onClick={() => setModalOpen(true)}
-            className="bg-red-600 hover:bg-red-500 text-white font-bold px-4 py-2.5 rounded-xl inline-flex items-center gap-2"
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:brightness-110 text-white font-bold px-6 py-3 rounded-xl inline-flex items-center gap-2 shadow-lg shadow-purple-900/40"
           >
-            <Camera size={14} /> Scan card
+            <Camera size={16} /> Scan your first card
           </button>
         </div>
       )}

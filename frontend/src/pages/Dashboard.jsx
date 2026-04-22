@@ -276,13 +276,45 @@ export default function Dashboard() {
     () => auctions.filter(isLiveAuctionRow).sort((a,b) => secsLeft(a) - secsLeft(b)).slice(0, 5),
     [auctions]
   )
-  const avg30d = useMemo(() => {
+  const priceTrending = useMemo(() => {
     if (!sales?.length) return null
-    const cutoff = Date.now() - 30 * 86400 * 1000
-    const within = sales.filter(s => s.sale_date && new Date(s.sale_date).getTime() >= cutoff && s.sale_price)
-    if (!within.length) return null
-    const sum = within.reduce((a, s) => a + (s.sale_price || 0), 0)
-    return sum / within.length
+    const now = Date.now()
+
+    // This week: last 7 days
+    const thisWeekStart = now - 7 * 86400 * 1000
+    const thisWeekSales = sales.filter(
+      s => s.sale_date && new Date(s.sale_date).getTime() >= thisWeekStart && s.sale_price
+    ).map(s => s.sale_price).sort((a, b) => a - b)
+
+    // Last week: 14-7 days ago
+    const lastWeekStart = now - 14 * 86400 * 1000
+    const lastWeekEnd = thisWeekStart
+    const lastWeekSales = sales.filter(
+      s => s.sale_date && new Date(s.sale_date).getTime() >= lastWeekStart && new Date(s.sale_date).getTime() < lastWeekEnd && s.sale_price
+    ).map(s => s.sale_price).sort((a, b) => a - b)
+
+    if (!thisWeekSales.length || !lastWeekSales.length) return null
+
+    // Compute medians
+    const median = (arr) => arr.length % 2 === 0
+      ? (arr[arr.length / 2 - 1] + arr[arr.length / 2]) / 2
+      : arr[Math.floor(arr.length / 2)]
+
+    const thisWeekMedian = median(thisWeekSales)
+    const lastWeekMedian = median(lastWeekSales)
+
+    const pctChange = ((thisWeekMedian - lastWeekMedian) / lastWeekMedian) * 100
+
+    // Consider "flat" within ±2% threshold
+    if (Math.abs(pctChange) <= 2) {
+      return { trend: 'Stable', pctChange: 0, arrow: '→' }
+    }
+
+    return {
+      trend: pctChange > 0 ? 'Up' : 'Down',
+      pctChange: Math.abs(pctChange),
+      arrow: pctChange > 0 ? '↑' : '↓'
+    }
   }, [sales])
   const topSnipeScore = useMemo(() => {
     if (!snipes?.length) return null
@@ -349,19 +381,19 @@ export default function Dashboard() {
           <div className="w-1 h-7 bg-red-600 rounded-full shrink-0" />
           <div>
             <h1 className="text-2xl font-black text-white tracking-tight leading-none">Operator Dashboard</h1>
-            <p className="text-gray-500 text-xs mt-1.5 font-medium">F1 Card Vault · Live auctions, fresh sales, hot snipes</p>
+            <p className="text-gray-500 text-xs mt-1.5 font-medium light:text-gray-600">F1 Card Vault · Live auctions, fresh sales, hot snipes</p>
           </div>
         </div>
         <div className="flex items-center gap-2.5 shrink-0">
           {lastSync && (
-            <span className="text-xs text-gray-600 font-mono hidden sm:inline">
+            <span className="text-xs text-gray-600 font-mono hidden sm:inline light:text-gray-700">
               {lastSync.toLocaleTimeString()}
             </span>
           )}
           <button
             onClick={() => loadAll(true)}
             disabled={refreshing}
-            className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+            className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-50 light:bg-gray-200 light:hover:bg-gray-300 light:text-gray-700"
           >
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
@@ -567,11 +599,11 @@ export default function Dashboard() {
           color="cyan"
         />
         <KpiTile
-          icon={DollarSign}
-          label="30d Avg"
-          value={salesLoading ? null : (avg30d != null ? `$${avg30d.toFixed(0)}` : '—')}
-          sub={sales?.length ? `${sales.length} recent` : 'No data'}
-          color="emerald"
+          icon={TrendingUp}
+          label="Price Trending"
+          value={salesLoading ? null : (priceTrending ? `${priceTrending.arrow} ${priceTrending.pctChange.toFixed(0)}%` : '—')}
+          sub={priceTrending?.trend || 'No data'}
+          color={priceTrending?.trend === 'Up' ? 'green' : priceTrending?.trend === 'Down' ? 'red' : 'cyan'}
         />
         <KpiTile
           icon={Zap}

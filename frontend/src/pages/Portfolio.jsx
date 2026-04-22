@@ -703,10 +703,18 @@ export default function Portfolio() {
       {loading ? (
         <div className="panel h-64 animate-pulse" />
       ) : items.length === 0 ? (
-        <div className="panel flex flex-col items-center justify-center py-20 text-gray-600">
-          <Package size={36} className="mb-4 opacity-20" />
-          <p className="text-sm font-medium">No holdings yet</p>
-          <p className="text-xs mt-1 text-gray-700">Click "Add Card" to track your first purchase</p>
+        <div className="panel flex flex-col items-center justify-center py-20">
+          <div className="text-5xl mb-4">📦</div>
+          <p className="text-lg font-bold text-white">Time to build your portfolio</p>
+          <p className="text-sm text-gray-400 mt-2 mb-6 max-w-sm text-center">Track purchases, monitor comps, and watch your collection grow. Scan a card or add holdings manually.</p>
+          <div className="flex gap-3 flex-wrap justify-center">
+            <button onClick={() => setScanning(true)} className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:brightness-110 text-white text-sm font-bold rounded-lg flex items-center gap-2 shadow-lg shadow-purple-900/30">
+              <Camera size={16} /> Scan Card
+            </button>
+            <button onClick={() => setAdding(true)} className="px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-lg flex items-center gap-2">
+              <Plus size={16} /> Add Manually
+            </button>
+          </div>
         </div>
       ) : (
         <div className="panel overflow-hidden">

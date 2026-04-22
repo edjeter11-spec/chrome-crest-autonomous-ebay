@@ -11,7 +11,7 @@ export default function StatCard({ label, value, sub, color = 'blue', icon: Icon
   return (
     <div className="bg-gray-900 rounded-2xl border border-gray-800/80 p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</span>
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider light:text-gray-600">{label}</span>
         {Icon && (
           <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${s.bg} border ${s.border}`}>
             <Icon size={14} className={s.icon} />
@@ -22,7 +22,7 @@ export default function StatCard({ label, value, sub, color = 'blue', icon: Icon
         <div className="text-2xl font-black text-white tracking-tight leading-none">
           {value ?? <span className="skeleton inline-block w-16 h-7 rounded" />}
         </div>
-        {sub && <div className="text-xs text-gray-500 mt-1 font-medium">{sub}</div>}
+        {sub && <div className="text-xs text-gray-500 mt-1 font-medium light:text-gray-600">{sub}</div>}
       </div>
     </div>
   )

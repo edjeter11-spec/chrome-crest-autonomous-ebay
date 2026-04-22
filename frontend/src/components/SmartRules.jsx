@@ -71,10 +71,13 @@ export default function SmartRules() {
           {Array(2).fill(0).map((_, i) => <div key={i} className="h-14 bg-gray-900/40 rounded-2xl animate-pulse" />)}
         </div>
       ) : rules.length === 0 ? (
-        <div className="bg-gray-900/40 border border-gray-800/60 rounded-2xl py-8 text-center">
-          <Sparkles size={20} className="mx-auto mb-2 text-gray-700" />
-          <p className="text-xs text-gray-500">No smart rules yet</p>
-          <p className="text-[10px] text-gray-700 mt-1">Example: "Watch every Verstappen Refractor under $50"</p>
+        <div className="bg-gradient-to-br from-violet-900/20 to-purple-900/20 border border-violet-700/40 rounded-2xl py-8 text-center">
+          <div className="text-3xl mb-2">✨</div>
+          <p className="text-sm font-bold text-white">No smart rules yet</p>
+          <p className="text-xs text-gray-400 mt-2 mb-4">Create one to auto-watch matching auctions. Example: "Any Verstappen Refractor under $50" — we handle the rest.</p>
+          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold rounded-lg">
+            <Plus size={13} /> Create Smart Rule
+          </button>
         </div>
       ) : (
         <div className="space-y-2">

@@ -19,6 +19,88 @@ const proxyImg = (url) => {
   return `${API}/api/proxy/image?url=${encodeURIComponent(url)}`
 }
 
+function ShareMenu({ title, url, children, onShare }) {
+  const [open, setOpen] = useState(false)
+
+  const share = async (method) => {
+    if (method === 'copy') {
+      try {
+        await navigator.clipboard.writeText(url)
+        onShare?.('copied')
+      } catch {}
+    } else if (method === 'twitter') {
+      const text = `🏎️ ${title}`
+      const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`
+      window.open(intent, '_blank', 'noopener')
+      onShare?.('twitter')
+    } else if (method === 'facebook') {
+      const intent = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`
+      window.open(intent, '_blank', 'noopener')
+      onShare?.('facebook')
+    } else if (method === 'web' && navigator.share) {
+      try {
+        await navigator.share({
+          title,
+          url,
+        })
+        onShare?.('web')
+      } catch {}
+    }
+    setOpen(false)
+  }
+
+  if (navigator.share) {
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); share('web') }}
+        title="Share"
+        aria-label="Share"
+        className={children?.className || 'p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors'}
+      >
+        {children?.icon || <Share2 size={16} />}
+      </button>
+    )
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); setOpen(!open) }}
+        title="Share"
+        aria-label="Share"
+        className={children?.className || 'p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors'}
+      >
+        {children?.icon || <Share2 size={16} />}
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-lg z-50"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => share('copy')}
+            className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white"
+          >
+            Copy Link
+          </button>
+          <button
+            onClick={() => share('twitter')}
+            className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white border-t border-gray-800"
+          >
+            Share to X
+          </button>
+          <button
+            onClick={() => share('facebook')}
+            className="block w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white border-t border-gray-800"
+          >
+            Share to Facebook
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function formatTimeLeft(seconds) {
   if (seconds <= 0) return { text: 'ENDED', cls: 'text-gray-500' }
   if (seconds < 300) {
@@ -536,6 +618,8 @@ function SellerPanel({ auctionId }) {
     </div>
   )
 }
+
+export { ShareMenu }
 
 export default function AuctionCard({ auction, onWatchlistChange, onClick }) {
   const [timeLeft, setTimeLeft] = useState(auction.time_left || 0)

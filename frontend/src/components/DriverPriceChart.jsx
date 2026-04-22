@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import { Flame } from 'lucide-react'
 import { verdictFor, VERDICT_STYLES } from '../lib/verdict'
+import { binSeriesByPeriod, detectBinType, formatBinLabel } from '../lib/chartBinning'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -102,20 +103,43 @@ export default function DriverPriceChart({ driver, days = 90 }) {
     }
   }
 
-  // Pivot grade-line series
+  // Detect sparsity and choose bin type
+  const series = data?.series || []
+  const binType = useMemo(() => detectBinType(series, 5), [series])
+
+  // Pivot grade-line series with adaptive binning
   const pivot = new Map()
   const grades = new Set()
-  for (const p of data?.series || []) {
-    const k = p.week_start.slice(0, 10)
-    if (!pivot.has(k)) pivot.set(k, { week: k })
-    pivot.get(k)[p.grade] = p.avg_price
-    grades.add(p.grade)
+
+  if (binType === 'weekly') {
+    // Original weekly binning
+    for (const p of series) {
+      const k = p.week_start.slice(0, 10)
+      if (!pivot.has(k)) pivot.set(k, { bin: k, week: k })
+      pivot.get(k)[p.grade] = p.avg_price
+      grades.add(p.grade)
+    }
+  } else {
+    // Use adaptive binning (bi-weekly or 14-day rolling)
+    const binned = binSeriesByPeriod(series, binType)
+    for (const row of binned) {
+      pivot.set(row.bin, { bin: row.bin, week: row.bin, ...row })
+      for (const [grade, price] of Object.entries(row)) {
+        if (grade !== 'bin' && grade !== 'week' && !isNaN(price)) {
+          grades.add(grade)
+        }
+      }
+    }
   }
-  // Merge scatter points into the same row-set keyed by week so XAxis is consistent.
+
+  // Merge scatter points into the same row-set keyed by appropriate bin
   for (const sp of scatter) {
-    if (!pivot.has(sp.week)) pivot.set(sp.week, { week: sp.week })
+    if (!pivot.has(sp.week)) {
+      const binKey = binType === 'weekly' ? sp.week : sp.week // scatter already aligned to Monday
+      pivot.set(binKey, { bin: binKey, week: binKey })
+    }
   }
-  const rows = [...pivot.values()].sort((a, b) => a.week.localeCompare(b.week))
+  const rows = [...pivot.values()].sort((a, b) => a.bin.localeCompare(b.bin))
 
   return (
     <div className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3 space-y-2">
@@ -130,12 +154,17 @@ export default function DriverPriceChart({ driver, days = 90 }) {
       )}
       <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
         90-day price + verdict overlay · {data?.total_points || 0} graded sales · {scatter.length} scored
+        {binType !== 'weekly' && (
+          <span className="ml-3 text-amber-600 font-semibold">
+            {binType === 'biweekly' ? '(bi-weekly binning)' : '(14-day rolling)'}
+          </span>
+        )}
       </div>
       <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={rows} margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
             <CartesianGrid stroke="#1f2937" strokeDasharray="3 3" />
-            <XAxis dataKey="week" tick={{ fill: '#6B7280', fontSize: 10 }} tickFormatter={v => v?.slice(5)} />
+            <XAxis dataKey="week" tick={{ fill: '#6B7280', fontSize: 10 }} tickFormatter={v => formatBinLabel(v, binType)} />
             <YAxis tick={{ fill: '#6B7280', fontSize: 10 }} tickFormatter={v => `$${v}`} />
             <Tooltip
               contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, fontSize: 11 }}

@@ -1,10 +1,11 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon } from 'lucide-react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
+import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon, Target, X, Share2 } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { usePersistedState } from '../lib/hooks'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { fetchDriverPhoto, driverInitials } from '../lib/driverPhotos'
+import { ShareMenu } from '../components/AuctionCard'
 
 function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
   const [photo, setPhoto] = useState('')
@@ -76,7 +77,98 @@ function ScoreMeter({ score, color }) {
   )
 }
 
+function AddToSniperModal({ driver, onClose, onNavigate }) {
+  const [maxPrice, setMaxPrice] = useState('')
+  const [parallel, setParallel] = useState('')
+  const [grade, setGrade] = useState('')
+  const [endingSoon, setEndingSoon] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    if (!maxPrice && !parallel && !grade) {
+      setError('Set at least a max price or filter')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('driver', driver.driver_name)
+      if (maxPrice) params.set('maxPrice', maxPrice)
+      if (parallel) params.set('parallel', parallel)
+      if (grade) params.set('grade', grade)
+      if (endingSoon) params.set('endingSoon', '1')
+
+      onNavigate(`/sniper?${params.toString()}`)
+      onClose()
+    } catch (e) {
+      setError(e?.message || 'Error creating rule')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 rounded-xl border border-gray-800/60 max-w-sm w-full p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-black text-white flex items-center gap-2">
+            <Target size={18} className="text-red-500" />
+            Create Snipe Rule
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5 font-semibold">Driver</label>
+            <input type="text" value={driver.driver_name} disabled className="w-full bg-gray-800/50 border border-gray-700/60 rounded-lg px-3 py-2 text-sm text-gray-300" />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5 font-semibold">Max Price $ <span className="text-gray-600 normal-case">(optional)</span></label>
+            <input type="number" step="1" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="e.g. 250" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600" />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5 font-semibold">Parallel <span className="text-gray-600 normal-case">(optional)</span></label>
+            <input type="text" value={parallel} onChange={e => setParallel(e.target.value)} placeholder="e.g. Gold /50" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600" />
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5 font-semibold">Grade <span className="text-gray-600 normal-case">(optional)</span></label>
+            <input type="text" value={grade} onChange={e => setGrade(e.target.value)} placeholder="e.g. PSA 10" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600" />
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-300">
+            <input type="checkbox" checked={endingSoon} onChange={e => setEndingSoon(e.target.checked)} className="rounded" />
+            <span>Only alert when auction has &lt;6h left</span>
+          </label>
+
+          {error && <div className="text-xs text-red-400">{error}</div>}
+
+          <div className="flex gap-2 pt-2">
+            <button type="submit" disabled={saving} className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white font-semibold text-sm px-4 py-2.5 rounded-lg">
+              {saving ? 'Creating…' : 'Create & Go to Sniper'}
+            </button>
+            <button type="button" onClick={onClose} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-sm px-4 py-2.5 rounded-lg">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function Drivers() {
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [drivers, setDrivers] = useState([])
   const [selected, setSelected] = useState(null)
@@ -89,6 +181,7 @@ export default function Drivers() {
   const [momentumMap, setMomentumMap] = useState({})
   const [rookiePremium, setRookiePremium] = useState(null)
   const [recentlyViewed, setRecentlyViewed] = usePersistedState('cc_recent_drivers', [])
+  const [sniperModal, setSniperModal] = useState(false)
 
   // Load all-driver momentum once
   useEffect(() => {
@@ -285,11 +378,12 @@ export default function Drivers() {
                 <DriverAvatar name={selected.driver_name} teamColor={selected.team_color} size={80} rounded="rounded-2xl" textClass="text-2xl" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1 flex-wrap">
-                  <h2 className="text-2xl font-black text-white tracking-tight">{selected.driver_name}</h2>
-                  <span className={`text-xs font-black px-2.5 py-1 rounded-xl border ${TIER_STYLE[getTier(selected.investment_score||0)]}`}>
-                    {getTier(selected.investment_score||0)}-Tier
-                  </span>
+                <div className="flex items-center gap-3 mb-1 flex-wrap justify-between">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h2 className="text-2xl font-black text-white tracking-tight">{selected.driver_name}</h2>
+                    <span className={`text-xs font-black px-2.5 py-1 rounded-xl border ${TIER_STYLE[getTier(selected.investment_score||0)]}`}>
+                      {getTier(selected.investment_score||0)}-Tier
+                    </span>
                   {(selected.series || 'F1') !== 'F1' && (
                     <span className="text-xs font-bold px-2 py-0.5 rounded-lg"
                       style={{ backgroundColor: SERIES_COLOR[selected.series]+'20', color: SERIES_COLOR[selected.series], border: `1px solid ${SERIES_COLOR[selected.series]}40` }}>
@@ -302,13 +396,28 @@ export default function Drivers() {
                   <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-gray-800/70 border border-gray-700/50">
                     <MomentumChip delta={momentumMap[selected.driver_name]?.delta_pct} />
                   </span>
+                  </div>
+                  <ShareMenu
+                    title={selected.driver_name}
+                    url={`${window.location.origin}/drivers?name=${encodeURIComponent(selected.driver_name)}`}
+                    children={{ className: 'p-2 rounded-lg bg-gray-800/70 hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors', icon: <Share2 size={14} /> }}
+                  />
                 </div>
                 <p className="text-gray-400 text-sm font-medium">{selected.team}</p>
                 <p className="text-gray-600 text-xs mt-0.5">{selected.nationality} · Card #{selected.card_number}</p>
               </div>
-              <div className="text-right shrink-0">
-                <div className="text-4xl font-black text-white tracking-tight">{Math.round(selected.investment_score||0)}</div>
-                <div className="text-xs text-gray-500 uppercase tracking-wide mt-0.5">Invest Score</div>
+              <div className="flex flex-col items-end gap-3 shrink-0">
+                <div className="text-right">
+                  <div className="text-4xl font-black text-white tracking-tight">{Math.round(selected.investment_score||0)}</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide mt-0.5">Invest Score</div>
+                </div>
+                <button
+                  onClick={() => setSniperModal(true)}
+                  className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-black rounded-lg flex items-center gap-1.5 transition-colors"
+                >
+                  <Target size={14} />
+                  Add to Sniper
+                </button>
               </div>
             </div>
 
@@ -460,6 +569,14 @@ export default function Drivers() {
           </div>
         )}
       </div>
+
+      {sniperModal && selected && (
+        <AddToSniperModal
+          driver={selected}
+          onClose={() => setSniperModal(false)}
+          onNavigate={navigate}
+        />
+      )}
     </div>
   )
 }

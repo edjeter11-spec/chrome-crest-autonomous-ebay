@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { TrendingUp, TrendingDown, ExternalLink, Tag, Award, Users, ArrowLeft } from 'lucide-react'
+import { TrendingUp, TrendingDown, ExternalLink, Tag, Award, Users, ArrowLeft, Share2 } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import { ShareMenu } from '../components/AuctionCard'
 
 const API = import.meta.env.VITE_API_URL || ''
 const SITE = 'https://www.f1cardvault.com'
@@ -208,10 +209,15 @@ export default function CardPage() {
             )}
           </div>
 
-          <div className="mt-4 flex gap-2 flex-wrap">
+          <div className="mt-4 flex gap-2 flex-wrap items-center">
             <Link to={`/compare?a=${slug}`} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg">Compare</Link>
             <Link to={`/drivers?name=${encodeURIComponent(driver)}`} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg">Driver page</Link>
             <Link to={`/sales?driver=${encodeURIComponent(driver)}&parallel=${encodeURIComponent(parallel)}`} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg">All sales</Link>
+            <ShareMenu
+              title={`${driver} ${parallel}`}
+              url={window.location.href}
+              children={{ className: 'ml-auto p-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors', icon: <Share2 size={14} /> }}
+            />
           </div>
         </div>
       </div>

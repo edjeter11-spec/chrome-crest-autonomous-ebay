@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Heart, Trash2, Zap, Eye, Plus, Clock, Tag, Gavel, ExternalLink,
-  AlertCircle, X, Share2
+  AlertCircle, X, Share2, Filter, ChevronDown
 } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
@@ -53,6 +53,12 @@ export default function Watchlist() {
   const [showAdd, setShowAdd] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [activeAuctions, setActiveAuctions] = useState([])
+
+  // Mobile filter state
+  const [filterDriver, setFilterDriver] = useState('')
+  const [filterParallel, setFilterParallel] = useState('')
+  const [filterMaxPrice, setFilterMaxPrice] = useState('')
+  const [showFilterPanel, setShowFilterPanel] = useState(false)
 
   const load = useCallback(() => {
     swrFetch(`${API}/api/auctions/watchlist/all`,
@@ -106,6 +112,25 @@ export default function Watchlist() {
     [wishlist, activeAuctions]
   )
 
+  // Filter wishlist based on mobile filters
+  const filteredWishlist = useMemo(() => {
+    return wishlist.filter(item => {
+      const driver = (item.card?.driver_name || '').toLowerCase()
+      const parallel = (item.card?.parallel || '').toLowerCase()
+      const maxPrice = item.max_price || Infinity
+
+      if (filterDriver && !driver.includes(filterDriver.toLowerCase())) return false
+      if (filterParallel && !parallel.includes(filterParallel.toLowerCase())) return false
+      if (filterMaxPrice && maxPrice > parseFloat(filterMaxPrice)) return false
+
+      return true
+    })
+  }, [wishlist, filterDriver, filterParallel, filterMaxPrice])
+
+  const hasActiveFilters = filterDriver || filterParallel || filterMaxPrice
+  const uniqueDrivers = [...new Set(wishlist.map(i => i.card?.driver_name).filter(Boolean))].sort()
+  const uniqueParallels = [...new Set(wishlist.map(i => i.card?.parallel).filter(Boolean))].sort()
+
   return (
     <div className="space-y-6 max-w-[1400px]">
       {/* Header */}
@@ -131,6 +156,92 @@ export default function Watchlist() {
 
       {showShare && <ShareWatchlistModal onClose={() => setShowShare(false)} />}
 
+      {/* MOBILE STICKY FILTER BAR (md and below) */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-gray-900/95 border-b border-gray-800/60 backdrop-blur-sm">
+        <div className="px-4 py-2.5 space-y-2.5">
+          {/* Filter toggle + quick filters row */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowFilterPanel(!showFilterPanel)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
+                hasActiveFilters
+                  ? 'bg-blue-600/25 border border-blue-600/40 text-blue-300'
+                  : 'bg-gray-800/60 border border-gray-700/40 text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              <Filter size={12} />
+              <span>Filter</span>
+              {hasActiveFilters && <span className="text-[10px] bg-blue-600/50 px-1.5 py-0.5 rounded font-bold">{(filterDriver ? 1 : 0) + (filterParallel ? 1 : 0) + (filterMaxPrice ? 1 : 0)}</span>}
+              <ChevronDown size={11} className={`transition-transform ${showFilterPanel ? 'rotate-180' : ''}`} />
+            </button>
+            <div className="text-[10px] text-gray-500">
+              {filteredWishlist.length}/{totalWish} cards
+            </div>
+          </div>
+
+          {/* Expandable filter panel */}
+          {showFilterPanel && (
+            <div className="bg-gray-900/60 border border-gray-800/40 rounded-lg p-3 space-y-2.5">
+              {/* Driver filter */}
+              <div>
+                <label className="text-[9px] uppercase tracking-wider text-gray-500 font-bold mb-1 block">Driver</label>
+                <select
+                  value={filterDriver}
+                  onChange={e => setFilterDriver(e.target.value)}
+                  className="w-full px-2 py-1.5 bg-gray-800/60 border border-gray-700/40 text-gray-300 text-xs rounded-lg focus:outline-none focus:border-blue-600/40"
+                >
+                  <option value="">All drivers</option>
+                  {uniqueDrivers.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+
+              {/* Parallel filter */}
+              <div>
+                <label className="text-[9px] uppercase tracking-wider text-gray-500 font-bold mb-1 block">Parallel</label>
+                <select
+                  value={filterParallel}
+                  onChange={e => setFilterParallel(e.target.value)}
+                  className="w-full px-2 py-1.5 bg-gray-800/60 border border-gray-700/40 text-gray-300 text-xs rounded-lg focus:outline-none focus:border-blue-600/40"
+                >
+                  <option value="">All parallels</option>
+                  {uniqueParallels.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+
+              {/* Max price filter */}
+              <div>
+                <label className="text-[9px] uppercase tracking-wider text-gray-500 font-bold mb-1 block">Max Price ($)</label>
+                <input
+                  type="number"
+                  step="5"
+                  value={filterMaxPrice}
+                  onChange={e => setFilterMaxPrice(e.target.value)}
+                  placeholder="Any price"
+                  className="w-full px-2 py-1.5 bg-gray-800/60 border border-gray-700/40 text-gray-300 text-xs rounded-lg focus:outline-none focus:border-blue-600/40"
+                />
+              </div>
+
+              {/* Clear filters button */}
+              {hasActiveFilters && (
+                <button
+                  onClick={() => {
+                    setFilterDriver('')
+                    setFilterParallel('')
+                    setFilterMaxPrice('')
+                  }}
+                  className="w-full px-2 py-1 text-xs text-gray-500 hover:text-gray-300 font-semibold transition-colors rounded-lg hover:bg-gray-800/40"
+                >
+                  Clear all filters
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Spacer for sticky bar on mobile */}
+      <div className="md:hidden h-24" />
+
       {/* SECTION 1 — Watching live auctions */}
       <section>
         <div className="flex items-center gap-2 mb-3">
@@ -139,10 +250,13 @@ export default function Watchlist() {
           <span className="text-xs text-gray-500">({totalWatched})</span>
         </div>
         {watching.length === 0 ? (
-          <div className="bg-gray-900/40 border border-gray-800/60 rounded-2xl py-10 text-center">
-            <Eye size={24} className="mx-auto mb-2 text-gray-700" />
-            <p className="text-sm text-gray-500">Not watching any auctions</p>
-            <p className="text-xs text-gray-700 mt-1">Click "Watch" on any listing in Live Auctions or Buy It Now</p>
+          <div className="bg-gradient-to-br from-yellow-900/20 to-orange-900/20 border border-yellow-700/40 rounded-2xl py-12 text-center">
+            <div className="text-4xl mb-3">👀</div>
+            <p className="text-base font-bold text-white">Your watchlist is empty</p>
+            <p className="text-sm text-gray-400 mt-2 mb-5">Browse Live Auctions or Buy It Now and click "Watch" to track listings in real-time.</p>
+            <a href="/auctions" className="inline-flex items-center gap-2 px-4 py-2.5 bg-yellow-600 hover:bg-yellow-500 text-white text-sm font-bold rounded-lg">
+              <Eye size={14} /> Browse Auctions
+            </a>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -207,14 +321,32 @@ export default function Watchlist() {
             {Array(3).fill(0).map((_, i) => <div key={i} className="h-20 bg-gray-900/40 rounded-2xl animate-pulse" />)}
           </div>
         ) : wishlist.length === 0 ? (
+          <div className="bg-gradient-to-br from-pink-900/20 to-red-900/20 border border-pink-700/40 rounded-2xl py-12 text-center">
+            <div className="text-4xl mb-3">💌</div>
+            <p className="text-base font-bold text-white">No cards on your wish list</p>
+            <p className="text-sm text-gray-400 mt-2 mb-5">Set your targets and we'll auto-match them against every live auction. No more scrolling — we alert you.</p>
+            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-2 px-4 py-2.5 bg-pink-600 hover:bg-pink-500 text-white text-sm font-bold rounded-lg">
+              <Heart size={14} /> Add your first card
+            </button>
+          </div>
+        ) : filteredWishlist.length === 0 && hasActiveFilters ? (
           <div className="bg-gray-900/40 border border-gray-800/60 rounded-2xl py-10 text-center">
-            <Heart size={24} className="mx-auto mb-2 text-gray-700" />
-            <p className="text-sm text-gray-500">No cards on your wishlist yet</p>
-            <p className="text-xs text-gray-700 mt-1">Add a card type to auto-match against live listings</p>
+            <Filter size={24} className="mx-auto mb-2 text-gray-700" />
+            <p className="text-sm text-gray-500">No cards match your filters</p>
+            <button
+              onClick={() => {
+                setFilterDriver('')
+                setFilterParallel('')
+                setFilterMaxPrice('')
+              }}
+              className="text-xs text-blue-400 hover:text-blue-300 mt-2 underline"
+            >
+              Clear filters
+            </button>
           </div>
         ) : (
           <div className="space-y-3">
-            {wishlist.map(item => {
+            {filteredWishlist.map(item => {
               const matches = matchesFor(item)
               return (
                 <div key={item.id} className="bg-gray-900/70 border border-gray-800/60 rounded-2xl p-3">

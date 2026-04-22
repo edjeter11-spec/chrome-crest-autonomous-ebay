@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Target, Trash2, Pause, Play, Plus, Link as LinkIcon, BellRing, Smartphone, AlertCircle } from 'lucide-react'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -106,6 +107,7 @@ function timeAgo(iso) {
 
 export default function Sniper() {
   const { user } = useAuth()
+  const [searchParams] = useSearchParams()
   const [rules, setRules] = useState([])
   const [matchCounts, setMatchCounts] = useState({})
   const [lastMatched, setLastMatched] = useState({})
@@ -124,6 +126,21 @@ export default function Sniper() {
   const [urlInput, setUrlInput] = useState('')
   const [urlResult, setUrlResult] = useState(null)
   const [urlLoading, setUrlLoading] = useState(false)
+
+  // Pre-fill form from URL params (coming from driver detail)
+  useEffect(() => {
+    const driverParam = searchParams.get('driver')
+    const maxPriceParam = searchParams.get('maxPrice')
+    const parallelParam = searchParams.get('parallel')
+    const gradeParam = searchParams.get('grade')
+    const endingSoonParam = searchParams.get('endingSoon')
+
+    if (driverParam) setDriver(driverParam)
+    if (maxPriceParam) setMaxPrice(maxPriceParam)
+    if (parallelParam) setParallel(parallelParam)
+    if (gradeParam) setGrade(gradeParam)
+    if (endingSoonParam) setEndingSoon(true)
+  }, [searchParams])
 
   const loadRules = async () => {
     if (!supabaseReady || !user) { setLoading(false); return }
@@ -342,8 +359,15 @@ export default function Sniper() {
       {loading ? (
         <div className="text-sm text-gray-500">Loading…</div>
       ) : rules.length === 0 ? (
-        <div className="bg-gray-900 border border-gray-800/60 rounded-xl p-6 text-center text-sm text-gray-500">
-          No rules yet. Create your first above.
+        <div className="bg-gradient-to-br from-red-900/20 to-orange-900/20 border border-red-700/40 rounded-xl p-8 text-center">
+          <div className="text-4xl mb-3">🎯</div>
+          <p className="text-base font-bold text-white">No snipe rules yet</p>
+          <p className="text-sm text-gray-400 mt-2 mb-6">Create your first rule above to get instant alerts when your target cards hit your price. Fast + automated.</p>
+          <div className="flex gap-2 justify-center flex-wrap">
+            <button onClick={() => document.querySelector('form')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-lg">
+              <Target size={14} /> Create Rule
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">
