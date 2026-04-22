@@ -12,7 +12,7 @@ You can use it two ways:
 
 ```bash
 # Fetch the embed JSON from F1 Card Vault
-PAYLOAD=$(curl -s "https://chrome-crest-autonomous-ebay.vercel.app/api/discord/price?driver=Lando+Norris&parallel=Refractor")
+PAYLOAD=$(curl -s "https://www.f1cardvault.com/api/discord/price?driver=Lando+Norris&parallel=Refractor")
 
 # Post to your Discord webhook
 curl -X POST -H "Content-Type: application/json" \
@@ -33,7 +33,7 @@ import httpx
 import discord
 from discord import app_commands
 
-API_BASE = "https://chrome-crest-autonomous-ebay.vercel.app"
+API_BASE = "https://www.f1cardvault.com"
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)

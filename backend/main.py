@@ -1551,7 +1551,7 @@ def rss_strong_buys(db: Session = Depends(get_db)):
     from scraper import median_comp_price, _extract_grade_from_title
     from xml.sax.saxutils import escape as _xe
 
-    SITE = "https://chrome-crest-autonomous-ebay.vercel.app"
+    SITE = "https://www.f1cardvault.com"
     now = datetime.utcnow()
 
     rows = db.query(Auction).filter(

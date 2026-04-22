@@ -5,7 +5,7 @@ import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/driv
 import { ebayAffiliateUrl } from '../lib/ebay'
 
 const API = import.meta.env.VITE_API_URL || ''
-const SITE = 'https://chrome-crest-autonomous-ebay.vercel.app'
+const SITE = 'https://www.f1cardvault.com'
 
 const ALL_DRIVERS = [...DRIVERS_F1, ...DRIVERS_F2, ...DRIVERS_F3, ...DRIVERS_LEGENDS]
 

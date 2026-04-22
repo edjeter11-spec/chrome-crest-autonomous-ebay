@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
-const SITE = 'https://chrome-crest-autonomous-ebay.vercel.app'
+const SITE = 'https://www.f1cardvault.com'
 
 // Top parallels — keep in sync with frontend/src/pages/CardPage.jsx TOP_PARALLELS
 const TOP_PARALLELS = [

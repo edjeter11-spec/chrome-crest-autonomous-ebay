@@ -6,7 +6,7 @@ import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../src/lib/
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const OUT = resolve(__dirname, '../public/sitemap.xml')
-const BASE = 'https://chrome-crest-autonomous-ebay.vercel.app'
+const BASE = 'https://www.f1cardvault.com'
 const today = new Date().toISOString().slice(0, 10)
 
 const staticRoutes = [
