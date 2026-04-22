@@ -180,12 +180,49 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
           )}
 
           {scanResult && (
-            <div className="bg-purple-900/20 border border-purple-800/40 rounded-lg p-3 space-y-1.5 text-xs">
+            <div className="bg-purple-900/20 border border-purple-800/40 rounded-lg p-3 space-y-2 text-xs">
               <div className="flex items-center gap-1.5 text-purple-300 font-bold">
-                <Check size={12} /> Detected:
+                <Check size={12} /> Detected — tap a chip to pick the right one
               </div>
-              {scanResult.driver_name && <div><span className="text-gray-500">Driver:</span> <span className="text-white">{scanResult.driver_name}</span></div>}
-              {scanResult.parallel && <div><span className="text-gray-500">Parallel:</span> <span className="text-white">{scanResult.parallel}</span></div>}
+
+              {/* Driver: main pick + alternates as tappable chips */}
+              {(scanResult.driver_name || (scanResult.driver_alternates || []).length > 0) && (
+                <div>
+                  <div className="text-gray-500 mb-1">Driver</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[scanResult.driver_name, ...(scanResult.driver_alternates || [])].filter(Boolean).map(name => (
+                      <button key={name} type="button" onClick={() => setForm(f => ({ ...f, driver_name: name }))}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                          form.driver_name === name
+                            ? 'bg-purple-500 text-white border border-purple-400'
+                            : 'bg-gray-800/60 text-gray-300 border border-gray-700/50 hover:border-purple-500/60'
+                        }`}>
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Parallel: main pick + alternates */}
+              {(scanResult.parallel || (scanResult.parallel_alternates || []).length > 0) && (
+                <div>
+                  <div className="text-gray-500 mb-1">Parallel</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[scanResult.parallel, ...(scanResult.parallel_alternates || [])].filter(Boolean).map(p => (
+                      <button key={p} type="button" onClick={() => setForm(f => ({ ...f, parallel: p }))}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                          form.parallel === p
+                            ? 'bg-cyan-500 text-black border border-cyan-400'
+                            : 'bg-gray-800/60 text-gray-300 border border-gray-700/50 hover:border-cyan-500/60'
+                        }`}>
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {scanResult.card_number && <div><span className="text-gray-500">Number:</span> <span className="text-white">{scanResult.card_number}</span></div>}
               {scanResult.predicted_grade != null && (
                 <div><span className="text-gray-500">Predicted grade:</span> <span className="text-white">PSA {scanResult.predicted_grade}</span> <span className="text-gray-600">({Math.round((scanResult.confidence || 0) * 100)}% conf)</span></div>

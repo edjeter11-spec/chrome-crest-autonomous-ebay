@@ -113,11 +113,14 @@ async def predict_grade(image: UploadFile = File(...)):
 SCAN_PROMPT = (
     "You are an expert F1 trading card identifier. The user uploaded a photo "
     "of a 2025 Topps Chrome Formula 1 card (base set, parallels, or autograph). "
-    "Identify the card details AND predict the grade.\n\n"
+    "Identify the card details AND predict the grade. When you're uncertain, "
+    "supply alternate guesses so the user can pick.\n\n"
     "Respond with ONLY valid JSON (no fences, no prose):\n"
     '{\n'
-    '  "driver_name": string (e.g. "Max Verstappen") or null,\n'
+    '  "driver_name": string (best guess) or null,\n'
+    '  "driver_alternates": array of up to 2 alternate driver names if uncertain — omit or [] if confident,\n'
     '  "parallel": string — one of: "Base", "Refractor", "Prism Refractor", "Aqua /199", "Pink /250", "Blue /150", "Green /99", "Gold /50", "Orange /25", "Black /10", "Red /5", "SuperFractor", "Autograph", "Neon Nations", "Vegas at Night", "Helix", "F1 75th /75", "Teal /299", "Diamond 75th", "Helmet Collection", "Ultrasonic", "Speed Demons", "Floor It", "Four & More", "B&W Ray Wave", "B&W Lazer", or null,\n'
+    '  "parallel_alternates": array of up to 2 alternate parallel labels if uncertain — omit or [] if confident,\n'
     '  "card_number": string (e.g. "#42") or null,\n'
     '  "team": string or null,\n'
     '  "predicted_grade": number 1-10 (0.5 increments) or null,\n'

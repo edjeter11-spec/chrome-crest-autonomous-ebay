@@ -91,6 +91,9 @@ function AuctionRow({ a, nowTick }) {
         )}
         <div className="flex items-baseline gap-2 mb-1">
           <span className="text-xl font-black text-yellow-400">${Math.round(a.current_price || 0).toLocaleString()}</span>
+          {a._live && (
+            <span className="text-[8px] font-black px-1 py-0.5 rounded bg-green-600/30 text-green-300 border border-green-500/40 uppercase tracking-wider">● live</span>
+          )}
           {median ? <span className="text-[10px] text-gray-500">med ${Math.round(median).toLocaleString()}</span> : null}
         </div>
         <div className="flex items-center justify-between gap-2">
@@ -118,16 +121,13 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
     return () => clearInterval(id)
   }, [])
 
-  const items = useMemo(() => {
-    // Only show listings whose price was refreshed in the last 15min — otherwise
-    // the "$X" we render can be wildly stale vs real eBay bid history.
-    const FRESH_MS = 15 * 60 * 1000
+  // Live-price overlay: map of eBay item ID -> { current_price, bid_count } fetched
+  // from /api/ebay/live-prices so the rendered bid matches the actual eBay listing.
+  const [liveMap, setLiveMap] = useState({})
+
+  const candidates = useMemo(() => {
     return (auctions || [])
       .filter(a => isBigSnipe(a, 6 * 3600))
-      .filter(a => {
-        const updated = a.last_updated ? new Date(a.last_updated + 'Z').getTime() : 0
-        return updated && (Date.now() - updated) < FRESH_MS
-      })
       .sort((a, b) => {
         const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
         if (vr !== 0) return vr
@@ -135,8 +135,45 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
         if (s !== 0) return s
         return secsLeft(a) - secsLeft(b)
       })
+      .slice(0, 10)  // pick a few extra; live-price filter may drop stale ones
+  }, [auctions])
+
+  useEffect(() => {
+    const ids = candidates
+      .map(a => {
+        const m = String(a.ebay_listing_id || '').match(/v\d+\|(\d+)\|\d+/)
+        return m ? m[1] : null
+      })
+      .filter(Boolean)
+      .slice(0, 8)
+    if (!ids.length) return
+    const API = import.meta.env.VITE_API_URL || ''
+    fetch(`${API}/api/ebay/live-prices?ids=${ids.join(',')}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.items) return
+        const m = {}
+        for (const it of d.items) {
+          if (it.ok) m[it.item_id] = { current_price: it.current_price, bid_count: it.bid_count, end_time: it.end_time }
+        }
+        setLiveMap(m)
+      })
+      .catch(() => {})
+  }, [candidates])
+
+  const items = useMemo(() => {
+    return candidates
+      .map(a => {
+        const m = String(a.ebay_listing_id || '').match(/v\d+\|(\d+)\|\d+/)
+        const id = m ? m[1] : null
+        const live = id && liveMap[id]
+        if (live && live.current_price != null) {
+          return { ...a, current_price: live.current_price, bid_count: live.bid_count ?? a.bid_count, _live: true }
+        }
+        return a
+      })
       .slice(0, 6)
-  }, [auctions, nowTick])
+  }, [candidates, liveMap, nowTick])
 
   const nextBig = useMemo(() => {
     return (auctions || [])

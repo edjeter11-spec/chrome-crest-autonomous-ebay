@@ -160,9 +160,13 @@ def run_match_engine(
         log.error(f"failed to load rules: {e}")
         raise HTTPException(500, "supabase read failed")
 
+    # Only match against auctions whose price we've seen in the last 20 min.
+    # Prevents false-positive push alerts based on stale cached prices.
+    fresh_cutoff = datetime.utcnow() - timedelta(minutes=20)
     auctions = db.query(Auction).filter(
         Auction.status == "active",
         Auction.end_time > datetime.utcnow(),
+        Auction.last_updated >= fresh_cutoff,
     ).all()
 
     now = datetime.utcnow()

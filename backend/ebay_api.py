@@ -405,6 +405,22 @@ async def get_item_details(item_id: str) -> Optional[dict]:
                 # feedbackPercentage comes directly on seller object in some API versions
                 seller_feedback_pct = seller.get("feedbackPercentage")
 
+                # Price: prefer currentBidPrice for active auctions, fall back to price
+                current_price = None
+                try:
+                    cb = data.get("currentBidPrice") or {}
+                    if cb.get("value"):
+                        current_price = float(cb["value"])
+                except Exception:
+                    pass
+                if current_price is None:
+                    try:
+                        p = data.get("price") or {}
+                        if p.get("value"):
+                            current_price = float(p["value"])
+                    except Exception:
+                        pass
+
                 return {
                     "item_id": item_id,
                     "title": data.get("title", ""),
@@ -419,6 +435,8 @@ async def get_item_details(item_id: str) -> Optional[dict]:
                     "categories": [c.get("categoryName") for c in data.get("categories", [])],
                     "buying_options": data.get("buyingOptions", []),
                     "bid_count": data.get("bidCount", 0),
+                    "current_price": current_price,
+                    "end_time": data.get("itemEndDate"),
                     "quantity_sold": data.get("estimatedAvailabilities", [{}])[0].get("soldQuantity", 0)
                     if data.get("estimatedAvailabilities") else 0,
                     "returns_accepted": data.get("returnTerms", {}).get("returnsAccepted", False),

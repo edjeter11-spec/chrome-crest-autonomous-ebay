@@ -1240,6 +1240,34 @@ async def cron_sync(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/ebay/live-prices")
+async def ebay_live_prices(ids: str = QueryParam("", description="Comma-separated eBay item IDs")):
+    """Fetch up-to-the-second current_price + bid_count for a small batch of listings.
+    Used by Dashboard BiggestSnipes so rendered prices match the live eBay page
+    instead of whatever the hourly scraper last cached.
+    Capped at 10 ids per request to protect Browse API quota (5000/day)."""
+    from ebay_api import get_item_details
+    if not ids:
+        return {"items": []}
+    id_list = [x.strip() for x in ids.split(",") if x.strip()][:10]
+    if not id_list:
+        return {"items": []}
+    results = await asyncio.gather(*[get_item_details(i) for i in id_list], return_exceptions=True)
+    out = []
+    for item_id, r in zip(id_list, results):
+        if isinstance(r, Exception) or not r:
+            out.append({"item_id": item_id, "ok": False})
+            continue
+        out.append({
+            "item_id": item_id,
+            "ok": True,
+            "current_price": r.get("current_price"),
+            "bid_count": r.get("bid_count"),
+            "end_time": r.get("end_time"),
+        })
+    return {"items": out, "fetched_at": datetime.utcnow().isoformat() + "Z"}
+
+
 @app.api_route("/api/ebay/refresh", methods=["GET", "POST"])
 async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
     """
