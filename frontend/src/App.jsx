@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
@@ -6,6 +6,30 @@ import Auctions from './pages/Auctions'
 import BuyItNow from './pages/BuyItNow'
 import Login from './pages/Login'
 import { AuthProvider, useAuth } from './lib/auth'
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null, info: null } }
+  static getDerivedStateFromError(error) { return { error } }
+  componentDidCatch(error, info) {
+    this.setState({ info })
+    try { console.error('[ErrorBoundary]', error, info) } catch {}
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 20, fontFamily: 'monospace', color: '#f87171', background: '#0b0b0b', minHeight: '100vh' }}>
+          <h2 style={{ color: '#fbbf24' }}>App crashed — error details:</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{String(this.state.error?.stack || this.state.error)}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 11, color: '#9ca3af' }}>{this.state.info?.componentStack || ''}</pre>
+          <button onClick={() => { this.setState({ error: null, info: null }); location.reload() }} style={{ padding: '8px 16px', marginTop: 12, background: '#374151', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+            Reload
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth()
@@ -39,6 +63,7 @@ const PageFallback = () => (
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
     <BrowserRouter>
       <Routes>
@@ -69,5 +94,6 @@ export default function App() {
       </Routes>
     </BrowserRouter>
     </AuthProvider>
+    </ErrorBoundary>
   )
 }
