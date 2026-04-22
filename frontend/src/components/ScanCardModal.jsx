@@ -46,11 +46,13 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
       if (!r.ok) throw new Error(`Scan failed: ${r.status}`)
       const data = await r.json()
       setScanResult(data)
+      // Pre-fill with first guess
+      const firstGuess = data.top_guesses?.[0] || data
       setForm({
-        driver_name: data.driver_name || '',
-        parallel: data.parallel || '',
+        driver_name: firstGuess.driver_name || '',
+        parallel: firstGuess.parallel || '',
         card_number: data.card_number || '',
-        grade: data.predicted_grade != null ? `PSA ${data.predicted_grade}` : '',
+        grade: firstGuess.predicted_grade != null ? `PSA ${firstGuess.predicted_grade}` : '',
         purchase_price: '',
         notes: data.reasoning || '',
       })
@@ -180,53 +182,48 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
           )}
 
           {scanResult && (
-            <div className="bg-purple-900/20 border border-purple-800/40 rounded-lg p-3 space-y-2 text-xs">
-              <div className="flex items-center gap-1.5 text-purple-300 font-bold">
-                <Check size={12} /> Detected — tap a chip to pick the right one
+            <div className="bg-purple-900/20 border border-purple-800/40 rounded-lg p-3 space-y-2">
+              <div className="flex items-center gap-1.5 text-purple-300 font-bold text-xs">
+                <Check size={12} /> Detected:
               </div>
-
-              {/* Driver: main pick + alternates as tappable chips */}
-              {(scanResult.driver_name || (scanResult.driver_alternates || []).length > 0) && (
-                <div>
-                  <div className="text-gray-500 mb-1">Driver</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[scanResult.driver_name, ...(scanResult.driver_alternates || [])].filter(Boolean).map(name => (
-                      <button key={name} type="button" onClick={() => setForm(f => ({ ...f, driver_name: name }))}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
-                          form.driver_name === name
-                            ? 'bg-purple-500 text-white border border-purple-400'
-                            : 'bg-gray-800/60 text-gray-300 border border-gray-700/50 hover:border-purple-500/60'
-                        }`}>
-                        {name}
-                      </button>
-                    ))}
-                  </div>
+              {scanResult.top_guesses && scanResult.top_guesses.length > 0 ? (
+                <div className="space-y-2">
+                  {scanResult.top_guesses.map((guess, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setForm({
+                          ...form,
+                          driver_name: guess.driver_name || '',
+                          parallel: guess.parallel || '',
+                          grade: guess.predicted_grade != null ? `PSA ${guess.predicted_grade}` : '',
+                        })
+                      }}
+                      className="w-full text-left bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 rounded-lg p-2 transition-colors"
+                    >
+                      <div className="text-xs font-semibold text-white flex items-center justify-between">
+                        <div>
+                          {guess.driver_name || '?'} {guess.parallel && `· ${guess.parallel}`}
+                        </div>
+                        <span className="text-gray-500 text-[10px]">
+                          {Math.round((guess.confidence || 0) * 100)}%
+                          {guess.predicted_grade != null && ` · PSA ${guess.predicted_grade}`}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-500">
+                  {scanResult.driver_name && <div><span className="text-gray-500">Driver:</span> <span className="text-white">{scanResult.driver_name}</span></div>}
+                  {scanResult.parallel && <div><span className="text-gray-500">Parallel:</span> <span className="text-white">{scanResult.parallel}</span></div>}
+                  {scanResult.card_number && <div><span className="text-gray-500">Number:</span> <span className="text-white">{scanResult.card_number}</span></div>}
+                  {scanResult.predicted_grade != null && (
+                    <div><span className="text-gray-500">Predicted grade:</span> <span className="text-white">PSA {scanResult.predicted_grade}</span> <span className="text-gray-600">({Math.round((scanResult.confidence || 0) * 100)}% conf)</span></div>
+                  )}
                 </div>
               )}
-
-              {/* Parallel: main pick + alternates */}
-              {(scanResult.parallel || (scanResult.parallel_alternates || []).length > 0) && (
-                <div>
-                  <div className="text-gray-500 mb-1">Parallel</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[scanResult.parallel, ...(scanResult.parallel_alternates || [])].filter(Boolean).map(p => (
-                      <button key={p} type="button" onClick={() => setForm(f => ({ ...f, parallel: p }))}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
-                          form.parallel === p
-                            ? 'bg-cyan-500 text-black border border-cyan-400'
-                            : 'bg-gray-800/60 text-gray-300 border border-gray-700/50 hover:border-cyan-500/60'
-                        }`}>
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {scanResult.card_number && <div><span className="text-gray-500">Number:</span> <span className="text-white">{scanResult.card_number}</span></div>}
-              {scanResult.predicted_grade != null && (
-                <div><span className="text-gray-500">Predicted grade:</span> <span className="text-white">PSA {scanResult.predicted_grade}</span> <span className="text-gray-600">({Math.round((scanResult.confidence || 0) * 100)}% conf)</span></div>
-              )}
+              {scanResult.card_number && <div className="text-xs"><span className="text-gray-500">Number:</span> <span className="text-white">{scanResult.card_number}</span></div>}
             </div>
           )}
 

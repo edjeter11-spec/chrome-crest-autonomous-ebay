@@ -200,10 +200,22 @@ export default function Dashboard() {
       d => { setAuctions(applySeasonFilter(d.auctions || d || [])); setAuctionsLoading(false) }
     )
 
-    swrFetch(
-      `${API}/api/auctions/snipe/targets`,
-      d => { setSnipes(applySeasonFilter(d.targets || d.auctions || d || [])); setSnipesLoading(false) }
-    )
+    // Try fresh snipes endpoint first (real-time eBay lookups); fall back to cached targets
+    Promise.race([
+      fetch(`${API}/api/sniper/fresh-snipes/6`).then(r => r.ok ? r.json() : null).catch(() => null),
+      new Promise(resolve => setTimeout(() => resolve(null), 5000))
+    ]).then(freshRes => {
+      if (freshRes?.auctions) {
+        setSnipes(applySeasonFilter(freshRes.auctions))
+        setSnipesLoading(false)
+        return
+      }
+      // Fallback to cached targets
+      swrFetch(
+        `${API}/api/auctions/snipe/targets`,
+        d => { setSnipes(applySeasonFilter(d.targets || d.auctions || d || [])); setSnipesLoading(false) }
+      )
+    })
 
     swrFetch(
       `${API}/api/sales?limit=150&year=2025`,

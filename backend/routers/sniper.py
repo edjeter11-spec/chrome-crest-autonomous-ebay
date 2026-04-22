@@ -146,9 +146,14 @@ def run_match_engine(
     request: Request,
     token: Optional[str] = Query(None),
     x_admin_token: Optional[str] = Header(None),
+    use_fresh_lookup: bool = Query(False),
     db: Session = Depends(get_db),
 ):
-    """Cron-invoked: scan every active rule vs every active auction."""
+    """Cron-invoked: scan every active rule vs every active auction.
+
+    If use_fresh_lookup=true, fetch current item details from eBay Browse API
+    for each rule before scoring (slower but fresher). Default: use cached DB.
+    """
     if not _auth_ok(request, token, x_admin_token):
         raise HTTPException(401, "unauthorized")
     if not (SUPABASE_URL and SUPABASE_SERVICE_KEY):
@@ -160,13 +165,9 @@ def run_match_engine(
         log.error(f"failed to load rules: {e}")
         raise HTTPException(500, "supabase read failed")
 
-    # Only match against auctions whose price we've seen in the last 20 min.
-    # Prevents false-positive push alerts based on stale cached prices.
-    fresh_cutoff = datetime.utcnow() - timedelta(minutes=20)
     auctions = db.query(Auction).filter(
         Auction.status == "active",
         Auction.end_time > datetime.utcnow(),
-        Auction.last_updated >= fresh_cutoff,
     ).all()
 
     now = datetime.utcnow()
@@ -200,6 +201,21 @@ def run_match_engine(
                 break
             if auction.id in seen_auctions:
                 continue
+
+            # If fresh lookup requested, refresh this listing from eBay Browse API first
+            if use_fresh_lookup and auction.ebay_listing_id:
+                try:
+                    import asyncio
+                    from ebay_api import get_item_details
+                    fresh = asyncio.run(get_item_details(auction.ebay_listing_id))
+                    if fresh:
+                        # Update auction prices from fresh data
+                        auction.current_price = fresh.get("current_price", auction.current_price)
+                        auction.shipping_cost = fresh.get("shipping_cost", auction.shipping_cost)
+                        auction.end_time = fresh.get("end_time", auction.end_time)
+                except Exception as e:
+                    log.warning(f"fresh lookup failed for {auction.ebay_listing_id}: {e}")
+
             matched, _reason = _rule_matches_auction(rule, auction, db)
             if not matched:
                 continue
@@ -301,4 +317,81 @@ def check_url(
             "end_time": auction.end_time.isoformat() if auction.end_time else None,
         },
         "matches": results,
+    }
+
+
+@router.get("/fresh-snipes/{limit}")
+def get_fresh_snipes(limit: int = 6, db: Session = Depends(get_db)):
+    """Public: return top N "snipe-worthy" auctions with fresh eBay lookups.
+
+    Scans active auctions ending within 6h, filters to rare parallels + high value,
+    and returns with current prices & verdicts. Used by Dashboard on mount for
+    real-time Biggest Snipes display.
+    """
+    import asyncio
+    from ebay_api import get_item_details
+
+    BORING_PARALLELS = {"Base", "B&W Ray Wave", "B&W Lazer", "Floor It", "Four & More"}
+    RARE_PRINT_RE = r"/(5|10|15|20|25|50|75)\b"
+
+    auctions = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.end_time > datetime.utcnow(),
+        Auction.end_time <= datetime.utcnow() + timedelta(hours=6),
+    ).all()
+
+    candidates = []
+    for a in auctions:
+        # Skip boring parallels
+        parallel = a.card.parallel if a.card else ""
+        if parallel in BORING_PARALLELS:
+            continue
+
+        price = a.current_price or 0
+        title = (a.title or "").lower()
+
+        # Skip low-value unless rare print run or autograph
+        if price < 20 and not re.search(RARE_PRINT_RE, title) and "auto" not in title:
+            continue
+
+        # Attempt fresh fetch to get real-time bid info
+        if a.ebay_listing_id:
+            try:
+                fresh = asyncio.run(get_item_details(a.ebay_listing_id))
+                if fresh:
+                    a.current_price = fresh.get("current_price", price)
+                    a.shipping_cost = fresh.get("shipping_cost", a.shipping_cost or 0)
+                    a.end_time = fresh.get("end_time", a.end_time)
+            except Exception as e:
+                log.debug(f"fresh fetch {a.ebay_listing_id}: {e}")
+
+        candidates.append(a)
+
+    # Sort by verdict > score > time remaining
+    def score_key(a):
+        v = a.verdict or ""
+        rank = 2 if v == "STRONG_BUY" else (1 if v == "GOOD_BUY" else 0)
+        secs_left = max(0, (a.end_time - datetime.utcnow()).total_seconds()) if a.end_time else 0
+        return (-rank, -(a.snipe_score or 0), secs_left)
+
+    sorted_auctions = sorted(candidates, key=score_key)[:limit]
+
+    return {
+        "status": "ok",
+        "auctions": [
+            {
+                "id": a.id,
+                "ebay_listing_id": a.ebay_listing_id,
+                "title": a.title,
+                "current_price": a.current_price,
+                "shipping_cost": a.shipping_cost,
+                "end_time": a.end_time.isoformat() if a.end_time else None,
+                "driver_name": a.card.driver_name if a.card else None,
+                "parallel": a.card.parallel if a.card else None,
+                "verdict": a.verdict,
+                "snipe_score": a.snipe_score,
+                "median_price": a.median_price,
+            }
+            for a in sorted_auctions
+        ],
     }

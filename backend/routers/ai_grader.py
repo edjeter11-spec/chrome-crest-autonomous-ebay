@@ -113,19 +113,22 @@ async def predict_grade(image: UploadFile = File(...)):
 SCAN_PROMPT = (
     "You are an expert F1 trading card identifier. The user uploaded a photo "
     "of a 2025 Topps Chrome Formula 1 card (base set, parallels, or autograph). "
-    "Identify the card details AND predict the grade. When you're uncertain, "
-    "supply alternate guesses so the user can pick.\n\n"
+    "Identify the card details AND predict the grade. Return your TOP 3 guesses "
+    "for driver + parallel combinations, ranked by confidence.\n\n"
     "Respond with ONLY valid JSON (no fences, no prose):\n"
     '{\n'
-    '  "driver_name": string (best guess) or null,\n'
-    '  "driver_alternates": array of up to 2 alternate driver names if uncertain — omit or [] if confident,\n'
-    '  "parallel": string — one of: "Base", "Refractor", "Prism Refractor", "Aqua /199", "Pink /250", "Blue /150", "Green /99", "Gold /50", "Orange /25", "Black /10", "Red /5", "SuperFractor", "Autograph", "Neon Nations", "Vegas at Night", "Helix", "F1 75th /75", "Teal /299", "Diamond 75th", "Helmet Collection", "Ultrasonic", "Speed Demons", "Floor It", "Four & More", "B&W Ray Wave", "B&W Lazer", or null,\n'
-    '  "parallel_alternates": array of up to 2 alternate parallel labels if uncertain — omit or [] if confident,\n'
+    '  "top_guesses": [\n'
+    '    {\n'
+    '      "driver_name": string (e.g. "Max Verstappen") or null,\n'
+    '      "parallel": string — one of: "Base", "Refractor", "Prism Refractor", "Aqua /199", "Pink /250", "Blue /150", "Green /99", "Gold /50", "Orange /25", "Black /10", "Red /5", "SuperFractor", "Autograph", "Neon Nations", "Vegas at Night", "Helix", "F1 75th /75", "Teal /299", "Diamond 75th", "Helmet Collection", "Ultrasonic", "Speed Demons", "Floor It", "Four & More", "B&W Ray Wave", "B&W Lazer", or null,\n'
+    '      "confidence": number 0-1 (confidence this is the correct driver/parallel pair),\n'
+    '      "predicted_grade": number 1-10 (0.5 increments) or null\n'
+    '    },\n'
+    '    ...\n'
+    '  ],\n'
     '  "card_number": string (e.g. "#42") or null,\n'
     '  "team": string or null,\n'
-    '  "predicted_grade": number 1-10 (0.5 increments) or null,\n'
-    '  "confidence": number 0-1,\n'
-    '  "reasoning": 1-2 sentences,\n'
+    '  "reasoning": 1-2 sentences explaining the primary guess,\n'
     '  "issues": array of visible flaws\n'
     '}'
 )
@@ -180,18 +183,41 @@ async def scan_card(image: UploadFile = File(...)):
         parsed = _extract_json(text)
     except Exception as e:
         return {
-            "driver_name": None, "parallel": None, "card_number": None, "team": None,
-            "predicted_grade": None, "confidence": 0,
+            "top_guesses": [],
+            "card_number": None, "team": None,
             "reasoning": f"Could not parse: {str(e)[:100]}",
             "issues": [], "raw": text[:500],
         }
 
-    g = parsed.get("predicted_grade")
-    if isinstance(g, (int, float)):
-        parsed["predicted_grade"] = max(0, min(10, round(float(g) * 2) / 2))
-    c = parsed.get("confidence")
-    if isinstance(c, (int, float)):
-        parsed["confidence"] = max(0, min(1, float(c)))
+    # Normalize top_guesses array
+    guesses = parsed.get("top_guesses", [])
+    if not isinstance(guesses, list):
+        guesses = []
+
+    normalized = []
+    for guess in guesses[:3]:  # Top 3 only
+        if not isinstance(guess, dict):
+            continue
+        g = guess.get("predicted_grade")
+        if isinstance(g, (int, float)):
+            guess["predicted_grade"] = max(0, min(10, round(float(g) * 2) / 2))
+        c = guess.get("confidence")
+        if isinstance(c, (int, float)):
+            guess["confidence"] = max(0, min(1, float(c)))
+        else:
+            guess["confidence"] = 0
+        normalized.append(guess)
+
+    parsed["top_guesses"] = normalized
     if not isinstance(parsed.get("issues"), list):
         parsed["issues"] = []
+
+    # For backwards compatibility with existing code, also set first guess at top level
+    if normalized:
+        first = normalized[0]
+        parsed["driver_name"] = first.get("driver_name")
+        parsed["parallel"] = first.get("parallel")
+        parsed["predicted_grade"] = first.get("predicted_grade")
+        parsed["confidence"] = first.get("confidence")
+
     return parsed
