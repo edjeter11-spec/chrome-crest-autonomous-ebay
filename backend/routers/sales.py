@@ -510,6 +510,121 @@ def sales_heatmap(
     }
 
 
+@router.get("/volatility-heatmap")
+def sales_volatility_heatmap(
+    days: int = 60,
+    top_drivers: int = 15,
+    top_parallels: int = 8,
+    min_count: int = 4,
+    db: Session = Depends(get_db),
+):
+    """
+    Driver x Parallel volatility + momentum grid. For each cell with enough sales
+    we return:
+      count, median, volatility_pct (stddev/mean as %), momentum_pct (recent half
+      median vs prior half median, %), and a simple signal: BUY, HOLD, AVOID.
+    Timing tip: AVOID when volatility is huge and momentum negative — wait for
+    the market to settle; BUY when volatility is low and momentum is positive.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    midpoint = datetime.utcnow() - timedelta(days=days // 2)
+
+    driver_rows = db.query(
+        SoldCard.driver_name, func.count(SoldCard.id).label("cnt"),
+    ).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.driver_name.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
+    ).group_by(SoldCard.driver_name)\
+     .order_by(desc("cnt")).limit(top_drivers).all()
+    drivers = [r[0] for r in driver_rows]
+
+    parallel_rows = db.query(
+        SoldCard.parallel, func.count(SoldCard.id).label("cnt"),
+    ).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.parallel.isnot(None),
+        SoldCard.is_duplicate == False,  # noqa: E712
+    ).group_by(SoldCard.parallel)\
+     .order_by(desc("cnt")).limit(top_parallels).all()
+    parallels = [r[0] for r in parallel_rows]
+
+    if not drivers or not parallels:
+        return {"drivers": drivers, "parallels": parallels, "cells": [], "days": days}
+
+    raw = db.query(
+        SoldCard.driver_name, SoldCard.parallel, SoldCard.sale_price, SoldCard.sale_date,
+    ).filter(
+        SoldCard.sale_date >= cutoff,
+        SoldCard.driver_name.in_(drivers),
+        SoldCard.parallel.in_(parallels),
+        SoldCard.is_duplicate == False,  # noqa: E712
+        SoldCard.sale_price.isnot(None),
+    ).all()
+
+    # Group sales per cell
+    buckets: dict = {}
+    for r in raw:
+        key = (r.driver_name, r.parallel)
+        buckets.setdefault(key, []).append((r.sale_date, float(r.sale_price)))
+
+    def _median(vals):
+        if not vals:
+            return 0.0
+        s = sorted(vals)
+        n = len(s)
+        return (s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2)
+
+    def _stddev(vals, mean):
+        if len(vals) < 2:
+            return 0.0
+        return (sum((v - mean) ** 2 for v in vals) / (len(vals) - 1)) ** 0.5
+
+    cells = []
+    for (driver, parallel), rows in buckets.items():
+        if len(rows) < min_count:
+            continue
+        prices = [p for _, p in rows]
+        mean = sum(prices) / len(prices)
+        med = _median(prices)
+        sd = _stddev(prices, mean)
+        vol_pct = round((sd / mean) * 100, 1) if mean > 0 else 0.0
+
+        recent = [p for d, p in rows if d >= midpoint]
+        prior = [p for d, p in rows if d < midpoint]
+        momentum_pct = 0.0
+        if recent and prior:
+            rm, pm = _median(recent), _median(prior)
+            if pm > 0:
+                momentum_pct = round(((rm - pm) / pm) * 100, 1)
+
+        # Signal: low vol + positive momentum = BUY; high vol + negative momentum = AVOID
+        if vol_pct < 35 and momentum_pct > 3:
+            signal = "BUY"
+        elif vol_pct > 70 or momentum_pct < -10:
+            signal = "AVOID"
+        else:
+            signal = "HOLD"
+
+        cells.append({
+            "driver": driver,
+            "parallel": parallel,
+            "count": len(rows),
+            "median": round(med, 2),
+            "volatility_pct": vol_pct,
+            "momentum_pct": momentum_pct,
+            "signal": signal,
+        })
+
+    return {
+        "drivers": drivers,
+        "parallels": parallels,
+        "cells": cells,
+        "days": days,
+        "min_count": min_count,
+    }
+
+
 @router.post("/backfill-from-price-history")
 def backfill_from_price_history(db: Session = Depends(get_db)):
     """

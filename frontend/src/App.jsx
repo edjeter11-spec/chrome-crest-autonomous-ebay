@@ -56,6 +56,7 @@ const About = lazy(() => import('./pages/About'))
 const Arbitrage = lazy(() => import('./pages/Arbitrage'))
 const GradeProfit = lazy(() => import('./pages/GradeProfit'))
 const Sniper = lazy(() => import('./pages/Sniper'))
+const Volatility = lazy(() => import('./pages/Volatility'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -90,6 +91,7 @@ export default function App() {
           <Route path="arbitrage" element={<Suspense fallback={<PageFallback />}><Arbitrage /></Suspense>} />
           <Route path="grade-profit" element={<Navigate to="/arbitrage?tab=grade" replace />} />
           <Route path="sniper" element={<Suspense fallback={<PageFallback />}><Sniper /></Suspense>} />
+          <Route path="volatility" element={<Suspense fallback={<PageFallback />}><Volatility /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

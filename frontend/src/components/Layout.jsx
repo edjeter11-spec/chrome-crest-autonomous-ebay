@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
   Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Camera,
-  ArrowLeftRight, Calculator, Sun, Moon, Target
+  ArrowLeftRight, Calculator, Sun, Moon, Target, Activity
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
@@ -22,6 +22,7 @@ const NAV = [
   { to: '/wishlist', label: 'Watchlist', icon: Heart },
   { to: '/grade', label: 'AI Grader', icon: Sparkles },
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
+  { to: '/volatility', label: 'Volatility', icon: Activity },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/sniper', label: 'Sniper', icon: Target },
 ]
