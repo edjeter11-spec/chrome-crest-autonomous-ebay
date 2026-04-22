@@ -522,7 +522,7 @@ export default function Dashboard() {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Users size={12} className="text-violet-400" />
-            <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400">Jump to Driver</h3>
+            <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400 light:text-gray-700">Jump to Driver</h3>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
             {topDriverChips.map((d, i) => (
@@ -540,7 +540,7 @@ export default function Dashboard() {
                     onError={e => { e.target.style.display = 'none' }}
                   />
                 </div>
-                <span className="text-[10px] text-gray-300 text-center leading-tight font-semibold truncate w-full">
+                <span className="text-[10px] text-gray-300 text-center leading-tight font-semibold truncate w-full light:text-gray-700">
                   {(d.driver || '').split(' ').slice(-1)[0]}
                 </span>
               </button>
@@ -553,14 +553,14 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center gap-2 mb-2">
           <Layers size={12} className="text-cyan-400" />
-          <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400">Jump to Parallel</h3>
+          <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400 light:text-gray-700">Jump to Parallel</h3>
         </div>
         <div className="flex flex-wrap gap-2">
           {POPULAR_PARALLELS.map(p => (
             <button
               key={p}
               onClick={() => navigate(`/sales?parallel=${encodeURIComponent(p)}`)}
-              className="px-3 py-1.5 rounded-full bg-gray-800/70 hover:bg-cyan-900/40 border border-gray-700/50 hover:border-cyan-600/50 text-xs font-bold text-gray-300 hover:text-cyan-300 transition-colors"
+              className="px-3 py-1.5 rounded-full bg-gray-800/70 hover:bg-cyan-900/40 border border-gray-700/50 hover:border-cyan-600/50 text-xs font-bold text-gray-300 hover:text-cyan-300 transition-colors light:bg-gray-200 light:text-gray-700 light:border-gray-400 light:hover:bg-cyan-100"
             >
               {p}
             </button>
@@ -623,11 +623,11 @@ export default function Dashboard() {
             <h2 className="text-sm font-black text-white flex items-center gap-2">
               <Flame size={14} className="text-orange-400" />
               Latest Sales
-              {!salesLoading && <span className="text-[10px] text-gray-500 font-mono">({sales.length})</span>}
+              {!salesLoading && <span className="text-[10px] text-gray-500 font-mono light:text-gray-600">({sales.length})</span>}
             </h2>
             <button
               onClick={() => loadAll(true)}
-              className="text-xs text-gray-500 hover:text-white flex items-center gap-1"
+              className="text-xs text-gray-500 hover:text-white flex items-center gap-1 light:text-gray-600 light:hover:text-gray-800"
             >
               <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} /> Refresh
             </button>
@@ -894,13 +894,13 @@ function KpiTile({ icon: Icon, label, value, sub, color = 'gray', onClick }) {
       ) : (
         <div className="text-sm md:text-xl font-black text-white truncate tabular-nums">{value}</div>
       )}
-      {sub && <div className="hidden md:block text-[10px] text-gray-500 mt-0.5 truncate">{sub}</div>}
+      {sub && <div className="hidden md:block text-[10px] text-gray-500 mt-0.5 truncate light:text-gray-600">{sub}</div>}
     </Cmp>
   )
 }
 
 function heatColor(count) {
-  if (!count) return 'bg-gray-800/60 text-gray-600'
+  if (!count) return 'bg-gray-800/60 text-gray-600 light:bg-gray-300 light:text-gray-700'
   if (count <= 3) return 'bg-yellow-600/30 text-yellow-200'
   if (count <= 10) return 'bg-orange-600/40 text-orange-100'
   if (count <= 20) return 'bg-red-600/50 text-red-50'

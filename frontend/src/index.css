@@ -55,10 +55,42 @@
   /* Skeleton placeholders */
   body.light .skeleton { background-color: #e5e7eb !important; }
 
-  /* Data tables */
-  body.light .data-table th { background-color: #f3f4f6 !important; color: #4b5563 !important; }
-  body.light .data-table td { color: #374151 !important; border-color: #e5e7eb !important; }
+  /* Data tables — WCAG AA compliant */
+  body.light .data-table th { background-color: #f3f4f6 !important; color: #4b5563 !important; font-weight: 600; }
+  body.light .data-table td { color: #1f2937 !important; border-color: #e5e7eb !important; }
   body.light .data-table tr:hover td { background-color: #f9fafb !important; }
+  body.light .data-table tbody tr td a { color: #0f766e !important; } /* teal-900 for links */
+  body.light .data-table tbody tr td a:hover { color: #134e4a !important; text-decoration: underline; }
+
+  /* Additional light-mode overrides for common patterns */
+  body.light .text-gray-300 { color: #374151 !important; }
+  body.light .text-gray-700 { color: #1f2937 !important; }
+
+  /* Ensure icons and interactive elements have proper contrast */
+  body.light .hover\:text-gray-200:hover { color: #4b5563 !important; }
+  body.light .hover\:text-gray-300:hover { color: #374151 !important; }
+  body.light .hover\:text-gray-400:hover { color: #1f2937 !important; }
+  body.light .hover\:bg-gray-800:hover { background-color: #e5e7eb !important; }
+  body.light .hover\:bg-gray-800\/40:hover { background-color: rgba(229,231,235,0.4) !important; }
+
+  /* Opacity adjustments for light mode readability */
+  body.light .opacity-60 { opacity: 0.8 !important; }
+  body.light .opacity-40 { opacity: 0.6 !important; }
+  body.light .opacity-50 { opacity: 0.7 !important; }
+  body.light .opacity-80 { opacity: 0.9 !important; }
+
+  /* Card & panel backgrounds */
+  body.light .panel { background-color: #ffffff !important; border-color: #e5e7eb !important; }
+  body.light .card-hover { transition-colors: true; }
+
+  /* Badges and small text */
+  body.light .px-1\.5 { }
+  body.light .py-0\.5 { }
+
+  /* Countdown timers */
+  body.light .countdown-normal { color: #4b5563 !important; }
+  body.light .countdown-urgent { color: #ea580c !important; }
+  body.light .countdown-critical { color: #dc2626 !important; }
 }
 
 @layer components {
