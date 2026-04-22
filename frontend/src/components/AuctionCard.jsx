@@ -645,6 +645,8 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
       .catch(() => {})
   }, [auction.id])
 
+  const isEnded = timeLeft <= 0
+
   // Refresh listing status when time hits 0 to confirm expiry
   const refreshStatus = async (e) => {
     if (e) { e.stopPropagation(); e.preventDefault() }
@@ -723,7 +725,6 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
 
   const { text: timeText, cls: timeCls } = formatTimeLeft(timeLeft)
   const isHot = auction.snipe_eligible
-  const isEnded = timeLeft <= 0
 
   const toggleWatchlist = async (e) => {
     e.stopPropagation()
