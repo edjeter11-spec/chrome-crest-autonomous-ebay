@@ -292,6 +292,23 @@ def scraper_health(db: Session = Depends(get_db)):
     return {"sources": out, "total_runs": len(rows), "window_days": 14}
 
 
+@app.get("/api/time")
+def server_time():
+    """
+    Authoritative server UTC clock for timer sync.
+
+    Frontend fetches this once on first card mount, computes
+    `offset = server_ms - Date.now()` and applies it to countdown
+    math so timers match eBay/server reality instead of drifting
+    with a skewed local clock.
+    """
+    now = datetime.utcnow()
+    return {
+        "server_time": now.isoformat() + "Z",
+        "server_ms": int(now.timestamp() * 1000),
+    }
+
+
 @app.post("/api/auctions/{auction_id}/bid-intent")
 def save_bid_intent(auction_id: int, body: dict, db: Session = Depends(get_db)):
     """Record a planned max bid even if we can't auto-execute."""
