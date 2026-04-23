@@ -1,0 +1,20 @@
+{
+  "name": "F1 Card Vault",
+  "short_name": "F1 Card Vault",
+  "description": "2025 Topps Chrome Formula 1 card tracker — live auctions, sold comps, graded pop",
+  "id": "/",
+  "start_url": "/?utm_source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#dc2626",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
