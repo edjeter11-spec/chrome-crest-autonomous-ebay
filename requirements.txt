@@ -16,3 +16,4 @@ beautifulsoup4==4.12.3
 pywebpush==2.0.0
 py-vapid==1.9.1
 cryptography==43.0.1
+pillow==10.4.0
