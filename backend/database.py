@@ -305,6 +305,22 @@ class SystemState(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class ClickEvent(Base):
+    """Affiliate click-out event — fired when a user clicks an outbound eBay link."""
+    __tablename__ = "click_events"
+    id = Column(Integer, primary_key=True, index=True)
+    auction_id = Column(Integer, nullable=True)
+    card_id = Column(Integer, nullable=True)
+    url = Column(Text, nullable=False)
+    clicked_at = Column(DateTime, default=datetime.utcnow, index=True)
+    user_agent = Column(String, nullable=True)
+    ip_hash = Column(String, nullable=True, index=True)
+
+    __table_args__ = (
+        Index("ix_click_events_clicked_at", "clicked_at"),
+    )
+
+
 def get_db():
     db = SessionLocal()
     try:

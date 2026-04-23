@@ -25,6 +25,7 @@ from routers import predictions as predictions_router
 from routers import sniper as sniper_router
 from routers import comps
 from routers import cleanup as cleanup_router
+from routers import click_events
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -65,6 +66,7 @@ app.include_router(predictions_router.router)
 app.include_router(sniper_router.router)
 app.include_router(comps.router)
 app.include_router(cleanup_router.router)
+app.include_router(click_events.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")
