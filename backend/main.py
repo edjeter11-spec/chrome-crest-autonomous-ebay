@@ -1706,7 +1706,7 @@ def og_card(slug: str, db: Session = Depends(get_db)):
         from PIL import Image, ImageDraw, ImageFont
     except ImportError:
         return Response(
-            content=b"PIL not installed — add pillow to requirements.txt",
+            content=b"PIL not installed - add pillow to requirements.txt",
             media_type="text/plain",
             status_code=503,
         )

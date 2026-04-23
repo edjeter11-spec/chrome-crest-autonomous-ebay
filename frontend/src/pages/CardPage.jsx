@@ -64,7 +64,7 @@ function upsertMeta(selector, attr, name, content) {
   m.setAttribute('content', content)
 }
 
-function useSeo({ title, description, ogTitle, ogDescription }) {
+function useSeo({ title, description, ogTitle, ogDescription, ogImage }) {
   useEffect(() => {
     if (title) document.title = title
     if (description) {
@@ -88,8 +88,13 @@ function useSeo({ title, description, ogTitle, ogDescription }) {
       upsertMeta('meta[property="og:description"]', 'property', 'og:description', ogDescription)
       upsertMeta('meta[name="twitter:description"]', 'name', 'twitter:description', ogDescription)
     }
+    if (ogImage) {
+      upsertMeta('meta[property="og:image"]', 'property', 'og:image', ogImage)
+      upsertMeta('meta[name="twitter:image"]', 'name', 'twitter:image', ogImage)
+      upsertMeta('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image')
+    }
     upsertMeta('meta[property="og:url"]', 'property', 'og:url', window.location.href)
-  }, [title, description, ogTitle, ogDescription])
+  }, [title, description, ogTitle, ogDescription, ogImage])
 }
 
 function ScarcityBadge({ tier }) {
@@ -130,6 +135,7 @@ export default function CardPage() {
     ogDescription: driver && parallel
       ? `Live eBay prices, verdict, and median comps for ${driver} ${parallel}. 2025 Topps Chrome F1.`
       : 'Live eBay prices and median comps for 2025 Topps Chrome F1.',
+    ogImage: slug ? `${SITE}/og/card/${slug}` : undefined,
   })
 
   useEffect(() => {
