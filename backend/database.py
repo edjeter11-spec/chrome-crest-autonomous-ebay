@@ -94,6 +94,8 @@ class Auction(Base):
 
     __table_args__ = (
         Index("ix_auctions_status_snipe_score", "status", "snipe_score"),
+        Index("ix_auctions_status_end_time", "status", "end_time"),
+        Index("ix_auctions_end_time", "end_time"),
     )
 
 
