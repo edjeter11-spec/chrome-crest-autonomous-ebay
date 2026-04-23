@@ -5,7 +5,7 @@ import {
   BadgeCheck, Award, RotateCw, X, Twitter, RefreshCw
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { scarcityBadgeStyle } from '../lib/hooks'
+import { scarcityBadgeStyle, resolveWatchingState, toggleLocalWatchlist } from '../lib/hooks'
 import { verdictFor } from '../lib/verdict'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
@@ -648,12 +648,35 @@ function SellerPanel({ auctionId }) {
 
 export { ShareMenu }
 
+// Module-level server/client clock offset. Populated once by the first
+// AuctionCard that mounts — all subsequent cards reuse the cached value so
+// we do a single /api/time round trip per page load.
+let _serverOffsetMs = 0
+let _offsetFetched = false
+let _offsetPromise = null
+function fetchServerOffsetOnce() {
+  if (_offsetFetched) return Promise.resolve(_serverOffsetMs)
+  if (_offsetPromise) return _offsetPromise
+  _offsetPromise = fetch(`${API}/api/time`)
+    .then(r => r.ok ? r.json() : null)
+    .then(d => {
+      if (d && typeof d.server_ms === 'number') {
+        _serverOffsetMs = d.server_ms - Date.now()
+      }
+      _offsetFetched = true
+      return _serverOffsetMs
+    })
+    .catch(() => { _offsetFetched = true; return 0 })
+  return _offsetPromise
+}
+
 function computeSecsLeft(auction) {
   if (auction.end_time) {
     const s = String(auction.end_time)
     const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(s)
     const dt = new Date(hasTz ? s : s + 'Z')
-    const secs = Math.floor((dt.getTime() - Date.now()) / 1000)
+    // Apply server-time offset so a skewed client clock doesn't mis-count.
+    const secs = Math.floor((dt.getTime() - (Date.now() + _serverOffsetMs)) / 1000)
     if (!Number.isNaN(secs)) return Math.max(0, secs)
   }
   return auction.time_left || 0
@@ -661,7 +684,8 @@ function computeSecsLeft(auction) {
 
 export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry }) {
   const [timeLeft, setTimeLeft] = useState(() => computeSecsLeft(auction))
-  const [watching, setWatching] = useState(auction.status === 'watchlist')
+  const { user } = useAuth() || { user: null }
+  const [watching, setWatching] = useState(() => resolveWatchingState({ user, auction }))
   const [watchLoading, setWatchLoading] = useState(false)
   const [shareToast, setShareToast] = useState(false)
   const [expandedPanel, setExpandedPanel] = useState(null)
@@ -674,7 +698,18 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   const [liveFetching, setLiveFetching] = useState(false)
   const [manualRefreshing, setManualRefreshing] = useState(false)
   const [manualToast, setManualToast] = useState(false)
-  const { user } = useAuth() || { user: null }
+
+  // Sync server clock offset once per page load. After the offset lands,
+  // re-evaluate timeLeft so this card's countdown snaps to true UTC.
+  useEffect(() => {
+    let cancelled = false
+    fetchServerOffsetOnce().then(() => {
+      if (cancelled) return
+      setTimeLeft(computeSecsLeft(auction))
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auction.id, auction.end_time])
 
   // Manual refresh — user-triggered live price pull for ending-soon auctions.
   const manualRefresh = async () => {
@@ -796,16 +831,10 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     return () => clearInterval(timer)
   }, [auction.time_left, auction.id])
 
+  // Deterministic watching state: single source of truth based on auth.
+  // Signed-in -> auction.status. Signed-out -> localStorage `cc_watchlist_v2`.
   useEffect(() => {
-    // Hydrate "watching" from server status OR localStorage fallback (signed-out users).
-    if (auction.status === 'watchlist') { setWatching(true); return }
-    if (!user && auction.id) {
-      try {
-        const raw = localStorage.getItem('cc_watchlist') || '[]'
-        const arr = JSON.parse(raw)
-        if (Array.isArray(arr) && arr.includes(auction.id)) setWatching(true)
-      } catch {}
-    }
+    setWatching(resolveWatchingState({ user, auction }))
   }, [auction.status, auction.id, user])
 
   const { text: timeText, cls: timeCls } = formatTimeLeft(timeLeft)
@@ -814,26 +843,20 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   const toggleWatchlist = async (e) => {
     e.stopPropagation()
     e.preventDefault()
-    // Signed-out: store locally and nudge to sign in for sync / alerts.
+    // Signed-out: single source of truth is localStorage `cc_watchlist_v2`.
     if (!user) {
-      try {
-        const raw = localStorage.getItem('cc_watchlist') || '[]'
-        const arr = JSON.parse(raw)
-        const has = Array.isArray(arr) && arr.includes(auction.id)
-        const next = has ? arr.filter(id => id !== auction.id) : [...(arr || []), auction.id]
-        localStorage.setItem('cc_watchlist', JSON.stringify(next))
-        setWatching(!has)
-        onWatchlistChange?.(auction.id, !has)
-        if (!has) {
-          // Soft sign-in gate — only on add, and only once per session.
-          try {
-            if (!sessionStorage.getItem('cc_watchlist_gate_shown')) {
-              sessionStorage.setItem('cc_watchlist_gate_shown', '1')
-              setTimeout(() => alert('Saved locally. Sign in to sync across devices and get price alerts.'), 50)
-            }
-          } catch {}
-        }
-      } catch {}
+      const nextWatching = toggleLocalWatchlist(auction.id)
+      setWatching(nextWatching)
+      onWatchlistChange?.(auction.id, nextWatching)
+      if (nextWatching) {
+        // Soft sign-in gate — only on add, and only once per session.
+        try {
+          if (!sessionStorage.getItem('cc_watchlist_gate_shown')) {
+            sessionStorage.setItem('cc_watchlist_gate_shown', '1')
+            setTimeout(() => alert('Saved locally. Sign in to sync across devices and get price alerts.'), 50)
+          }
+        } catch {}
+      }
       return
     }
     setWatchLoading(true)
