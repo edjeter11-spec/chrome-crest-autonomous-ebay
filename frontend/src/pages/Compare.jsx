@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Heart, TrendingUp, TrendingDown, Award, Scale } from 'lucide-react'
+import { Heart, TrendingUp, TrendingDown, Award, Scale, Save, Link2, Check } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import { TOP_PARALLELS } from './CardPage'
 import { ALL_PARALLELS } from '../lib/parallels'
@@ -223,8 +223,11 @@ function Column({ side, driver, parallel, data, loading }) {
 
 export default function Compare() {
   const [params, setParams] = useSearchParams()
-  const aSlug = params.get('a') || 'lewis-hamilton-refractor'
-  const bSlug = params.get('b') || 'max-verstappen-refractor'
+  // Support both shareable `?cards=slug1,slug2` and legacy `?a=&b=` formats.
+  const cardsParam = params.get('cards')
+  const cardSlugs = cardsParam ? cardsParam.split(',').map(s => s.trim()).filter(Boolean) : []
+  const aSlug = cardSlugs[0] || params.get('a') || 'lewis-hamilton-refractor'
+  const bSlug = cardSlugs[1] || params.get('b') || 'max-verstappen-refractor'
   const a = useMemo(() => parseSlug(aSlug), [aSlug])
   const b = useMemo(() => parseSlug(bSlug), [bSlug])
 
@@ -232,10 +235,32 @@ export default function Compare() {
   const [aParallel, setAParallel] = useState(a.parallel || 'Refractor')
   const [bDriver, setBDriver] = useState(b.driver || '')
   const [bParallel, setBParallel] = useState(b.parallel || 'Refractor')
+  const [saved, setSaved] = useState(false)
+  const [toast, setToast] = useState('')
 
   useEffect(() => {
     setParams({ a: toSlug(aDriver, aParallel), b: toSlug(bDriver, bParallel) }, { replace: true })
   }, [aDriver, aParallel, bDriver, bParallel])
+
+  const saveComparison = () => {
+    const cards = [toSlug(aDriver, aParallel), toSlug(bDriver, bParallel)].filter(Boolean).join(',')
+    setParams({ cards }, { replace: false })
+    setSaved(true)
+    setToast('Comparison saved!')
+    setTimeout(() => setToast(''), 2000)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setToast('Link copied!')
+      setTimeout(() => setToast(''), 2000)
+    } catch {
+      setToast('Copy failed')
+      setTimeout(() => setToast(''), 2000)
+    }
+  }
 
   useEffect(() => {
     document.title = `Compare ${aDriver || ''} ${aParallel || ''} vs ${bDriver || ''} ${bParallel || ''} · F1 Card Vault`
@@ -270,9 +295,29 @@ export default function Compare() {
 
   return (
     <div className="space-y-5 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="page-title flex items-center gap-2"><Scale size={20} /> Compare Cards</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={saveComparison}
+            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg flex items-center gap-1.5"
+          >
+            {saved ? <Check size={13} className="text-green-400" /> : <Save size={13} />}
+            {saved ? 'Saved' : 'Save comparison'}
+          </button>
+          <button
+            onClick={copyLink}
+            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold rounded-lg flex items-center gap-1.5"
+          >
+            <Link2 size={13} /> Copy link
+          </button>
+        </div>
       </div>
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-gray-900 border border-gray-700 text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
 
       <div className="panel p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <Picker label="A" driver={aDriver} parallel={aParallel}
