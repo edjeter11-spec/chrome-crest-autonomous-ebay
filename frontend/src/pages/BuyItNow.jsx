@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { NavLink } from 'react-router-dom'
 import { Search, Tag, Bookmark, RefreshCw, ExternalLink, MessageSquare } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
@@ -142,6 +143,35 @@ export default function BuyItNow() {
 
   return (
     <div className="space-y-4 max-w-[1700px]">
+      {/* Mobile deals toggle (Live Auctions / Buy It Now) — hidden on md+ since sidebar shows both */}
+      <div className="md:hidden flex gap-2 sticky top-0 bg-gray-950 z-20 py-2 -mx-3 px-3 border-b border-gray-800">
+        <NavLink
+          to="/auctions"
+          end
+          className={({ isActive }) =>
+            `flex-1 text-center px-3 py-2.5 rounded-xl text-sm font-black transition-all ${
+              isActive
+                ? 'bg-red-600 text-white shadow-lg shadow-red-600/30'
+                : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+            }`
+          }
+        >
+          🔴 Live Auctions
+        </NavLink>
+        <NavLink
+          to="/bin"
+          className={({ isActive }) =>
+            `flex-1 text-center px-3 py-2.5 rounded-xl text-sm font-black transition-all ${
+              isActive
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                : 'bg-gray-800 text-gray-300 active:bg-gray-700'
+            }`
+          }
+        >
+          💰 Buy It Now
+        </NavLink>
+      </div>
+
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="w-1 h-7 bg-green-600 rounded-full shrink-0" />

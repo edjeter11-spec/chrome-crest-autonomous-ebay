@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Database, Download, Search, RefreshCw, ExternalLink,
-  DollarSign, Package, Calendar, TrendingUp, ChevronDown, ChevronUp, Share2
+  DollarSign, Package, Calendar, TrendingUp, ChevronDown, ChevronUp, Share2, Bell
 } from 'lucide-react'
 import { VerdictFeedback } from '../components/VerdictFeedback'
 
@@ -450,9 +450,16 @@ export default function SalesDatabase() {
                   {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                 </span>
                 <button
+                  disabled
+                  title="Price alert feature coming soon"
+                  className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800/60 text-gray-600 opacity-60 cursor-not-allowed"
+                >
+                  <Bell size={11} />
+                </button>
+                <button
                   onClick={(e) => shareSale(e, s)}
                   title="Share sale"
-                  className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200"
+                  className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200"
                 >
                   <Share2 size={11} />
                 </button>
@@ -560,6 +567,13 @@ export default function SalesDatabase() {
                   </td>
                   <td className="px-3 py-2 text-center">
                     <div className="inline-flex items-center gap-1">
+                      <button
+                        disabled
+                        title="Price alert feature coming soon"
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800/60 text-gray-600 opacity-60 cursor-not-allowed"
+                      >
+                        <Bell size={12} />
+                      </button>
                       <button
                         onClick={(e) => shareSale(e, s)}
                         title="Share sale"

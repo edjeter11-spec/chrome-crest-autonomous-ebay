@@ -232,11 +232,14 @@ export default function Dashboard() {
       d => setAlertsData(d.alerts || d || [])
     )
 
+    // eBay sale_date is date-only (midnight UTC), so a literal "last 24h"
+    // window drops every sale from "yesterday" and commonly returns 0. Count
+    // the trailing 7 days instead and relabel the tile.
     swrFetch(
       `${API}/api/sales?limit=500&year=2025`,
       d => {
         const all = applySeasonFilter(d.sales || d || [])
-        const cutoff = Date.now() - 24 * 3600 * 1000
+        const cutoff = Date.now() - 7 * 24 * 3600 * 1000
         const count = all.filter(s => s.sale_date && new Date(s.sale_date).getTime() >= cutoff).length
         setRecent24hCount(count)
       }
@@ -348,9 +351,13 @@ export default function Dashboard() {
     .slice(0, 6)
   }, [auctions])
 
-  // New enthusiast-row derivations
+  // New enthusiast-row derivations.
+  // Use the loose isLiveAuctionRow check: backend filters to rows with
+  // buying_options LIKE '%AUCTION%', but some rows still land with an empty
+  // buying_options array (cache/legacy), and the strict isAuction check was
+  // dropping them — making the count look artificially low (e.g. "only 5").
   const endingUnderHour = useMemo(
-    () => auctions.filter(a => { const s = secsLeft(a); return isAuction(a) && s > 0 && s < 3600 }).length,
+    () => auctions.filter(a => { const s = secsLeft(a); return isLiveAuctionRow(a) && s > 0 && s < 3600 }).length,
     [auctions]
   )
   const activeSnipesCount = useMemo(
@@ -513,12 +520,12 @@ export default function Dashboard() {
         >
           <div className="flex items-center gap-1.5 text-emerald-400 mb-0.5 md:mb-1">
             <Flame size={11} className="md:hidden" /><Flame size={14} className="hidden md:block" />
-            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-wider">24h Sales</span>
+            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-wider">7d Sales</span>
           </div>
           <div className="text-xl md:text-4xl font-black text-emerald-400 tabular-nums leading-tight">
             {recent24hCount == null ? <span className="opacity-40">…</span> : recent24hCount}
           </div>
-          <div className="hidden md:block text-[11px] text-gray-500 mt-1">Fresh comps logged today</div>
+          <div className="hidden md:block text-[11px] text-gray-500 mt-1">Fresh comps logged this week</div>
         </button>
       </div>
 
@@ -590,7 +597,7 @@ export default function Dashboard() {
         />
         <KpiTile
           icon={Clock}
-          label="Ending ≤ 30m"
+          label="Ending ≤ 1h"
           value={auctionsLoading ? null : endingSoonCount.toLocaleString()}
           sub={endingSoonCount > 0 ? 'Hurry' : 'None imminent'}
           color={endingSoonCount > 0 ? 'red' : 'gray'}
