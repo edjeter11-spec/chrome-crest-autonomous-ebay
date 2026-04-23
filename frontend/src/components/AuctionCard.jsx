@@ -621,8 +621,19 @@ function SellerPanel({ auctionId }) {
 
 export { ShareMenu }
 
+function computeSecsLeft(auction) {
+  if (auction.end_time) {
+    const s = String(auction.end_time)
+    const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(s)
+    const dt = new Date(hasTz ? s : s + 'Z')
+    const secs = Math.floor((dt.getTime() - Date.now()) / 1000)
+    if (!Number.isNaN(secs)) return Math.max(0, secs)
+  }
+  return auction.time_left || 0
+}
+
 export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry }) {
-  const [timeLeft, setTimeLeft] = useState(auction.time_left || 0)
+  const [timeLeft, setTimeLeft] = useState(() => computeSecsLeft(auction))
   const [watching, setWatching] = useState(auction.status === 'watchlist')
   const [watchLoading, setWatchLoading] = useState(false)
   const [shareToast, setShareToast] = useState(false)
@@ -696,7 +707,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   })
   // Sync time + real-time expiry detection
   useEffect(() => {
-    setTimeLeft(auction.time_left || 0)
+    setTimeLeft(computeSecsLeft(auction))
     const timer = setInterval(() => {
       setTimeLeft(t => {
         const newTime = Math.max(0, t - 1)

@@ -119,14 +119,13 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
   }, [])
 
   const items = useMemo(() => {
-    // Only show listings whose price was refreshed in the last 15min — otherwise
-    // the "$X" we render can be wildly stale vs real eBay bid history.
-    const FRESH_MS = 15 * 60 * 1000
+    const FRESH_MS = 2 * 60 * 60 * 1000
     return (auctions || [])
       .filter(a => isBigSnipe(a, 6 * 3600))
       .filter(a => {
-        const updated = a.last_updated ? new Date(a.last_updated + 'Z').getTime() : 0
-        return updated && (Date.now() - updated) < FRESH_MS
+        if (!a.last_updated) return true
+        const updated = new Date(a.last_updated + 'Z').getTime()
+        return !updated || (Date.now() - updated) < FRESH_MS
       })
       .sort((a, b) => {
         const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
