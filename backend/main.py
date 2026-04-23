@@ -24,6 +24,8 @@ from routers import digest as digest_router
 from routers import predictions as predictions_router
 from routers import sniper as sniper_router
 from routers import comps
+from routers import cleanup as cleanup_router
+from routers import click_events
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -63,6 +65,8 @@ app.include_router(digest_router.router)
 app.include_router(predictions_router.router)
 app.include_router(sniper_router.router)
 app.include_router(comps.router)
+app.include_router(cleanup_router.router)
+app.include_router(click_events.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")
@@ -288,6 +292,23 @@ def scraper_health(db: Session = Depends(get_db)):
         out.append(b)
     out.sort(key=lambda x: x["source"])
     return {"sources": out, "total_runs": len(rows), "window_days": 14}
+
+
+@app.get("/api/time")
+def server_time():
+    """
+    Authoritative server UTC clock for timer sync.
+
+    Frontend fetches this once on first card mount, computes
+    `offset = server_ms - Date.now()` and applies it to countdown
+    math so timers match eBay/server reality instead of drifting
+    with a skewed local clock.
+    """
+    now = datetime.utcnow()
+    return {
+        "server_time": now.isoformat() + "Z",
+        "server_ms": int(now.timestamp() * 1000),
+    }
 
 
 @app.post("/api/auctions/{auction_id}/bid-intent")

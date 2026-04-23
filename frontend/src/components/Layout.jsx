@@ -399,6 +399,12 @@ export default function Layout() {
             <p className="text-[10px] text-gray-500 mt-2 light:text-gray-700">
               <Link to="/about" className="text-gray-500 hover:underline light:text-gray-700 light:hover:text-gray-900">About</Link>
               {' · '}
+              <Link to="/faq" className="text-gray-500 hover:underline light:text-gray-700 light:hover:text-gray-900">FAQ</Link>
+              {' · '}
+              <Link to="/terms" className="text-gray-500 hover:underline light:text-gray-700 light:hover:text-gray-900">Terms</Link>
+              {' · '}
+              <Link to="/privacy" className="text-gray-500 hover:underline light:text-gray-700 light:hover:text-gray-900">Privacy</Link>
+              {' · '}
               <a href="mailto:edjeter11@gmail.com" className="text-gray-500 hover:underline light:text-gray-700 light:hover:text-gray-900">Contact</a>
             </p>
           </div>

@@ -97,7 +97,32 @@ export default function Auctions() {
     if (showRefresh) setRefreshing(true)
     swrFetch(
       `${API}/api/auctions/with-verdicts?limit=500&status=active&buying=auction`,
-      d => { setAuctions(applySeasonFilter(d.auctions || d || [])); setLoading(false) },
+      d => {
+        const list = applySeasonFilter(d.auctions || d || [])
+        setAuctions(list)
+        setLoading(false)
+        // Stale-data nudge: if the freshest listing is >10 min old, fire a
+        // fire-and-forget background eBay refresh. Server-side rate-limits
+        // per-IP to 1/5min, so spamming is harmless.
+        try {
+          const top = list[0]
+          const lu = top?.last_updated
+          if (lu) {
+            const ts = Date.parse(/Z$|[+-]\d{2}:?\d{2}$/.test(lu) ? lu : lu + 'Z')
+            if (!Number.isNaN(ts) && Date.now() - ts > 10 * 60_000) {
+              if (!window.__cc_stale_refresh_fired) {
+                window.__cc_stale_refresh_fired = true
+                fetch(`${API}/api/auctions/refresh-stale`, { method: 'POST' })
+                  .catch(() => {})
+                  .finally(() => {
+                    // Allow another attempt next full page load
+                    setTimeout(() => { window.__cc_stale_refresh_fired = false }, 5 * 60_000)
+                  })
+              }
+            }
+          }
+        } catch {}
+      },
       () => setRefreshing(false)
     )
   }, [])

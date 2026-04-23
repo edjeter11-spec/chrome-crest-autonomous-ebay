@@ -92,6 +92,8 @@ export default function SalesDatabase() {
   // Default-on filters for quality feed.
   const [only2025, setOnly2025] = useState(true)
   const [onlyNotable, setOnlyNotable] = useState(true)
+  // Client-side source filter — don't refetch, just trim the visible set.
+  const [source, setSource] = useState('All')
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
@@ -149,10 +151,23 @@ export default function SalesDatabase() {
     setMinPrice(''); setMaxPrice(''); setDateFrom(''); setDateTo('')
     setSearch(''); setPage(0)
     setOnly2025(true); setOnlyNotable(true)
+    setSource('All')
+  }
+
+  const SOURCE_OPTIONS = ['All', 'eBay', '130point', 'SportsCardsPro']
+  // Loose matcher — backend source strings vary ("eBay", "ebay", "130point.com").
+  const matchesSource = (sale, sel) => {
+    if (sel === 'All') return true
+    const s = (sale?.source || '').toLowerCase()
+    if (sel === 'eBay') return s === 'ebay' || s.includes('ebay')
+    if (sel === '130point') return s.includes('130')
+    if (sel === 'SportsCardsPro') return s.includes('sportscard') || s === 'scp'
+    return s === sel.toLowerCase()
   }
 
   const filteredSorted = useMemo(() => {
     let arr = sales
+    if (source !== 'All') arr = arr.filter(x => matchesSource(x, source))
     if (search) {
       const s = search.toLowerCase()
       arr = arr.filter(x =>
@@ -170,7 +185,7 @@ export default function SalesDatabase() {
       if (typeof av === 'number') return (av - bv) * dir
       return String(av).localeCompare(String(bv)) * dir
     })
-  }, [sales, search, sortField, sortDir])
+  }, [sales, search, sortField, sortDir, source])
 
   // Bucket sales by (driver|parallel|grade) and pre-sort each bucket so we can
   // do leave-one-out medians in O(1). Falls back to (driver|parallel) and then
@@ -379,6 +394,22 @@ export default function SalesDatabase() {
         >
           {onlyNotable ? '✓' : '○'} Notable ($25+, no base/B&W)
         </button>
+        <div className="flex items-center gap-1.5 pl-2 ml-2 border-l border-gray-700/50">
+          <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Source</span>
+          {SOURCE_OPTIONS.map(opt => (
+            <button
+              key={opt}
+              onClick={() => setSource(opt)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+                source === opt
+                  ? 'bg-cyan-600/20 border-cyan-600/40 text-cyan-300'
+                  : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-white'
+              }`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
         <span className="text-[10px] text-gray-600 ml-auto">{sales.length} shown</span>
       </div>
 

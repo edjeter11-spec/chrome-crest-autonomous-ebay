@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, Response
+from fastapi import APIRouter, Depends, Query, HTTPException, Response, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from database import get_db, Auction, Card
@@ -44,6 +44,7 @@ def auction_to_dict(a: Auction) -> dict:
         "bid_count": a.bid_count,
         "end_time": a.end_time.isoformat() if a.end_time else None,
         "time_left": time_left,
+        "last_updated": a.last_updated.isoformat() if getattr(a, "last_updated", None) else None,
         "seller": seller_val,
         "seller_feedback": a.seller_feedback,
         "condition": a.condition,
@@ -190,15 +191,23 @@ def list_with_verdicts(
             if median and n_comps >= 3:
                 cur_total = (a.current_price or 0) + (a.shipping_cost or 0)
                 ratio = cur_total / median
-                if ratio <= 0.6: verdict_key = "STRONG_BUY"; strong_buy += 1
-                elif ratio <= 0.8: verdict_key = "GOOD_BUY"; good_buy += 1
-                elif ratio <= 1.05: verdict_key = "FAIR"
-                elif ratio <= 1.25: verdict_key = "OVERPRICED"
-                else: verdict_key = "PASS"
+                # Tighter confidence: STRONG_BUY requires n_comps >= 10. With
+                # only 3-9 comps a "<=0.6 of median" ratio is too noisy to
+                # endorse as STRONG_BUY — demote to GOOD_BUY's range.
+                if ratio <= 0.6 and n_comps >= 10:
+                    verdict_key = "STRONG_BUY"; strong_buy += 1
+                elif ratio <= 0.8:
+                    verdict_key = "GOOD_BUY"; good_buy += 1
+                elif ratio <= 1.05:
+                    verdict_key = "FAIR"
+                elif ratio <= 1.25:
+                    verdict_key = "OVERPRICED"
+                else:
+                    verdict_key = "PASS"
                 comp_block = {
                     "median_total": round(median, 2),
                     "n": n_comps,
-                    "low_confidence": n_comps < 5,
+                    "low_confidence": n_comps < 10,
                 }
             elif median:
                 comp_block = {
@@ -221,6 +230,56 @@ def list_with_verdicts(
             "with_comps": sum(1 for x in out if x["verdict_comp"]),
         },
     }
+
+
+# Per-IP rate limit for the public refresh-stale trigger. Keyed by client IP →
+# last-successful-trigger UNIX seconds. 5-minute minimum gap to protect eBay
+# quota from accidental button-mash / many-tab scenarios.
+_REFRESH_STALE_TS: dict = {}
+_REFRESH_STALE_MIN_GAP_SEC = 300
+
+
+@router.post("/refresh-stale")
+async def refresh_stale_listings(request: Request, db: Session = Depends(get_db)):
+    """
+    Public, IP-rate-limited trigger for a fresh eBay pull.
+
+    Frontend hits this when the visible auctions list looks stale (>10 min
+    since any row updated). Fires `sync_real_ebay_listings(db)` which
+    refreshes active listings in place. NOT admin-gated — this is
+    considered a read-side cache warm, not a write — but clamped to once
+    per 5 min per IP to prevent abuse.
+    """
+    from scraper import sync_real_ebay_listings
+    now_ts = datetime.utcnow().timestamp()
+    # Resolve client IP (trusts X-Forwarded-For when behind a proxy / Vercel).
+    try:
+        xff = request.headers.get("x-forwarded-for") if request else None
+        ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request and request.client else "unknown")
+    except Exception:
+        ip = "unknown"
+    last = _REFRESH_STALE_TS.get(ip, 0)
+    if now_ts - last < _REFRESH_STALE_MIN_GAP_SEC:
+        return {
+            "status": "throttled",
+            "retry_in": int(_REFRESH_STALE_MIN_GAP_SEC - (now_ts - last)),
+            "added": 0,
+        }
+    # Mark up front so concurrent calls from the same IP don't double-fire.
+    _REFRESH_STALE_TS[ip] = now_ts
+    # Opportunistic cleanup so the dict can't grow forever.
+    if len(_REFRESH_STALE_TS) > 5000:
+        cutoff = now_ts - _REFRESH_STALE_MIN_GAP_SEC * 4
+        for k, v in list(_REFRESH_STALE_TS.items()):
+            if v < cutoff:
+                _REFRESH_STALE_TS.pop(k, None)
+    try:
+        added = await sync_real_ebay_listings(db)
+        db.commit()
+        return {"status": "ok", "added": int(added or 0)}
+    except Exception as e:
+        logger.warning(f"refresh-stale failed: {e}")
+        return {"status": "error", "error": str(e)[:200], "added": 0}
 
 
 @router.get("/snipe/targets")

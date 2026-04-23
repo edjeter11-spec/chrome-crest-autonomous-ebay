@@ -11,7 +11,7 @@ import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
-import { ebayAffiliateUrl } from '../lib/ebay'
+import { ebayAffiliateUrl, trackClick } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
 
 function WelcomeBanner() {
@@ -378,6 +378,9 @@ export default function Dashboard() {
     <div className="space-y-6 max-w-[1800px]">
 
       <WelcomeBanner />
+
+      {/* Deal of the Day hero — above KPI row */}
+      <DealOfTheDay auctions={auctions} />
 
       {/* Race calendar strip — top */}
       <RaceCalendarStrip />
@@ -803,70 +806,137 @@ export default function Dashboard() {
   )
 }
 
-function DealOfTheDay({ snipes, auctions }) {
+// Rarity weight by parallel. Lower print-run / higher-scarcity = higher weight.
+// Mirrors the spirit of scarcity_tier without needing the backend lookup client-side.
+const RARITY_WEIGHTS = [
+  { re: /superfractor|1\/1|one\s*of\s*one/i, w: 3.0 },
+  { re: /\/(?:5|10)\b/, w: 2.4 },
+  { re: /\/25\b/, w: 2.0 },
+  { re: /\/50\b/, w: 1.7 },
+  { re: /autograph|auto\b/i, w: 1.6 },
+  { re: /\/99\b/, w: 1.4 },
+  { re: /\/150\b|\/199\b/, w: 1.2 },
+  { re: /refractor|prism|neon|helix|vegas/i, w: 1.1 },
+]
+function rarityWeight(a) {
+  const hay = `${a?.parallel || ''} ${a?.title || ''}`
+  for (const { re, w } of RARITY_WEIGHTS) {
+    if (re.test(hay)) return w
+  }
+  return 1.0
+}
+
+function DealOfTheDay({ auctions }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [])
 
   const deal = useMemo(() => {
-    const pool = [...(snipes || []), ...(auctions || [])]
-    const strong = pool.filter(a => a && a.verdict === 'STRONG_BUY' && (a.end_time || a.time_left))
-      .filter(a => {
-        if (a.end_time) return new Date(a.end_time).getTime() > Date.now()
-        return (a.time_left || 0) > 0
-      })
-    strong.sort((a, b) => (b.snipe_score || 0) - (a.snipe_score || 0))
-    return strong[0]
-  }, [snipes, auctions])
+    const pool = (auctions || []).filter(a => {
+      if (!a) return false
+      const sL = secsLeft(a)
+      return sL > 0
+    })
+    let best = null
+    let bestScore = -Infinity
+    for (const a of pool) {
+      const snipe = a.snipe_score || 0
+      if (snipe <= 0) continue
+      const nComps = a.n_comps ?? a.comp_count ?? a.comps_n ?? a.median_n ?? null
+      const compPenalty = (nComps != null && nComps < 5) ? (1 / 10) : 1
+      const rw = rarityWeight(a)
+      const score = snipe * compPenalty * rw
+      if (score > bestScore) {
+        bestScore = score
+        best = a
+      }
+    }
+    return best
+  }, [auctions])
 
   if (!deal) return null
 
-  const secsLeft = deal.end_time
-    ? Math.max(0, Math.floor((new Date(deal.end_time).getTime() - now) / 1000))
-    : (deal.time_left || 0)
-  const h = Math.floor(secsLeft / 3600)
-  const m = Math.floor((secsLeft % 3600) / 60)
-  const s = secsLeft % 60
+  const secs = secsLeft(deal) || Math.max(0, Math.floor(((deal.end_time ? new Date(deal.end_time).getTime() : 0) - now) / 1000))
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
   const countdown = h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`
 
   const img = deal.image_url || deal.primary_image_url
-  const url = deal.ebay_url || deal.item_web_url || (deal.ebay_item_id ? `https://www.ebay.com/itm/${deal.ebay_item_id}` : '#')
+  const rawUrl = deal.ebay_url || deal.item_web_url || (deal.ebay_item_id ? `https://www.ebay.com/itm/${deal.ebay_item_id}` : '#')
   const price = deal.current_price || deal.buy_it_now_price || deal.sale_price || 0
+  const medianComp = deal.median_total ?? deal.median_price ?? deal.median ?? null
+  const driver = deal.driver_name || deal.card?.driver_name
+  const title = deal.title || [driver, deal.parallel].filter(Boolean).join(' ') || 'F1 Card Deal'
+  const auctionId = deal.id ?? null
+  const cardId = deal.card_id ?? deal.card?.id ?? null
+
+  const onCtaClick = () => {
+    try { trackClick(rawUrl, auctionId, cardId) } catch {}
+  }
 
   return (
-    <a href={ebayAffiliateUrl(url)} target="_blank" rel="noopener noreferrer"
-       className="block bg-gradient-to-br from-red-700 via-red-600 to-red-800 rounded-2xl border border-red-500/40 shadow-xl shadow-red-900/40 overflow-hidden hover:brightness-110 transition">
+    <a
+      href={ebayAffiliateUrl(rawUrl)}
+      target="_blank"
+      rel="noopener sponsored"
+      onClick={onCtaClick}
+      onAuxClick={onCtaClick}
+      className="block bg-gradient-to-br from-red-900 via-red-950 to-gray-900 rounded-2xl border border-red-600/50 shadow-xl shadow-red-950/40 overflow-hidden hover:brightness-110 transition"
+    >
       <div className="flex flex-col md:flex-row items-stretch">
-        {img && (
-          <div className="md:w-64 h-48 md:h-auto bg-black/30 flex items-center justify-center shrink-0">
-            <img src={img} alt={deal.title || 'Deal'} className="h-full w-full object-contain p-3" />
-          </div>
-        )}
+        <div className="md:w-64 h-48 md:h-auto bg-black/40 flex items-center justify-center shrink-0 relative">
+          {driver && (
+            <img
+              src={`${API}/api/drivers/photo?name=${encodeURIComponent(driver)}`}
+              alt={driver}
+              className="absolute top-3 left-3 w-14 h-14 rounded-full object-cover border-2 border-white/70 bg-gray-900 shadow-lg z-10"
+              onError={e => { e.currentTarget.style.display = 'none' }}
+            />
+          )}
+          {img ? (
+            <img src={img} alt={title} className="h-full w-full object-contain p-3" />
+          ) : (
+            <div className="text-red-300 text-xs font-bold">No image</div>
+          )}
+        </div>
         <div className="flex-1 p-5 md:p-6 flex flex-col justify-between">
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="bg-yellow-400 text-red-900 text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">Deal of the Day</span>
-              <span className="bg-white/20 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">STRONG BUY</span>
-              {deal.snipe_score && <span className="text-[10px] text-red-100 font-mono">Score {Math.round(deal.snipe_score)}</span>}
+              {deal.verdict && (
+                <span className="bg-white/20 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
+                  {String(deal.verdict).replace('_', ' ')}
+                </span>
+              )}
+              {deal.snipe_score ? (
+                <span className="text-[10px] text-red-100 font-mono">Score {Math.round(deal.snipe_score)}</span>
+              ) : null}
             </div>
-            <h2 className="text-2xl md:text-3xl font-black text-white leading-tight mb-1">
-              {deal.driver_name || 'Unknown'}
+            <h2 className="text-2xl md:text-4xl font-black text-white leading-tight mb-1 line-clamp-2">
+              {title}
             </h2>
             <div className="text-sm text-red-100 mb-3 font-semibold">
-              {deal.parallel || '—'}{deal.grade ? ` · ${deal.grade}` : ''}
+              {deal.parallel || '—'}{deal.grade && deal.grade !== 'Raw' ? ` · ${deal.grade}` : ''}
             </div>
           </div>
-          <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-wrap items-end gap-4 md:gap-6">
             <div>
               <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Current price</div>
               <div className="text-4xl md:text-5xl font-black text-white tabular-nums">${Number(price).toFixed(0)}</div>
             </div>
+            {medianComp != null && (
+              <div>
+                <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Median comp</div>
+                <div className="text-2xl md:text-3xl font-black text-red-100 tabular-nums">${Number(medianComp).toFixed(0)}</div>
+              </div>
+            )}
             <div>
-              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Ends in</div>
+              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Time left</div>
               <div className="text-2xl md:text-3xl font-black text-yellow-300 tabular-nums">{countdown}</div>
             </div>
             <div className="ml-auto">
-              <div className="bg-white text-red-700 font-black text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 hover:bg-yellow-50">
-                Buy on eBay <ExternalLink size={14} />
+              <div className="bg-white text-red-700 font-black text-sm md:text-base px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 hover:bg-yellow-50">
+                Bid on eBay <ExternalLink size={14} />
               </div>
             </div>
           </div>

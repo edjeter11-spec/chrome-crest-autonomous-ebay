@@ -13,6 +13,38 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+async def _request_with_backoff(client: httpx.AsyncClient, method: str, url: str, **kwargs):
+    """
+    Issue an HTTP request with exponential backoff on 429 / 5xx responses.
+    Waits 2^attempt seconds (1s, 2s, 4s), retries up to 3 times, then raises.
+    Applied to the main eBay Browse API call path only.
+    """
+    max_retries = 3
+    last_resp = None
+    for attempt in range(max_retries + 1):
+        resp = await client.request(method, url, **kwargs)
+        last_resp = resp
+        if resp.status_code == 429 or 500 <= resp.status_code < 600:
+            if attempt < max_retries:
+                wait_time = 2 ** attempt  # 1s, 2s, 4s
+                logger.warning(
+                    f"eBay {resp.status_code} on {url} "
+                    f"(attempt {attempt + 1}/{max_retries + 1}) — backoff {wait_time}s"
+                )
+                await asyncio.sleep(wait_time)
+                continue
+            logger.error(
+                f"eBay {resp.status_code} on {url} — exhausted {max_retries} retries"
+            )
+            resp.raise_for_status()
+        return resp
+    # Defensive: if we ever fall through, raise on the last response.
+    if last_resp is not None:
+        last_resp.raise_for_status()
+    raise RuntimeError("eBay backoff: no response captured")
+
+
 # Rate limit tracking
 _api_call_count = 0
 _api_call_reset_at = None
@@ -228,56 +260,41 @@ async def search_f1_cards(
         "fieldgroups": "MATCHING_ITEMS,EXTENDED",
     }
 
-    max_retries = 3
-    backoff_seconds = [1, 2, 4]  # 1s, 2s, 4s exponential backoff
-
     async with httpx.AsyncClient() as client:
-        for attempt in range(max_retries + 1):
-            try:
-                resp = await client.get(
-                    browse_url,
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-                        "Content-Type": "application/json",
-                    },
-                    params=params,
-                    timeout=15.0,
-                )
+        try:
+            resp = await _request_with_backoff(
+                client,
+                "GET",
+                browse_url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+                    "Content-Type": "application/json",
+                },
+                params=params,
+                timeout=15.0,
+            )
 
-                if resp.status_code == 200:
-                    _track_api_call()
-                    data = resp.json()
-                    items = data.get("itemSummaries", [])
-                    logger.info(f"eBay returned {len(items)} items for query: {query}")
-                    return items
+            if resp.status_code == 200:
+                _track_api_call()
+                data = resp.json()
+                items = data.get("itemSummaries", [])
+                logger.info(f"eBay returned {len(items)} items for query: {query}")
+                return items
 
-                elif resp.status_code in (429, 503):
-                    # 429: Too Many Requests, 503: Service Unavailable
-                    if attempt < max_retries:
-                        wait_time = backoff_seconds[attempt]
-                        logger.warning(
-                            f"eBay {resp.status_code} on '{query}' (attempt {attempt + 1}/{max_retries + 1}) "
-                            f"— backoff {wait_time}s before retry"
-                        )
-                        await asyncio.sleep(wait_time)
-                        continue
-                    else:
-                        # Max retries exhausted, mark rate limited
-                        logger.error(
-                            f"eBay Browse API 429/503 exhausted retries on '{query}' "
-                            f"— entering cooldown until next daily reset"
-                        )
-                        _mark_rate_limited_until_reset()
-                        return []
-                else:
-                    logger.error(f"eBay Browse API error: {resp.status_code} {resp.text[:200]}")
-                    return []
-            except Exception as e:
-                logger.error(f"eBay search error (attempt {attempt + 1}): {e}")
-                return []
-
-        return []
+            logger.error(f"eBay Browse API error: {resp.status_code} {resp.text[:200]}")
+            return []
+        except httpx.HTTPStatusError as e:
+            # Backoff helper exhausted retries on 429/5xx — enter daily cooldown
+            logger.error(
+                f"eBay Browse API 429/5xx exhausted retries on '{query}' "
+                f"(status={e.response.status_code}) — entering cooldown until next daily reset"
+            )
+            _mark_rate_limited_until_reset()
+            return []
+        except Exception as e:
+            logger.error(f"eBay search error: {e}")
+            return []
 
 
 def parse_ebay_item(item: dict) -> dict:

@@ -85,11 +85,16 @@ export function useProgressiveRender(total, initial = 60, batch = 40) {
 /**
  * useState that persists to localStorage under `key`. Fails silently if
  * storage is disabled or quota-exceeded.
+ *
+ * SSR-safe: reads/writes are no-ops when `window` is undefined. The first
+ * render always seeds from storage (if present) so we don't clobber saved
+ * state with `initial` on mount.
  */
 export function usePersistedState(key, initial) {
   const [state, setState] = useState(() => {
+    if (typeof window === 'undefined') return initial
     try {
-      const raw = typeof window !== 'undefined' && window.localStorage.getItem(key)
+      const raw = window.localStorage.getItem(key)
       if (raw == null) return initial
       return JSON.parse(raw)
     } catch {
@@ -97,11 +102,56 @@ export function usePersistedState(key, initial) {
     }
   })
   useEffect(() => {
+    if (typeof window === 'undefined') return
     try {
       window.localStorage.setItem(key, JSON.stringify(state))
     } catch { /* quota / disabled — ignore */ }
   }, [key, state])
   return [state, setState]
+}
+
+
+/**
+ * Local-only watchlist helpers for signed-out users. A single source of truth
+ * — keyed `cc_watchlist_v2` (JSON array of auction IDs) — replacing the older
+ * dual localStorage/server hydration that raced on first mount.
+ *
+ * Signed-in users should ignore these helpers entirely and trust the server
+ * `auction.status === 'watchlist'` flag.
+ */
+const LOCAL_WATCHLIST_KEY = 'cc_watchlist_v2'
+export function readLocalWatchlist() {
+  try {
+    if (typeof window === 'undefined') return []
+    const raw = window.localStorage.getItem(LOCAL_WATCHLIST_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr : []
+  } catch { return [] }
+}
+export function isLocallyWatched(auctionId) {
+  if (auctionId == null) return false
+  return readLocalWatchlist().includes(auctionId)
+}
+export function toggleLocalWatchlist(auctionId) {
+  try {
+    const arr = readLocalWatchlist()
+    const has = arr.includes(auctionId)
+    const next = has ? arr.filter(id => id !== auctionId) : [...arr, auctionId]
+    window.localStorage.setItem(LOCAL_WATCHLIST_KEY, JSON.stringify(next))
+    return !has
+  } catch { return false }
+}
+
+/**
+ * Deterministic "am I watching this?" resolver.
+ * - Signed-in: server `auction.status` is the only truth.
+ * - Signed-out: localStorage `cc_watchlist_v2` is the only truth.
+ * No dual-source hydration, no race on mount.
+ */
+export function resolveWatchingState({ user, auction }) {
+  if (user) return auction?.status === 'watchlist'
+  return isLocallyWatched(auction?.id)
 }
 
 

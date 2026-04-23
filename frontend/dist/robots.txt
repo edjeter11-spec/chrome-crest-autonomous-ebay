@@ -1,8 +1,10 @@
 User-agent: *
 Allow: /
+Allow: /sitemap.xml
 Disallow: /login
 Disallow: /portfolio
 Disallow: /wishlist
 Disallow: /my-cards
 
+Sitemap: https://f1cardvault.com/sitemap.xml
 Sitemap: https://www.f1cardvault.com/sitemap.xml
