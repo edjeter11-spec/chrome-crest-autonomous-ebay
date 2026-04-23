@@ -1143,6 +1143,22 @@ async def cron_sync(db: Session = Depends(get_db)):
         import logging as _log
         _log.getLogger("rules").warning(f"rules apply failed: {_re}")
 
+    # Sweep expired auctions — flip status to 'ended' for listings past end_time.
+    # Runs inline here so every /api/cron/sync + /api/ebay/refresh cron call
+    # cleans up stale rows without adding a third cron job.
+    expired_swept = 0
+    try:
+        now = datetime.utcnow()
+        expired_swept = (
+            db.query(Auction)
+            .filter(Auction.status == "active", Auction.end_time != None, Auction.end_time <= now)
+            .update({"status": "ended"}, synchronize_session=False)
+        )
+        db.commit()
+    except Exception as _se:
+        import logging as _log
+        _log.getLogger("sweep").warning(f"expire sweep failed: {_se}")
+
     # Feature 1: enhanced snipe alert generation — never blocks sync
     snipe_alerts_created = 0
     snipe_alert_error = None
@@ -1268,6 +1284,19 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
         added = await sync_real_ebay_listings(db)
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
+
+    # Sweep expired auctions so the active list stays clean between refreshes.
+    expired_swept = 0
+    try:
+        now = datetime.utcnow()
+        expired_swept = (
+            db.query(Auction)
+            .filter(Auction.status == "active", Auction.end_time != None, Auction.end_time <= now)
+            .update({"status": "ended"}, synchronize_session=False)
+        )
+        db.commit()
+    except Exception:
+        pass
 
     total_active = db.query(Auction).filter(Auction.status == "active").count()
     return {

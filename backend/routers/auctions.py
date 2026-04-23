@@ -111,6 +111,33 @@ def list_auctions(
     return {"total": total, "auctions": [auction_to_dict(a) for a in auctions]}
 
 
+# Module-level median cache with TTL. Keyed by (driver, parallel, grade) →
+# (median, n_comps, expires_at). SoldCard data only changes when the sold_ingest
+# cron runs, so a 5-minute TTL is safe and makes `with-verdicts` ~50x faster.
+_MEDIAN_CACHE: dict = {}
+_MEDIAN_TTL_SEC = 300
+
+def _cached_median(db, driver, parallel, grade):
+    from scraper import median_comp_price
+    now = datetime.utcnow().timestamp()
+    k = (driver, parallel, grade)
+    hit = _MEDIAN_CACHE.get(k)
+    if hit and hit[2] > now:
+        return (hit[0], hit[1])
+    med, n = median_comp_price(db, driver, parallel, grade)
+    _MEDIAN_CACHE[k] = (med, n, now + _MEDIAN_TTL_SEC)
+    # Bound the cache so it can't grow without bound.
+    if len(_MEDIAN_CACHE) > 5000:
+        # Drop expired entries first, then half of the rest if still oversized.
+        expired = [kk for kk, vv in _MEDIAN_CACHE.items() if vv[2] <= now]
+        for kk in expired:
+            _MEDIAN_CACHE.pop(kk, None)
+        if len(_MEDIAN_CACHE) > 5000:
+            for kk in list(_MEDIAN_CACHE.keys())[:2500]:
+                _MEDIAN_CACHE.pop(kk, None)
+    return (med, n)
+
+
 @router.get("/with-verdicts")
 def list_with_verdicts(
     status: Optional[str] = "active",
@@ -119,6 +146,7 @@ def list_with_verdicts(
     driver: Optional[str] = None,
     limit: int = Query(500, le=1000),
     offset: int = 0,
+    response: Response = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -132,7 +160,7 @@ def list_with_verdicts(
     and cached in-process for the duration of the request — so a page of
     500 listings only does ~30-50 DB queries, not 500.
     """
-    from scraper import median_comp_price, _extract_grade_from_title
+    from scraper import _extract_grade_from_title
 
     q = db.query(Auction).options(joinedload(Auction.card))
     if status:
@@ -148,7 +176,6 @@ def list_with_verdicts(
     total = q.count()
     rows = q.order_by(Auction.end_time.asc()).offset(offset).limit(limit).all()
 
-    med_cache: dict = {}
     out = []
     strong_buy = good_buy = 0
     for a in rows:
@@ -159,10 +186,7 @@ def list_with_verdicts(
         verdict_key = None
         comp_block = None
         if driver_name:
-            ck = (driver_name, parallel, grade)
-            if ck not in med_cache:
-                med_cache[ck] = median_comp_price(db, driver_name, parallel, grade)
-            median, n_comps = med_cache[ck]
+            median, n_comps = _cached_median(db, driver_name, parallel, grade)
             if median and n_comps >= 3:
                 cur_total = (a.current_price or 0) + (a.shipping_cost or 0)
                 ratio = cur_total / median
@@ -186,6 +210,8 @@ def list_with_verdicts(
         d["verdict_comp"] = comp_block
         out.append(d)
 
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300"
     return {
         "total": total,
         "auctions": out,
