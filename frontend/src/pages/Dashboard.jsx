@@ -831,10 +831,32 @@ function DealOfTheDay({ auctions }) {
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [])
 
   const deal = useMemo(() => {
+    // Deal of the Day = F1-only, /99 or rarer, or autograph. No base, no F2/F3/Legends,
+    // no common parallels. Prefer exciting autos and rare numbered parallels.
+    const EXCLUDE_PARALLELS = /^(base|refractor|prism refractor|b&w ray wave|b&w lazer|checker flag|floor it|four & more|diamond 75th)$/i
+    const ALLOWED_PRINT_RUN = /\/(5|10|15|20|25|50|75|99)\b/
+    const AUTO_RE = /\bauto(graph)?\b|\bsigned\b/i
+    const EXCITING_INSERT = /(neon nations|vegas at night|helix|ultrasonic|the grail|futuro|speed demons|ace of trades|superfractor|red \/5|black \/10|orange \/25|gold \/50|f1 75th \/75)/i
+
     const pool = (auctions || []).filter(a => {
       if (!a) return false
       const sL = secsLeft(a)
-      return sL > 0
+      if (sL <= 0) return false
+      // F1 drivers only — drop F2/F3/Legends.
+      const series = a.card?.series || a.series || 'F1'
+      if (series !== 'F1') return false
+      const parallel = a.card?.parallel || a.parallel || ''
+      const title = a.title || ''
+      // Reject plain/common parallels.
+      if (EXCLUDE_PARALLELS.test(parallel)) return false
+      // Must be either: autograph, exciting insert, or numbered /99 or rarer.
+      const isAuto = AUTO_RE.test(title) || AUTO_RE.test(parallel)
+      const isExciting = EXCITING_INSERT.test(parallel) || EXCITING_INSERT.test(title)
+      const isRareNumbered = ALLOWED_PRINT_RUN.test(parallel) || ALLOWED_PRINT_RUN.test(title)
+      if (!isAuto && !isExciting && !isRareNumbered) return false
+      // Floor price — no $1 junk.
+      if ((a.current_price || 0) < 10 && (a.bid_count || 0) < 2) return false
+      return true
     })
     let best = null
     let bestScore = -Infinity
@@ -844,7 +866,13 @@ function DealOfTheDay({ auctions }) {
       const nComps = a.n_comps ?? a.comp_count ?? a.comps_n ?? a.median_n ?? null
       const compPenalty = (nComps != null && nComps < 5) ? (1 / 10) : 1
       const rw = rarityWeight(a)
-      const score = snipe * compPenalty * rw
+      // Auto boost: autos get 1.8x weight, exciting inserts 1.4x.
+      const title = a.title || ''
+      const parallel = a.card?.parallel || a.parallel || ''
+      const autoBoost = (AUTO_RE.test(title) || AUTO_RE.test(parallel)) ? 1.8
+        : EXCITING_INSERT.test(parallel) || EXCITING_INSERT.test(title) ? 1.4
+        : 1.0
+      const score = snipe * compPenalty * rw * autoBoost
       if (score > bestScore) {
         bestScore = score
         best = a
