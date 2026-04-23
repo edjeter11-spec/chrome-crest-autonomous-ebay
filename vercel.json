@@ -51,8 +51,7 @@
     },
     {
       "src": "/sitemap.xml",
-      "dest": "frontend/dist/sitemap.xml",
-      "headers": { "Content-Type": "application/xml" }
+      "dest": "backend/main.py"
     },
     {
       "src": "/og-image.png",

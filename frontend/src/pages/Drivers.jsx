@@ -8,6 +8,8 @@ import { fetchDriverPhoto, driverInitials } from '../lib/driverPhotos'
 import { ShareMenu } from '../components/AuctionCard'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import Breadcrumbs from '../components/Breadcrumbs'
+import LoadingSpinner from '../components/LoadingSpinner'
 
 function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
   const [photo, setPhoto] = useState('')
@@ -340,12 +342,17 @@ export default function Drivers() {
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
-      <div className="w-7 h-7 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+      <LoadingSpinner />
     </div>
   )
 
+  const breadcrumbItems = selected?.driver_name
+    ? [{ label: 'Home', to: '/' }, { label: 'Drivers', to: '/drivers' }, { label: selected.driver_name }]
+    : [{ label: 'Home', to: '/' }, { label: 'Drivers' }]
+
   return (
     <div className="space-y-4">
+      <Breadcrumbs items={breadcrumbItems} />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="page-title">Driver Profiles</h1>
         <div className="flex gap-1 flex-wrap">
