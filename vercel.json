@@ -89,6 +89,10 @@
     {
       "path": "/api/cron/scrape-free",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cleanup/card-lots",
+      "schedule": "0 */2 * * *"
     }
   ],
   "env": {

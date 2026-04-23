@@ -2,9 +2,22 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Database, Download, Search, RefreshCw, ExternalLink,
-  DollarSign, Package, Calendar, TrendingUp, ChevronDown, ChevronUp, Share2, Bell
+  DollarSign, Package, Calendar, TrendingUp, ChevronDown, ChevronUp, Share2, Bell, X
 } from 'lucide-react'
 import { VerdictFeedback } from '../components/VerdictFeedback'
+import { supabase, supabaseReady } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+
+const LS_ALERTS_KEY = 'chromecrest.price_alerts.v1'
+
+function loadLocalAlerts() {
+  try { return JSON.parse(localStorage.getItem(LS_ALERTS_KEY) || '[]') } catch { return [] }
+}
+function saveLocalAlert(alert) {
+  const list = loadLocalAlerts()
+  list.unshift({ ...alert, id: `local-${Date.now()}`, created_at: new Date().toISOString() })
+  try { localStorage.setItem(LS_ALERTS_KEY, JSON.stringify(list.slice(0, 200))) } catch {}
+}
 
 async function shareSale(e, sale) {
   e.stopPropagation()
@@ -67,12 +80,30 @@ const DRIVERS = [
 const PAGE_SIZE = 100
 
 export default function SalesDatabase() {
+  const { user } = useAuth()
   const [sales, setSales] = useState([])
   const [total, setTotal] = useState(0)
   const [stats, setStats] = useState(null)
   const [accuracyStats, setAccuracyStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Price alert modal
+  const [alertSale, setAlertSale] = useState(null)
+  const [alertToast, setAlertToast] = useState('')
+  const openAlert = (sale) => {
+    if (!user) {
+      setAlertToast('Sign in to set price alerts.')
+      setTimeout(() => setAlertToast(''), 2500)
+      return
+    }
+    setAlertSale(sale)
+  }
+  const closeAlert = () => setAlertSale(null)
+  const showToast = (msg, ms = 3000) => {
+    setAlertToast(msg)
+    setTimeout(() => setAlertToast(''), ms)
+  }
 
   const [urlParams] = useSearchParams()
   // Seed filters from URL (e.g. /sales?parallel=Gold%20/50&driver=Max%20Verstappen)
@@ -481,9 +512,9 @@ export default function SalesDatabase() {
                   {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                 </span>
                 <button
-                  disabled
-                  title="Price alert feature coming soon"
-                  className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800/60 text-gray-600 opacity-60 cursor-not-allowed"
+                  onClick={(e) => { e.stopPropagation(); openAlert(s) }}
+                  title={user ? 'Set price alert' : 'Sign in to set price alert'}
+                  className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 hover:bg-amber-600/30 text-gray-400 hover:text-amber-300 transition-colors"
                 >
                   <Bell size={11} />
                 </button>
@@ -599,9 +630,9 @@ export default function SalesDatabase() {
                   <td className="px-3 py-2 text-center">
                     <div className="inline-flex items-center gap-1">
                       <button
-                        disabled
-                        title="Price alert feature coming soon"
-                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800/60 text-gray-600 opacity-60 cursor-not-allowed"
+                        onClick={(e) => { e.stopPropagation(); openAlert(s) }}
+                        title={user ? 'Set price alert' : 'Sign in to set price alert'}
+                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-800 hover:bg-amber-600/30 text-gray-400 hover:text-amber-300 transition-colors"
                       >
                         <Bell size={12} />
                       </button>
@@ -665,6 +696,146 @@ export default function SalesDatabase() {
             accent="violet" />
         </div>
       )}
+
+      {alertSale && (
+        <PriceAlertModal
+          sale={alertSale}
+          user={user}
+          onClose={closeAlert}
+          onToast={showToast}
+        />
+      )}
+
+      {alertToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4 py-2.5 rounded-xl bg-gray-900 border border-amber-600/40 text-amber-200 text-xs font-semibold shadow-2xl max-w-[90vw] text-center">
+          {alertToast}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PriceAlertModal({ sale, user, onClose, onToast }) {
+  const defaultName = [sale?.driver_name, sale?.parallel, sale?.grade].filter(Boolean).join(' · ')
+  const suggested = (() => {
+    const total = sale?.total_cost ?? sale?.sale_price
+    if (!total) return ''
+    return String(Math.max(1, Math.round(total * 0.8)))
+  })()
+  const [cardName, setCardName] = useState(defaultName || '')
+  const [threshold, setThreshold] = useState(suggested)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  const save = async (e) => {
+    e?.preventDefault?.()
+    setErr('')
+    const num = Number(threshold)
+    if (!num || num <= 0) { setErr('Enter a valid price'); return }
+    setSaving(true)
+    const payload = {
+      user_id: user?.id,
+      driver_name: sale?.driver_name || null,
+      parallel: sale?.parallel || null,
+      grade: sale?.grade || null,
+      threshold_price: num,
+      direction: 'below',
+      active: true,
+    }
+    try {
+      if (!supabaseReady) throw new Error('supabase-not-ready')
+      const { error } = await supabase.from('user_price_alerts').insert(payload)
+      if (error) throw error
+      onToast(`Alert saved — we'll watch ${cardName || 'this card'} below $${num}.`)
+      onClose()
+    } catch (error) {
+      const msg = String(error?.message || error || '').toLowerCase()
+      const missing = msg.includes('user_price_alerts') ||
+        msg.includes('relation') || msg.includes('does not exist') ||
+        msg.includes('schema cache') || msg.includes('not found') ||
+        error?.code === '42P01' || error?.code === 'PGRST205'
+      if (missing || msg === 'supabase-not-ready') {
+        saveLocalAlert({ ...payload, card_name: cardName })
+        onToast('Admin: run `supabase_price_alerts.sql` in Supabase SQL editor first. Saved locally for now.', 5000)
+        onClose()
+      } else {
+        setErr(error?.message || 'Could not save alert')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={save}
+        onClick={e => e.stopPropagation()}
+        className="w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-2xl"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-9 h-9 rounded-xl bg-amber-600/20 border border-amber-600/40 flex items-center justify-center">
+            <Bell size={16} className="text-amber-300" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-black text-white">Set price alert</h3>
+            <p className="text-[11px] text-gray-500">We'll ping you when a matching sale dips below your price.</p>
+          </div>
+          <button type="button" onClick={onClose}
+            className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-gray-800">
+            <X size={14} />
+          </button>
+        </div>
+
+        <label className="block mb-3">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Card</span>
+          <input
+            value={cardName}
+            onChange={e => setCardName(e.target.value)}
+            className="input-field w-full px-3 py-2 mt-1 text-sm"
+            placeholder="e.g. Max Verstappen · Gold /50"
+          />
+        </label>
+
+        <label className="block mb-4">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+            Alert me when this card sells below
+          </span>
+          <div className="relative mt-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-bold">$</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={threshold}
+              onChange={e => setThreshold(e.target.value)}
+              className="input-field w-full pl-7 pr-3 py-2 text-sm"
+              placeholder="0"
+              autoFocus
+            />
+          </div>
+        </label>
+
+        {err && (
+          <div className="mb-3 text-[11px] text-red-300 bg-red-900/30 border border-red-800/60 rounded-lg px-3 py-2">
+            {err}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onClose}
+            className="flex-1 px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold transition-colors">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving}
+            className="flex-1 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-black transition-colors">
+            {saving ? 'Saving…' : 'Save alert'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

@@ -162,13 +162,17 @@ export default function CardPage() {
   const [loading, setLoading] = useState(true)
 
   useSeo({
-    title: driver && parallel ? `${driver} ${parallel} — 2025 Topps Chrome F1 Prices · F1 Card Vault` : 'Card — F1 Card Vault',
-    description: median?.n
-      ? `${driver} ${parallel} median sold price: $${median.median_total?.toFixed(0)} across ${median.n} recent sales. Live eBay listings + 90-day trend.`
-      : `Live 2025 Topps Chrome Formula 1 card prices for ${driver || ''} ${parallel || ''}.`,
-    ogTitle: driver && parallel ? `${driver} ${parallel} — F1 Card Vault` : 'F1 Card Vault',
+    title: driver && parallel
+      ? `2025 Topps Chrome F1 ${driver} ${parallel} — Prices, Comps & Auctions | F1 Card Vault`
+      : 'Card — F1 Card Vault',
+    description: driver && parallel
+      ? `Live tracker for the 2025 Topps Chrome Formula 1 ${driver} ${parallel}. ${median?.n || 0} recent sales, ${median?.median_total ? `$${median.median_total.toFixed(0)} median` : 'price data'}, PSA pop, and active eBay auctions. Free, always updated.`
+      : 'Live 2025 Topps Chrome Formula 1 card prices.',
+    ogTitle: driver && parallel
+      ? `2025 Topps Chrome F1 ${driver} ${parallel} — Prices, Comps & Auctions`
+      : 'F1 Card Vault',
     ogDescription: driver && parallel
-      ? `Live eBay prices, verdict, and median comps for ${driver} ${parallel}. 2025 Topps Chrome F1.`
+      ? `Live tracker for the 2025 Topps Chrome Formula 1 ${driver} ${parallel}. ${median?.n || 0} recent sales, ${median?.median_total ? `$${median.median_total.toFixed(0)} median` : 'price data'}, PSA pop, and active eBay auctions.`
       : 'Live eBay prices and median comps for 2025 Topps Chrome F1.',
     ogImage: slug ? `${SITE}/og/card/${slug}` : undefined,
   })
@@ -273,7 +277,7 @@ export default function CardPage() {
             <ScarcityBadge tier="A" />
             <VerdictBadge verdict={verdict} />
           </div>
-          <h1 className="text-2xl md:text-4xl font-black text-white leading-tight">{driver}</h1>
+          <h1 className="text-2xl md:text-4xl font-black text-white leading-tight">2025 Topps Chrome F1 {driver} {parallel}</h1>
           <p className="text-sm text-gray-400 mt-0.5">2025 Topps Chrome F1 · <span className="text-red-400 font-bold">{parallel}</span></p>
 
           <div className="mt-4 flex flex-wrap items-baseline gap-4">
@@ -373,7 +377,7 @@ export default function CardPage() {
       {/* Live listings */}
       <div className="panel p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-white text-sm flex items-center gap-2"><Tag size={14} className="text-red-400" /> Live Listings</h2>
+          <h2 className="font-bold text-white text-sm flex items-center gap-2"><Tag size={14} className="text-red-400" /> Active Auctions</h2>
           <span className="text-[11px] text-gray-500">{listings.length} shown</span>
         </div>
         {loading ? (
@@ -416,7 +420,7 @@ export default function CardPage() {
       {/* Recent sales */}
       <div className="panel p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-white text-sm flex items-center gap-2"><TrendingUp size={14} className="text-green-400" /> Recent Sales</h2>
+          <h2 className="font-bold text-white text-sm flex items-center gap-2"><TrendingUp size={14} className="text-green-400" /> Recent Sold Comps</h2>
           <span className="text-[11px] text-gray-500">last {recent.length}</span>
         </div>
         {loading ? (

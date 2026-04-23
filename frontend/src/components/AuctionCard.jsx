@@ -9,6 +9,8 @@ import { scarcityBadgeStyle, resolveWatchingState, toggleLocalWatchlist } from '
 import { verdictFor } from '../lib/verdict'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
+import VerdictBadge from './VerdictBadge'
+import LastUpdatedLabel from './LastUpdatedLabel'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -345,10 +347,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
           </span>
         )
         verdict = (
-          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
-                title={`Total $${totalCost.toFixed(2)} vs $${Math.round(comp.median_total)} median (n=${comp.n})`}>
-            {v.label}
-          </span>
+          <VerdictBadge verdict={v} nComps={comp.n} />
         )
       }
     }
@@ -941,13 +940,23 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           teamColor={auction.card?.team_color}
         />
 
+        {/* Driver photo badge (top-left) */}
+        {(auction.card?.driver_name || auction.driver_name) && (
+          <img
+            src={`${API}/api/drivers/photo?name=${encodeURIComponent(auction.card?.driver_name || auction.driver_name)}`}
+            alt={auction.card?.driver_name || auction.driver_name}
+            className="absolute top-2 left-2 w-9 h-9 rounded-full object-cover border-2 border-white/80 bg-gray-900 shadow-lg z-20"
+            onError={e => { e.currentTarget.style.display = 'none' }}
+          />
+        )}
+
         {/* Team color accent bar */}
         {teamColor && (
           <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-70" style={{ backgroundColor: teamColor }} />
         )}
 
         {/* Badges */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+        <div className="absolute top-2 left-14 flex flex-col gap-1 z-10">
           {isEnded && (
             <div className="flex items-center gap-1 bg-gray-700 text-gray-200 text-[10px] font-black px-2 py-1 rounded-lg shadow-lg">
               ✓ ENDED
@@ -1079,6 +1088,9 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             {auction.seller || <span className="skeleton w-16 h-2.5 rounded" />}
           </span>
           <SellerBadge feedback={auction.seller_feedback} />
+          {auction.last_updated && (
+            <LastUpdatedLabel timestamp={auction.last_updated} className="ml-auto" />
+          )}
         </div>
 
         {/* Pricing options — disable if ended */}

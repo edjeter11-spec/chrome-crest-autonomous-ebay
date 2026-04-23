@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import {
   Gavel, Flame, Database, DollarSign, Zap, Activity,
   RefreshCw, Clock, TrendingUp, Users, Layers, ExternalLink,
@@ -128,6 +128,8 @@ export default function Dashboard() {
   const [ebayLimited, setEbayLimited] = useState(false)
 
   const [ticker, setTicker] = useState([])
+  const [bigWins, setBigWins] = useState([])
+  const [bigWinsLoading, setBigWinsLoading] = useState(true)
   const [alertsData, setAlertsData] = useState([])
   const [recent24hCount, setRecent24hCount] = useState(null)
 
@@ -224,6 +226,17 @@ export default function Dashboard() {
         const notable = all.filter(isNotable)
         const src = notable.length >= 3 ? notable : all
         setTicker(src.slice(0, 10))
+      }
+    )
+
+    // Big wins — sales >= $100 only, for "Just Sold — Big Wins" ticker
+    swrFetch(
+      `${API}/api/sales?limit=10&year=2025`,
+      d => {
+        const all = applySeasonFilter(d.sales || d || [])
+        const wins = all.filter(s => (s.sale_price ?? 0) >= 100)
+        setBigWins(wins.slice(0, 10))
+        setBigWinsLoading(false)
       }
     )
 
@@ -627,6 +640,85 @@ export default function Dashboard() {
           sub={snipes?.length ? `${snipes.length} tracked` : 'None flagged'}
           color="red"
         />
+      </div>
+
+      {/* Just Sold — Big Wins (>=$100) — horizontal scroll on mobile, grid on desktop */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-black text-white flex items-center gap-2">
+            <span className="text-lg">💰</span>
+            Just Sold — Big Wins
+            {!bigWinsLoading && <span className="text-[10px] text-gray-500 font-mono">({bigWins.length})</span>}
+          </h2>
+          <button
+            onClick={() => navigate('/sales')}
+            className="text-xs text-emerald-400 hover:underline font-medium flex items-center gap-1"
+          >
+            All sales <ChevronRight size={11} />
+          </button>
+        </div>
+        {bigWinsLoading ? (
+          <div className="flex gap-3 overflow-hidden">
+            {Array(5).fill(0).map((_, i) => (
+              <div key={i} className="w-48 shrink-0 h-32 bg-gray-900 rounded-2xl border border-gray-800 animate-pulse" />
+            ))}
+          </div>
+        ) : bigWins.length === 0 ? (
+          <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl">
+            <EmptyRow text="No big wins ($100+) in the latest sales yet" />
+          </div>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1 md:grid md:grid-cols-3 lg:grid-cols-5 md:overflow-visible md:mx-0 md:px-0">
+            {bigWins.map((s, i) => {
+              const driver = s.driver_name || ''
+              const parallel = s.parallel || ''
+              const slugBase = `${driver}${parallel ? ' ' + parallel : ''}`
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-|-$/g, '')
+              const to = slugBase ? `/card/${slugBase}` : '/sales'
+              return (
+                <Link
+                  key={s.id ?? i}
+                  to={to}
+                  className="shrink-0 w-48 md:w-auto snap-start bg-gradient-to-br from-emerald-900/30 to-gray-900 border border-emerald-700/40 hover:border-emerald-500/70 rounded-2xl p-3 transition-colors flex flex-col gap-2 no-underline"
+                >
+                  <div className="flex items-start gap-2">
+                    {s.image_url && !s.image_url.includes('placehold') ? (
+                      <img
+                        src={s.image_url}
+                        alt=""
+                        className="w-12 h-16 object-cover rounded border border-gray-800 shrink-0"
+                        onError={e => { e.currentTarget.style.display = 'none' }}
+                      />
+                    ) : (
+                      <div className="w-12 h-16 bg-gray-800/70 rounded border border-gray-800 shrink-0 flex items-center justify-center text-lg">🏎</div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-white truncate">{driver || '—'}</div>
+                      {parallel && (
+                        <div className="text-[10px] text-cyan-300 font-semibold truncate">{parallel}</div>
+                      )}
+                      {s.grade && s.grade !== 'Raw' && (
+                        <span className="inline-block mt-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-800/40 font-bold">
+                          {s.grade}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-between mt-auto">
+                    <div className="text-xl font-black text-emerald-400 tabular-nums leading-none">
+                      ${Math.round(s.sale_price ?? 0).toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-gray-500 font-mono">
+                      {relTime(s.scraped_at || s.sale_date)}
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* 2 + 3. Sales feed + Market movers */}
