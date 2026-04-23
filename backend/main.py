@@ -1120,17 +1120,20 @@ async def cron_sync(db: Session = Depends(get_db)):
     except Exception as e:
         sold_error = str(e)[:200]
 
-    # Free scrapers — bypass eBay Browse API entirely
+    # Free scrapers — bypass eBay Browse API entirely.
+    # Awaited (not fire-and-forget) so they actually run to completion each
+    # cron tick on Vercel serverless — tasks spawned with create_task get
+    # killed when the response returns.
     scraper_errors = []
     try:
         from scrape_130point import ingest_130point
-        asyncio.create_task(ingest_130point())
+        await ingest_130point()
     except Exception as e:
         scraper_errors.append(f"130point: {str(e)[:120]}")
     try:
         from scrape_ebay_html import ingest_ebay_html_sold, ingest_ebay_html_auction
-        asyncio.create_task(ingest_ebay_html_sold())
-        asyncio.create_task(ingest_ebay_html_auction())
+        await ingest_ebay_html_sold()
+        await ingest_ebay_html_auction()
     except Exception as e:
         scraper_errors.append(f"ebay_html: {str(e)[:120]}")
 
@@ -1285,6 +1288,40 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         return {"ok": False, "error": str(e)[:300]}
 
+    # Priority pass: re-fetch each auction ending in <1h individually so the
+    # ending-soon list has the freshest price/bid_count/end_time possible.
+    # Capped at 50 to stay well under the daily Browse API budget.
+    priority_refreshed = 0
+    try:
+        from ebay_api import get_item_details as _get_item_details
+        soon_cutoff = datetime.utcnow() + timedelta(hours=1)
+        ending_soon = db.query(Auction).filter(
+            Auction.status == "active",
+            Auction.is_real_ebay == True,
+            Auction.ebay_listing_id.isnot(None),
+            Auction.end_time.isnot(None),
+            Auction.end_time > datetime.utcnow(),
+            Auction.end_time <= soon_cutoff,
+        ).order_by(Auction.end_time.asc()).limit(50).all()
+
+        for _a in ending_soon:
+            try:
+                _item = await _get_item_details(_a.ebay_listing_id)
+                if not _item:
+                    continue
+                _a.current_price = _item.get("current_price", _a.current_price)
+                _a.bid_count = _item.get("bid_count", _a.bid_count)
+                _a.end_time = _item.get("end_time", _a.end_time)
+                priority_refreshed += 1
+            except Exception:
+                # One bad listing shouldn't break the whole priority pass.
+                continue
+        if priority_refreshed:
+            db.commit()
+    except Exception:
+        # Priority pass is best-effort — never fail the overall refresh over it.
+        pass
+
     # Sweep expired auctions so the active list stays clean between refreshes.
     expired_swept = 0
     try:
@@ -1304,7 +1341,49 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
         "searches": len(SEARCH_QUERIES),
         "listings_added": added,
         "total_active": total_active,
+        "priority_refreshed": priority_refreshed,
     }
+
+
+@app.api_route("/api/cron/scrape-free", methods=["GET", "POST"])
+async def cron_scrape_free(request: Request):
+    """
+    Dedicated high-frequency (every 10 min) tick that runs ONLY the free HTML
+    scrapers — no eBay Browse API quota burned. Scoped separately from
+    /api/cron/sync so we can hammer the cheap scrapers without tripping the
+    expensive paths.
+
+    Auth: same pattern as /api/ebay/refresh — ADMIN_TOKEN or vercel-cron UA.
+    """
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    results = {"130point": None, "ebay_html_sold": None, "ebay_html_auction": None}
+    errors = {}
+    try:
+        from scrape_130point import ingest_130point
+        results["130point"] = await ingest_130point()
+    except Exception as e:
+        errors["130point"] = str(e)[:200]
+    try:
+        from scrape_ebay_html import ingest_ebay_html_sold, ingest_ebay_html_auction
+        results["ebay_html_sold"] = await ingest_ebay_html_sold()
+    except Exception as e:
+        errors["ebay_html_sold"] = str(e)[:200]
+    try:
+        from scrape_ebay_html import ingest_ebay_html_auction
+        results["ebay_html_auction"] = await ingest_ebay_html_auction()
+    except Exception as e:
+        errors["ebay_html_auction"] = str(e)[:200]
+
+    return {"ok": True, "results": results, "errors": errors}
 
 
 @app.get("/api/debug/ebay")
@@ -1574,6 +1653,193 @@ def ebay_status():
         "connected": connected,
         "message": "Live eBay Browse API active" if connected else "No credentials — add EBAY_APP_ID + EBAY_APP_SECRET to backend/.env",
     }
+
+
+_OG_DRIVERS = [
+    # F1 2024-25 grid
+    'Max Verstappen', 'Yuki Tsunoda', 'Charles Leclerc', 'Lewis Hamilton',
+    'Lando Norris', 'Oscar Piastri', 'George Russell', 'Andrea Kimi Antonelli',
+    'Fernando Alonso', 'Lance Stroll', 'Liam Lawson', 'Isack Hadjar',
+    'Esteban Ocon', 'Oliver Bearman', 'Franco Colapinto', 'Alexander Albon',
+    'Carlos Sainz', 'Nico Hulkenberg', 'Gabriel Bortoleto', 'Pierre Gasly',
+    'Jack Doohan', 'Sergio Perez', 'Valtteri Bottas', 'Zhou Guanyu',
+    'Daniel Ricciardo',
+    # Legends
+    'Michael Schumacher', 'Ayrton Senna', 'Alain Prost', 'Nigel Mansell',
+    'Sebastian Vettel', 'Kimi Raikkonen', 'Niki Lauda',
+]
+_OG_PARALLELS = [
+    'Refractor', 'Prism Refractor', 'Aqua /199', 'Blue /150',
+    'Green /99', 'Gold /50', 'Orange /25', 'Autograph',
+]
+
+
+def _og_kebab(s: str) -> str:
+    import re as _re
+    s = (s or '').lower()
+    s = _re.sub(r'[^a-z0-9]+', '-', s)
+    return _re.sub(r'^-+|-+$', '', s)
+
+
+def _og_parse_slug(slug: str):
+    """Mirror frontend parseSlug — longest driver match, then parallel."""
+    clean = _og_kebab(slug)
+    for d in sorted(_OG_DRIVERS, key=len, reverse=True):
+        dk = _og_kebab(d)
+        if clean == dk or clean.startswith(dk + '-'):
+            rest = clean[len(dk):].lstrip('-')
+            for p in sorted(_OG_PARALLELS, key=len, reverse=True):
+                pk = _og_kebab(p)
+                if rest == pk or rest.startswith(pk):
+                    return d, p
+            # fallback — title-case the leftover tokens
+            rest_human = ' '.join(w.capitalize() for w in rest.split('-') if w)
+            return d, (rest_human or 'Base')
+    return None, None
+
+
+@app.get("/og/card/{slug}")
+def og_card(slug: str, db: Session = Depends(get_db)):
+    """Dynamic 1200x630 OG image for a card slug — black background with
+    driver, parallel, median price + verdict. Cached for 1h."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return Response(
+            content=b"PIL not installed — add pillow to requirements.txt",
+            media_type="text/plain",
+            status_code=503,
+        )
+
+    from datetime import timedelta as _td
+    from database import SoldCard as _SoldCard
+
+    driver, parallel = _og_parse_slug(slug)
+    title_line = f"{driver} {parallel}" if driver and parallel else (slug or "Unknown card")
+
+    median_total = None
+    n_comps = 0
+    verdict = "—"
+    if driver and parallel:
+        cutoff = datetime.utcnow() - _td(days=90)
+        q = db.query(_SoldCard).filter(
+            _SoldCard.driver_name == driver,
+            _SoldCard.parallel == parallel,
+            _SoldCard.sale_date >= cutoff,
+            _SoldCard.sale_price > 0,
+            _SoldCard.is_duplicate == False,  # noqa: E712
+            _SoldCard.grade.is_(None),
+        )
+        totals = [
+            (s.sale_price or 0) + (s.shipping_cost or 0) for s in q.all()
+        ]
+        totals = [t for t in totals if t > 0]
+        n_comps = len(totals)
+        if totals:
+            srt = sorted(totals)
+            mid = len(srt) // 2
+            median_total = srt[mid] if len(srt) % 2 else (srt[mid - 1] + srt[mid]) / 2
+
+        # crude verdict: cheapest active / median
+        try:
+            active = db.query(Auction).filter(
+                Auction.status == "active",
+            ).all()
+            pl = parallel.lower()
+            matches = [
+                ((a.current_price or 0) + (a.shipping_cost or 0))
+                for a in active
+                if a.card and a.card.driver_name == driver and (
+                    (a.card.parallel or '').lower() == pl
+                    or pl in (a.title or '').lower()
+                )
+            ]
+            matches = [m for m in matches if m > 0]
+            if matches and median_total:
+                ratio = min(matches) / median_total
+                if ratio <= 0.6:
+                    verdict = "STRONG BUY"
+                elif ratio <= 0.8:
+                    verdict = "GOOD BUY"
+                elif ratio <= 1.1:
+                    verdict = "FAIR"
+                else:
+                    verdict = "OVERPRICED"
+        except Exception:
+            pass
+
+    # Build 1200x630 image
+    W, H = 1200, 630
+    img = Image.new("RGB", (W, H), color=(8, 8, 12))
+    draw = ImageDraw.Draw(img)
+
+    def _font(size):
+        for path in (
+            "C:/Windows/Fonts/arialbd.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    f_brand = _font(30)
+    f_title = _font(72)
+    f_sub = _font(40)
+    f_price = _font(110)
+    f_label = _font(26)
+    f_verdict = _font(60)
+
+    # Red accent stripe
+    draw.rectangle([(0, 0), (W, 8)], fill=(220, 40, 40))
+
+    # Brand
+    draw.text((60, 40), "F1 CARD VAULT", font=f_brand, fill=(220, 40, 40))
+
+    # Title (driver)
+    driver_text = (driver or "Card").upper()
+    draw.text((60, 110), driver_text[:22], font=f_title, fill=(255, 255, 255))
+
+    # Parallel subtitle
+    if parallel:
+        draw.text((60, 210), parallel, font=f_sub, fill=(180, 180, 200))
+
+    # Median price block
+    draw.text((60, 310), "90-DAY MEDIAN", font=f_label, fill=(140, 140, 160))
+    if median_total:
+        draw.text((60, 345), f"${median_total:,.0f}", font=f_price, fill=(80, 220, 120))
+        draw.text((60, 480), f"n={n_comps} recent comps", font=f_label, fill=(140, 140, 160))
+    else:
+        draw.text((60, 345), "—", font=f_price, fill=(140, 140, 160))
+        draw.text((60, 480), "no recent comps", font=f_label, fill=(140, 140, 160))
+
+    # Verdict badge (top right)
+    if verdict and verdict != "—":
+        color = (16, 185, 129) if verdict == "STRONG BUY" else \
+                (34, 197, 94) if verdict == "GOOD BUY" else \
+                (107, 114, 128) if verdict == "FAIR" else (239, 68, 68)
+        bbox = draw.textbbox((0, 0), verdict, font=f_verdict)
+        tw = bbox[2] - bbox[0]
+        pad = 24
+        x1 = W - 60 - tw - 2 * pad
+        y1 = 110
+        draw.rounded_rectangle([(x1, y1), (W - 60, y1 + 90)], radius=12, fill=color)
+        draw.text((x1 + pad, y1 + 14), verdict, font=f_verdict, fill=(0, 0, 0))
+
+    # Footer
+    draw.text((60, H - 60), "f1cardvault.com  ·  live eBay prices", font=f_label, fill=(100, 100, 120))
+
+    from io import BytesIO as _BytesIO
+    buf = _BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/feed.xml")

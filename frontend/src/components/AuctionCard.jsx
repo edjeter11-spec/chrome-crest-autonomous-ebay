@@ -256,10 +256,11 @@ function CardImageFallback({ teamColor, driverName }) {
 function ImageCarousel({ images, title, driverName, teamColor }) {
   const [idx, setIdx] = useState(0)
   const [failed, setFailed] = useState(new Set())
+  const [retried, setRetried] = useState(new Set())
   const valid = images?.filter(u => u && !u.includes('placehold.co')).map(proxyImg) || []
   const displayable = valid.filter((_, i) => !failed.has(i))
 
-  useEffect(() => { setFailed(new Set()); setIdx(0) }, [images?.join(',')])
+  useEffect(() => { setFailed(new Set()); setRetried(new Set()); setIdx(0) }, [images?.join(',')])
 
   if (!displayable.length) return (
     <CardImageFallback teamColor={teamColor} driverName={driverName} />
@@ -273,12 +274,20 @@ function ImageCarousel({ images, title, driverName, teamColor }) {
       <img
         src={displayable[safeIdx]}
         alt={title}
+        loading="lazy"
         className="w-full h-full object-cover"
         onError={e => {
-          // Find the original index of this URL and mark it failed
           const failedUrl = e.target.src
           const origIdx = valid.indexOf(failedUrl)
-          if (origIdx !== -1) setFailed(prev => new Set([...prev, origIdx]))
+          if (origIdx === -1) return
+          // Retry once with a cache-busting param swap before giving up
+          if (!retried.has(origIdx)) {
+            setRetried(prev => new Set([...prev, origIdx]))
+            const sep = failedUrl.includes('?') ? '&' : '?'
+            e.target.src = `${failedUrl}${sep}1`
+            return
+          }
+          setFailed(prev => new Set([...prev, origIdx]))
         }}
       />
       {displayable.length > 1 && (
@@ -309,7 +318,7 @@ function ImageCarousel({ images, title, driverName, teamColor }) {
   )
 }
 
-function PricingOptions({ auction, comp }) {
+function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, manualRefreshing, manualToast }) {
   const opts = auction.buying_options || []
   const hasAuction = opts.includes('AUCTION') || (opts.length === 0 && !auction.buy_now_price)
   const hasBIN = opts.includes('FIXED_PRICE') || auction.buy_now_price > 0
@@ -354,6 +363,24 @@ function PricingOptions({ auction, comp }) {
             <span className="text-xl font-black text-white tracking-tight">
               ${auction.current_price?.toFixed(2) ?? '—'}
             </span>
+            {showManualRefresh && (
+              <span className="relative inline-flex items-center">
+                <button
+                  onClick={(e) => { e.stopPropagation(); e.preventDefault(); onManualRefresh?.() }}
+                  disabled={manualRefreshing}
+                  title="Refresh price now"
+                  aria-label="Refresh price now"
+                  className="text-gray-500 hover:text-white transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={11} className={manualRefreshing ? 'animate-spin' : ''} />
+                </button>
+                {manualToast && (
+                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] bg-emerald-600 text-white font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap">
+                    updated
+                  </span>
+                )}
+              </span>
+            )}
             {auction.shipping_cost === 0 ? (
               <span className="text-[10px] text-green-500 font-semibold uppercase tracking-wide">Free Ship</span>
             ) : auction.shipping_cost > 0 ? (
@@ -645,7 +672,24 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   const [livePrice, setLivePrice] = useState(null)
   const [liveBidCount, setLiveBidCount] = useState(null)
   const [liveFetching, setLiveFetching] = useState(false)
+  const [manualRefreshing, setManualRefreshing] = useState(false)
+  const [manualToast, setManualToast] = useState(false)
   const { user } = useAuth() || { user: null }
+
+  // Manual refresh — user-triggered live price pull for ending-soon auctions.
+  const manualRefresh = async () => {
+    if (manualRefreshing) return
+    setManualRefreshing(true)
+    try {
+      const res = await fetch(`${API}/api/auctions/${auction.id}/refresh`)
+      const fresh = await res.json()
+      if (fresh?.current_price != null) setLivePrice(fresh.current_price)
+      if (fresh?.bid_count != null) setLiveBidCount(fresh.bid_count)
+      setManualToast(true)
+      setTimeout(() => setManualToast(false), 1000)
+    } catch {}
+    setManualRefreshing(false)
+  }
 
   // Fetch latest bid intent for this auction (passive — non-blocking)
   useEffect(() => {
@@ -1015,7 +1059,16 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
         </div>
 
         {/* Pricing options — disable if ended */}
-        {!isEnded && <PricingOptions auction={{ ...auction, current_price: effectivePrice, bid_count: effectiveBidCount }} comp={comp} />}
+        {!isEnded && (
+          <PricingOptions
+            auction={{ ...auction, current_price: effectivePrice, bid_count: effectiveBidCount }}
+            comp={comp}
+            showManualRefresh={!isEnded && timeLeft > 0 && timeLeft < 6 * 3600}
+            onManualRefresh={manualRefresh}
+            manualRefreshing={manualRefreshing}
+            manualToast={manualToast}
+          />
+        )}
 
         {/* Saved intent chip */}
         {savedIntent && (

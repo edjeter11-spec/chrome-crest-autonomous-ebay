@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal } from 'lucide-react'
+import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal, Target, Check, X } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import ThemeToggle from '../components/ThemeToggle'
@@ -8,6 +8,8 @@ import { matchesParallel, AUTO_VARIANTS } from '../lib/parallels'
 import { useVisibilityInterval, useProgressiveRender, usePersistedState } from '../lib/hooks'
 import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 import { applySeasonFilter } from '../lib/season'
+import { supabase, supabaseReady } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -73,6 +75,22 @@ export default function Auctions() {
           filterStrongBuy, autoVariant } = filters
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [showSaveRule, setShowSaveRule] = useState(false)
+  const [ruleToast, setRuleToast] = useState('')
+  const { user } = useAuth() || { user: null }
+
+  // Detect whether any filter is non-default so the "Save as Snipe Rule" CTA only
+  // appears when there's actually something to save.
+  const hasActiveFilter = (
+    (filterParallel && filterParallel !== 'All') ||
+    (printRun && printRun !== 'Any') ||
+    (listingType && listingType !== 'All') ||
+    (formulaType && formulaType !== 'F1' && formulaType !== 'All') ||
+    (teamFilter && teamFilter !== 'All') ||
+    (autoVariant && autoVariant !== 'Any') ||
+    filterSnipe || filterWatchlist || filterRookie || filterStrongBuy ||
+    (search && search.trim().length > 0)
+  )
 
   const load = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
@@ -224,6 +242,10 @@ export default function Auctions() {
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input value={search} onChange={e => setF({ search: e.target.value })}
             placeholder="Driver, title…"
+            type="search"
+            inputMode="search"
+            autoCapitalize="off"
+            autoCorrect="off"
             className="input-field w-full pl-8 pr-3 py-2 text-xs" />
         </div>
 
@@ -275,6 +297,16 @@ export default function Auctions() {
             {label}
           </button>
         ))}
+
+        {user && hasActiveFilter && (
+          <button
+            onClick={() => setShowSaveRule(true)}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-600/40 transition-colors"
+            title="Save the current filter combination as a Sniper rule"
+          >
+            <Target size={12} /> Save as Snipe Rule
+          </button>
+        )}
       </div>
 
       {/* Auto-variant sub-filter — only when parent filter is Autograph */}
@@ -297,7 +329,20 @@ export default function Auctions() {
       {/* Grid */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-          {Array(18).fill(0).map((_, i) => <div key={i} className="bg-gray-900 rounded-2xl border border-gray-800 h-72 animate-pulse" />)}
+          {Array(12).fill(0).map((_, i) => (
+            <div
+              key={i}
+              className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden animate-pulse flex flex-col"
+            >
+              <div className="h-44 bg-gray-800" />
+              <div className="p-3 flex flex-col gap-2">
+                <div className="h-3 bg-gray-800 rounded w-full" />
+                <div className="h-3 bg-gray-800 rounded w-3/4" />
+                <div className="h-5 bg-gray-800 rounded w-1/2 mt-1" />
+                <div className="h-8 bg-gray-800 rounded mt-1" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="panel flex flex-col items-center justify-center py-20 text-gray-600">
@@ -334,6 +379,125 @@ export default function Auctions() {
       )}
 
       {selected && <AuctionModal auction={selected} onClose={() => setSelected(null)} onWatchlistChange={handleWatchlist} />}
+
+      {showSaveRule && (
+        <SaveFilterAsSniperModal
+          user={user}
+          filters={filters}
+          onClose={() => setShowSaveRule(false)}
+          onSaved={(name) => { setShowSaveRule(false); setRuleToast(name || 'Snipe rule saved') }}
+        />
+      )}
+
+      {ruleToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm bg-gray-900 border border-green-600/40 rounded-xl shadow-xl px-4 py-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-green-600/30 border border-green-500/60 flex items-center justify-center shrink-0">
+            <Check size={16} className="text-green-300" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold text-white">Snipe rule saved</div>
+            <div className="text-[11px] text-gray-400 truncate">{ruleToast}</div>
+          </div>
+          <button onClick={() => setRuleToast('')} className="text-gray-500 hover:text-gray-300">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SaveFilterAsSniperModal({ user, filters, onClose, onSaved }) {
+  const [maxPrice, setMaxPrice] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const parallel = filters.filterParallel && filters.filterParallel !== 'All' ? filters.filterParallel : null
+  const summaryParts = [
+    filters.formulaType && filters.formulaType !== 'All' ? filters.formulaType : null,
+    filters.teamFilter && filters.teamFilter !== 'All' ? filters.teamFilter : null,
+    parallel,
+    filters.autoVariant && filters.autoVariant !== 'Any' ? filters.autoVariant : null,
+    filters.printRun && filters.printRun !== 'Any' ? filters.printRun : null,
+    filters.filterSnipe ? 'Snipe-only' : null,
+    filters.filterStrongBuy ? 'Strong Buys' : null,
+    filters.filterRookie ? 'Rookies' : null,
+    filters.search ? `"${filters.search}"` : null,
+  ].filter(Boolean)
+  const summary = summaryParts.length ? summaryParts.join(' · ') : 'All auctions'
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    if (!user || !supabaseReady) {
+      setError('Sign in required to save rules.')
+      return
+    }
+    setSaving(true)
+    try {
+      const row = {
+        user_id: user.id,
+        driver_name: null,
+        parallel,
+        grade: null,
+        max_price: maxPrice ? Number(maxPrice) : null,
+        max_percent_of_median: null,
+        ending_soon_only: false,
+        max_per_day: 3,
+        active: true,
+        name: maxPrice ? `${summary} · <$${maxPrice}` : summary,
+      }
+      const { error: err } = await supabase.from('user_snipe_rules').insert(row)
+      if (err) { setError(err.message); setSaving(false); return }
+      onSaved(row.name)
+    } catch (e) {
+      setError(e?.message || 'Error creating rule')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 rounded-xl border border-gray-800/60 max-w-sm w-full p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-black text-white flex items-center gap-2">
+            <Target size={18} className="text-red-500" />
+            Save Filters as Snipe Rule
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5 font-semibold">Rule Preview</label>
+            <div className="bg-gray-800/50 border border-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-300 space-y-1">
+              <div><span className="text-gray-500">Matches:</span> <span className="text-white font-semibold">{summary}</span></div>
+              {parallel && <div><span className="text-gray-500">Parallel:</span> <span className="text-white">{parallel}</span></div>}
+              <div><span className="text-gray-500">Driver:</span> <span className="text-gray-400 italic">any</span></div>
+              <div><span className="text-gray-500">Max/day:</span> <span className="text-white">3</span></div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-gray-400 mb-1.5 font-semibold">Max Price $ <span className="text-gray-600 normal-case">(optional)</span></label>
+            <input type="number" step="1" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="e.g. 250" className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600" />
+          </div>
+
+          {error && <div className="text-xs text-red-400">{error}</div>}
+
+          <div className="flex gap-2 pt-2">
+            <button type="submit" disabled={saving} className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white font-semibold text-sm px-4 py-2.5 rounded-lg">
+              {saving ? 'Saving…' : 'Save Rule'}
+            </button>
+            <button type="button" onClick={onClose} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-sm px-4 py-2.5 rounded-lg">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

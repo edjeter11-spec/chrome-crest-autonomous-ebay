@@ -52,6 +52,42 @@ function isBigSnipe(a, maxSecs) {
   return false
 }
 
+function initialsOf(name) {
+  if (!name) return 'F1'
+  const parts = String(name).trim().split(/\s+/)
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+function SnipeImage({ src, driverName }) {
+  const [stage, setStage] = useState('initial') // initial | retry | failed
+  const [url, setUrl] = useState(src || '')
+  if (!src || stage === 'failed') {
+    return (
+      <div className="w-16 h-20 rounded bg-gray-800 shrink-0 flex items-center justify-center text-gray-400 font-black text-xs">
+        {initialsOf(driverName)}
+      </div>
+    )
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      className="w-16 h-20 object-cover rounded shrink-0 bg-gray-800"
+      onError={() => {
+        if (stage === 'initial') {
+          const sep = src.includes('?') ? '&' : '?'
+          setUrl(`${src}${sep}1`)
+          setStage('retry')
+        } else {
+          setStage('failed')
+        }
+      }}
+    />
+  )
+}
+
 function AuctionRow({ a, nowTick }) {
   const sL = Math.max(0, Math.floor(((a.end_time ? parseUtc(a.end_time).getTime() : 0) - nowTick) / 1000))
   const h = Math.floor(sL / 3600)
@@ -63,13 +99,10 @@ function AuctionRow({ a, nowTick }) {
   const isGood = verdict === 'STRONG_BUY' || verdict === 'GOOD_BUY'
   const median = a.median_price || a.median_sold_price
   const pctBelow = median && a.current_price ? Math.round((1 - a.current_price / median) * 100) : null
+  const driverName = a.driver_name || a.driver || a.card?.driver_name
   return (
     <div className="px-4 py-3 hover:bg-gray-800/40 transition-colors flex gap-3">
-      {a.image_url ? (
-        <img src={a.image_url} alt="" className="w-16 h-20 object-cover rounded shrink-0 bg-gray-800" />
-      ) : (
-        <div className="w-16 h-20 rounded bg-gray-800 shrink-0" />
-      )}
+      <SnipeImage src={a.image_url} driverName={driverName} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           <div className="text-xs font-bold text-white truncate">
