@@ -9,6 +9,8 @@ import { scarcityBadgeStyle, resolveWatchingState, toggleLocalWatchlist } from '
 import { verdictFor } from '../lib/verdict'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
+import VerdictBadge from './VerdictBadge'
+import LastUpdatedLabel from './LastUpdatedLabel'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -345,10 +347,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
           </span>
         )
         verdict = (
-          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${v.cls} tracking-wider`}
-                title={`Total $${totalCost.toFixed(2)} vs $${Math.round(comp.median_total)} median (n=${comp.n})`}>
-            {v.label}
-          </span>
+          <VerdictBadge verdict={v} nComps={comp.n} />
         )
       }
     }
@@ -1079,6 +1078,9 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             {auction.seller || <span className="skeleton w-16 h-2.5 rounded" />}
           </span>
           <SellerBadge feedback={auction.seller_feedback} />
+          {auction.last_updated && (
+            <LastUpdatedLabel timestamp={auction.last_updated} className="ml-auto" />
+          )}
         </div>
 
         {/* Pricing options — disable if ended */}
