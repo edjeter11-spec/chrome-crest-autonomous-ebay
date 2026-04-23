@@ -1,11 +1,13 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon, Target, X, Share2 } from 'lucide-react'
+import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon, Target, X, Share2, Check } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { usePersistedState } from '../lib/hooks'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { fetchDriverPhoto, driverInitials } from '../lib/driverPhotos'
 import { ShareMenu } from '../components/AuctionCard'
+import { supabase, supabaseReady } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 
 function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
   const [photo, setPhoto] = useState('')
@@ -78,12 +80,14 @@ function ScoreMeter({ score, color }) {
 }
 
 function AddToSniperModal({ driver, onClose, onNavigate }) {
+  const { user } = useAuth() || { user: null }
   const [maxPrice, setMaxPrice] = useState('')
   const [parallel, setParallel] = useState('')
   const [grade, setGrade] = useState('')
   const [endingSoon, setEndingSoon] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [saved, setSaved] = useState(null)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -96,20 +100,71 @@ function AddToSniperModal({ driver, onClose, onNavigate }) {
 
     setSaving(true)
     try {
-      const params = new URLSearchParams()
-      params.set('driver', driver.driver_name)
-      if (maxPrice) params.set('maxPrice', maxPrice)
-      if (parallel) params.set('parallel', parallel)
-      if (grade) params.set('grade', grade)
-      if (endingSoon) params.set('endingSoon', '1')
-
-      onNavigate(`/sniper?${params.toString()}`)
-      onClose()
+      if (user && supabaseReady) {
+        const row = {
+          user_id: user.id,
+          driver_name: driver.driver_name,
+          parallel: parallel || null,
+          grade: grade || null,
+          max_price: maxPrice ? Number(maxPrice) : null,
+          max_percent_of_median: null,
+          ending_soon_only: endingSoon,
+          max_per_day: 3,
+          active: true,
+          name: [driver.driver_name, parallel, grade, maxPrice ? `<$${maxPrice}` : ''].filter(Boolean).join(' '),
+        }
+        const { error: err } = await supabase.from('user_snipe_rules').insert(row)
+        if (err) { setError(err.message); setSaving(false); return }
+        setSaved(row)
+      } else {
+        // Fallback: signed out → navigate to sniper with prefilled params
+        const params = new URLSearchParams()
+        params.set('driver', driver.driver_name)
+        if (maxPrice) params.set('maxPrice', maxPrice)
+        if (parallel) params.set('parallel', parallel)
+        if (grade) params.set('grade', grade)
+        if (endingSoon) params.set('endingSoon', '1')
+        onNavigate(`/sniper?${params.toString()}`)
+        onClose()
+      }
     } catch (e) {
       setError(e?.message || 'Error creating rule')
     } finally {
       setSaving(false)
     }
+  }
+
+  if (saved) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-xl border border-green-700/40 max-w-sm w-full p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-green-600/30 border border-green-500/60 flex items-center justify-center shrink-0">
+              <Check size={20} className="text-green-300" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-black text-white">Sniper rule saved</h3>
+              <p className="text-xs text-gray-400 mt-0.5 truncate">{saved.name}</p>
+            </div>
+          </div>
+          <div className="text-xs text-gray-400 bg-gray-800/50 rounded-lg p-3 space-y-1">
+            <div><span className="text-gray-500">Driver:</span> <span className="text-white font-semibold">{saved.driver_name}</span></div>
+            {saved.parallel && <div><span className="text-gray-500">Parallel:</span> <span className="text-white">{saved.parallel}</span></div>}
+            {saved.grade && <div><span className="text-gray-500">Grade:</span> <span className="text-white">{saved.grade}</span></div>}
+            {saved.max_price && <div><span className="text-gray-500">Max price:</span> <span className="text-white">${saved.max_price}</span></div>}
+            {saved.ending_soon_only && <div className="text-amber-400">Only alerts in final 6h</div>}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => onNavigate('/sniper')} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold text-sm px-4 py-2.5 rounded-lg">
+              View All Rules
+            </button>
+            <button onClick={onClose} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-sm px-4 py-2.5 rounded-lg">
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -155,7 +210,7 @@ function AddToSniperModal({ driver, onClose, onNavigate }) {
 
           <div className="flex gap-2 pt-2">
             <button type="submit" disabled={saving} className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white font-semibold text-sm px-4 py-2.5 rounded-lg">
-              {saving ? 'Creating…' : 'Create & Go to Sniper'}
+              {saving ? 'Saving…' : user ? 'Save Rule' : 'Continue to Sniper'}
             </button>
             <button type="button" onClick={onClose} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-sm px-4 py-2.5 rounded-lg">
               Cancel
@@ -332,7 +387,7 @@ export default function Drivers() {
               ))}
             </div>
           )}
-          <div className="space-y-0.5 max-h-[45vh] md:max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
+          <div className="space-y-0.5 max-h-[30vh] md:max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
             {filtered.length === 0 ? (
               <p className="text-xs text-gray-600 px-2 py-4 text-center">No drivers in this series</p>
             ) : filtered.map(d => {
@@ -372,15 +427,15 @@ export default function Drivers() {
 
         {/* Driver detail */}
         {selected ? (
-          <div className="flex-1 panel p-4 md:p-6 min-w-0">
-            <div className="flex items-start gap-3 md:gap-5 mb-6 flex-wrap">
-              <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 shadow-xl border border-gray-700/50">
+          <div className="flex-1 panel p-3 md:p-6 min-w-0">
+            <div className="flex items-start gap-3 md:gap-5 mb-4 md:mb-6 flex-wrap">
+              <div className="w-14 h-14 md:w-20 md:h-20 rounded-2xl overflow-hidden shrink-0 shadow-xl border border-gray-700/50">
                 <DriverAvatar name={selected.driver_name} teamColor={selected.team_color} size={80} rounded="rounded-2xl" textClass="text-2xl" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3 mb-1 flex-wrap justify-between">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h2 className="text-2xl font-black text-white tracking-tight">{selected.driver_name}</h2>
+                <div className="flex items-center gap-2 md:gap-3 mb-1 flex-wrap justify-between">
+                  <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+                    <h2 className="text-lg md:text-2xl font-black text-white tracking-tight">{selected.driver_name}</h2>
                     <span className={`text-xs font-black px-2.5 py-1 rounded-xl border ${TIER_STYLE[getTier(selected.investment_score||0)]}`}>
                       {getTier(selected.investment_score||0)}-Tier
                     </span>
@@ -406,10 +461,10 @@ export default function Drivers() {
                 <p className="text-gray-400 text-sm font-medium">{selected.team}</p>
                 <p className="text-gray-600 text-xs mt-0.5">{selected.nationality} · Card #{selected.card_number}</p>
               </div>
-              <div className="flex flex-col items-end gap-3 shrink-0">
+              <div className="flex flex-col items-end gap-2 md:gap-3 shrink-0">
                 <div className="text-right">
-                  <div className="text-4xl font-black text-white tracking-tight">{Math.round(selected.investment_score||0)}</div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wide mt-0.5">Invest Score</div>
+                  <div className="text-2xl md:text-4xl font-black text-white tracking-tight">{Math.round(selected.investment_score||0)}</div>
+                  <div className="text-[10px] md:text-xs text-gray-500 uppercase tracking-wide mt-0.5">Invest Score</div>
                 </div>
                 <button
                   onClick={() => setSniperModal(true)}
@@ -534,7 +589,26 @@ export default function Drivers() {
             {selected.parallels?.length > 0 && (
               <div>
                 <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest">Card Values by Parallel</h3>
-                <div className="overflow-x-auto">
+                {/* Mobile: card-per-row layout. Desktop: table. */}
+                <div className="md:hidden space-y-1.5">
+                  {selected.parallels.map(p => (
+                    <div key={p.parallel} className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-2.5 flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-gray-200 truncate">{p.parallel}</div>
+                        <div className="flex items-center gap-3 mt-0.5 text-[11px]">
+                          <span className="text-green-400 font-semibold">${p.raw_value?.toFixed(2)}</span>
+                          <span className="text-yellow-400 font-semibold">PSA10 ${p.psa10_value?.toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0 ${
+                        p.investment_score >= 85 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                        p.investment_score >= 70 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                        'bg-gray-700/60 text-gray-400 border border-gray-600/30'
+                      }`}>{Math.round(p.investment_score)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full data-table">
                     <thead><tr>
                       <th>Parallel</th>

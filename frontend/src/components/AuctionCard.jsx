@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   ExternalLink, Zap, Clock, Tag, BookmarkPlus, BookmarkCheck,
   ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2,
-  BadgeCheck, Award, RotateCw, X, Twitter
+  BadgeCheck, Award, RotateCw, X, Twitter, RefreshCw
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { scarcityBadgeStyle } from '../lib/hooks'
@@ -642,6 +642,9 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   const [bidIntentOpen, setBidIntentOpen] = useState(false)
   const [savedIntent, setSavedIntent] = useState(null)
   const [fadeOut, setFadeOut] = useState(false)
+  const [livePrice, setLivePrice] = useState(null)
+  const [liveBidCount, setLiveBidCount] = useState(null)
+  const [liveFetching, setLiveFetching] = useState(false)
   const { user } = useAuth() || { user: null }
 
   // Fetch latest bid intent for this auction (passive — non-blocking)
@@ -677,6 +680,33 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
       refreshStatus()
     }
   }, [isEnded])
+
+  // Live price auto-refresh: when auction ends in < 1h, fetch latest bid every 30s.
+  // Avoids showing stale $0.99 on hot items that have already been bid up.
+  useEffect(() => {
+    if (isEnded) return
+    if (timeLeft > 3600) return
+    let cancelled = false
+    const refreshLive = async () => {
+      if (cancelled) return
+      setLiveFetching(true)
+      try {
+        const res = await fetch(`${API}/api/auctions/${auction.id}/refresh`)
+        const fresh = await res.json()
+        if (cancelled) return
+        if (fresh?.current_price != null) setLivePrice(fresh.current_price)
+        if (fresh?.bid_count != null) setLiveBidCount(fresh.bid_count)
+      } catch {} finally {
+        if (!cancelled) setLiveFetching(false)
+      }
+    }
+    refreshLive()
+    const id = setInterval(refreshLive, 30_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [auction.id, timeLeft > 3600 ? 1 : 0, isEnded])
+
+  const effectivePrice = livePrice != null ? livePrice : auction.current_price
+  const effectiveBidCount = liveBidCount != null ? liveBidCount : auction.bid_count
 
   // Pull median comp for this driver+parallel (+grade if present in title).
   // Server-side prefetch: when the parent already supplied verdict_comp on the
@@ -941,12 +971,13 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           </div>
           {/* Bid count badge */}
           <div className={`flex items-center gap-1 shrink-0 px-1.5 py-0.5 rounded-lg text-[10px] font-bold ${
-            auction.bid_count > 0
+            effectiveBidCount > 0
               ? 'bg-blue-900/30 text-blue-400 border border-blue-800/40'
               : 'bg-gray-800/60 text-gray-600 border border-gray-700/30'
           }`}>
             <Gavel size={8} />
-            {auction.bid_count > 0 ? `${auction.bid_count} bid${auction.bid_count !== 1 ? 's' : ''}` : 'No bids'}
+            {effectiveBidCount > 0 ? `${effectiveBidCount} bid${effectiveBidCount !== 1 ? 's' : ''}` : 'No bids'}
+            {liveFetching && <RefreshCw size={8} className="animate-spin ml-0.5" />}
           </div>
         </div>
 
@@ -984,7 +1015,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
         </div>
 
         {/* Pricing options — disable if ended */}
-        {!isEnded && <PricingOptions auction={auction} comp={comp} />}
+        {!isEnded && <PricingOptions auction={{ ...auction, current_price: effectivePrice, bid_count: effectiveBidCount }} comp={comp} />}
 
         {/* Saved intent chip */}
         {savedIntent && (
