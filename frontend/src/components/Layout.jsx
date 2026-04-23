@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
+import SignedOutBanner from './SignedOutBanner'
 import { useAuth } from '../lib/auth'
 import { LogIn, LogOut } from 'lucide-react'
 
@@ -27,14 +28,14 @@ const NAV = [
   { to: '/sniper', label: 'Sniper', icon: Target },
 ]
 
-// Mobile bottom tab bar — 5 most-used. "Mine" now includes AI scan + grade predictor.
-// "Snipe" replaces standalone AI — surfaces push-notifiable snipe opportunities.
-const MOBILE_TABS = [
-  { to: '/', label: 'Home', icon: LayoutDashboard, exact: true },
-  { to: '/auctions', label: 'Deals', icon: Gavel },
-  { to: '/sales', label: 'Sales', icon: Database },
-  { to: '/portfolio', label: 'Mine', icon: Briefcase },
-  { to: '/sniper', label: 'Snipe', icon: Target },
+// Mobile bottom tab bar — 4 key routes. 4th tab swaps Portfolio/Drivers based on auth.
+const mobileTabsFor = (signedIn) => [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/auctions', label: 'Auctions', icon: Gavel },
+  { to: '/bin', label: 'Buy It Now', icon: Tag },
+  signedIn
+    ? { to: '/portfolio', label: 'Portfolio', icon: Briefcase }
+    : { to: '/drivers', label: 'Drivers', icon: Users },
 ]
 
 export default function Layout() {
@@ -388,6 +389,7 @@ export default function Layout() {
         )}
 
         <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-20 md:pb-6">
+          <SignedOutBanner />
           <Outlet />
           {/* FTC-required affiliate disclosure */}
           <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-gray-800/60 light:border-gray-300">
@@ -410,24 +412,24 @@ export default function Layout() {
           </div>
         </main>
 
-        {/* Mobile bottom tab bar */}
+        {/* Mobile bottom tab bar — 4 key routes, iOS/Android-style tap targets */}
         <nav
-          className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-gray-900/95 backdrop-blur-sm border-t border-gray-800/80 flex items-center justify-around px-1"
+          className="md:hidden fixed bottom-0 inset-x-0 h-14 bg-gray-950 border-t border-gray-800 z-30 flex"
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
-          {MOBILE_TABS.map(({ to, label, icon: Icon, exact }) => (
+          {mobileTabsFor(!!user).map(({ to, label, icon: Icon, exact }) => (
             <NavLink
               key={to}
               to={to}
               end={exact}
               className={({ isActive }) =>
-                `flex-1 flex flex-col items-center gap-0.5 py-2 min-h-[56px] justify-center transition-colors ${
-                  isActive ? 'text-red-400' : 'text-gray-500 hover:text-gray-300'
+                `flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition ${
+                  isActive ? 'text-red-500' : 'text-gray-500 hover:text-white'
                 }`
               }
             >
-              <Icon size={20} />
-              <span className="text-[10px] font-semibold">{label}</span>
+              <Icon size={18} />
+              <span>{label}</span>
             </NavLink>
           ))}
         </nav>
