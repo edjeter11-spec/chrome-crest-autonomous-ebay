@@ -53,6 +53,9 @@ const CardPage = lazy(() => import('./pages/CardPage'))
 const Compare = lazy(() => import('./pages/Compare'))
 const MyCards = lazy(() => import('./pages/MyCards'))
 const About = lazy(() => import('./pages/About'))
+const FAQ = lazy(() => import('./pages/FAQ'))
+const Terms = lazy(() => import('./pages/Terms'))
+const Privacy = lazy(() => import('./pages/Privacy'))
 const Arbitrage = lazy(() => import('./pages/Arbitrage'))
 const GradeProfit = lazy(() => import('./pages/GradeProfit'))
 const Sniper = lazy(() => import('./pages/Sniper'))
@@ -88,6 +91,9 @@ export default function App() {
           <Route path="card/:slug" element={<Suspense fallback={<PageFallback />}><CardPage /></Suspense>} />
           <Route path="compare" element={<Suspense fallback={<PageFallback />}><Compare /></Suspense>} />
           <Route path="about" element={<Suspense fallback={<PageFallback />}><About /></Suspense>} />
+          <Route path="faq" element={<Suspense fallback={<PageFallback />}><FAQ /></Suspense>} />
+          <Route path="terms" element={<Suspense fallback={<PageFallback />}><Terms /></Suspense>} />
+          <Route path="privacy" element={<Suspense fallback={<PageFallback />}><Privacy /></Suspense>} />
           <Route path="arbitrage" element={<Suspense fallback={<PageFallback />}><Arbitrage /></Suspense>} />
           <Route path="grade-profit" element={<Navigate to="/arbitrage?tab=grade" replace />} />
           <Route path="sniper" element={<Suspense fallback={<PageFallback />}><Sniper /></Suspense>} />

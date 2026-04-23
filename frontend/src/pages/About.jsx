@@ -37,6 +37,48 @@ export default function About() {
           </p>
         </section>
 
+        <section className="space-y-3">
+          <h2 className="text-lg font-bold text-white">How we source data</h2>
+          <p className="text-sm text-gray-300 leading-relaxed">
+            Every number on this site traces back to a real, public data source. Here's exactly how
+            each feed works:
+          </p>
+          <ul className="space-y-2 text-sm text-gray-300">
+            <li className="flex gap-2">
+              <span className="text-red-500 font-black shrink-0">•</span>
+              <span>
+                <strong className="text-white">Live auction data:</strong> eBay Browse API,
+                refreshed every 5 minutes. We pull active auctions and Buy-It-Now listings directly
+                from eBay's official API using OAuth 2.0 credentials.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span className="text-red-500 font-black shrink-0">•</span>
+              <span>
+                <strong className="text-white">Sold comps:</strong> 130point HTML scraper, every
+                10 minutes. We pull the most recent sold prices so medians reflect what cards are
+                actually selling for right now — not month-old list prices.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span className="text-red-500 font-black shrink-0">•</span>
+              <span>
+                <strong className="text-white">PSA population data:</strong> Manual research and
+                scraping from the PSA public database. Used to gauge scarcity for PSA 10 pop reports
+                across every parallel we track.
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span className="text-red-500 font-black shrink-0">•</span>
+              <span>
+                <strong className="text-white">Data transparency:</strong> All prices are real eBay
+                sales. Median calculations use the last 90 days of confirmed sold comps — nothing
+                simulated, nothing projected.
+              </span>
+            </li>
+          </ul>
+        </section>
+
         <section className="space-y-2">
           <h2 className="text-lg font-bold text-white">Disclaimer</h2>
           <p className="text-sm text-gray-300 leading-relaxed">
