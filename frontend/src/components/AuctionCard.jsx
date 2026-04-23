@@ -232,11 +232,11 @@ function ScarcityBadge({ tier, count }) {
 }
 
 function SellerBadge({ feedback }) {
-  if (feedback == null) return <span className="skeleton w-14 h-3 rounded" />
+  if (feedback == null) return null
   if (feedback >= 10000) return <span className="text-xs font-semibold text-yellow-400">Top Rated+</span>
   if (feedback >= 1000) return <span className="text-xs font-semibold text-green-400">Top Rated</span>
   if (feedback >= 100) return <span className="text-xs font-semibold text-blue-400">Trusted</span>
-  return <span className="text-xs text-gray-500">{feedback} fb</span>
+  return null
 }
 
 function CardImageFallback({ teamColor, driverName }) {
@@ -923,7 +923,9 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             <span className="text-[10px] text-gray-500 truncate">
               {auction.end_time
                 ? (() => {
-                    const end = new Date(auction.end_time)
+                    const s = String(auction.end_time)
+                    const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(s)
+                    const end = new Date(hasTz ? s : s + 'Z')
                     const now = new Date()
                     const isToday = end.toDateString() === now.toDateString()
                     const isTomorrow = end.toDateString() === new Date(now.getTime() + 86400000).toDateString()
@@ -975,7 +977,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
 
         {/* Seller row */}
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-600 truncate max-w-[90px]">
+          <span className="text-[10px] text-gray-400 font-semibold truncate max-w-[160px]">
             {auction.seller || <span className="skeleton w-16 h-2.5 rounded" />}
           </span>
           <SellerBadge feedback={auction.seller_feedback} />
