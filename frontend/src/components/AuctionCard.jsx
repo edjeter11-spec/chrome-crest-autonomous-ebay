@@ -940,13 +940,23 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           teamColor={auction.card?.team_color}
         />
 
+        {/* Driver photo badge (top-left) */}
+        {(auction.card?.driver_name || auction.driver_name) && (
+          <img
+            src={`${API}/api/drivers/photo?name=${encodeURIComponent(auction.card?.driver_name || auction.driver_name)}`}
+            alt={auction.card?.driver_name || auction.driver_name}
+            className="absolute top-2 left-2 w-9 h-9 rounded-full object-cover border-2 border-white/80 bg-gray-900 shadow-lg z-20"
+            onError={e => { e.currentTarget.style.display = 'none' }}
+          />
+        )}
+
         {/* Team color accent bar */}
         {teamColor && (
           <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-70" style={{ backgroundColor: teamColor }} />
         )}
 
         {/* Badges */}
-        <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+        <div className="absolute top-2 left-14 flex flex-col gap-1 z-10">
           {isEnded && (
             <div className="flex items-center gap-1 bg-gray-700 text-gray-200 text-[10px] font-black px-2 py-1 rounded-lg shadow-lg">
               ✓ ENDED
