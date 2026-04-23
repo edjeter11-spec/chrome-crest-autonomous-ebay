@@ -101,9 +101,6 @@ def list_auctions(
         q = q.filter(Auction.buying_options.like('%AUCTION%'))
     elif buying == "bin":
         q = q.filter((Auction.buying_options == None) | (~Auction.buying_options.like('%AUCTION%')))
-    if status == "active":
-        now = datetime.utcnow()
-        q = q.filter((Auction.end_time == None) | (Auction.end_time > now))
     total = q.count()
     # Sort ending-soonest first so auction listings (which expire today) always
     # appear before BIN listings (which may expire in 30+ days).
@@ -148,12 +145,6 @@ def list_with_verdicts(
         q = q.filter(Auction.buying_options.like('%AUCTION%'))
     elif buying == "bin":
         q = q.filter((Auction.buying_options == None) | (~Auction.buying_options.like('%AUCTION%')))
-    # Hide auctions whose end_time has already passed (the cron may not
-    # have swept them to 'ended' yet). Without this, users see expired
-    # listings with frozen bid counts.
-    if status == "active":
-        now = datetime.utcnow()
-        q = q.filter((Auction.end_time == None) | (Auction.end_time > now))
     total = q.count()
     rows = q.order_by(Auction.end_time.asc()).offset(offset).limit(limit).all()
 

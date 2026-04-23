@@ -81,7 +81,7 @@
     },
     {
       "path": "/api/ebay/refresh",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/15 * * * *"
     }
   ],
   "env": {
