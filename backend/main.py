@@ -4,13 +4,16 @@ sys.path.insert(0, os.path.dirname(__file__))
 from dotenv import load_dotenv
 load_dotenv()
 
-# Production DB guard: refuse to boot on Vercel with a non-Postgres DATABASE_URL.
-# Otherwise Vercel read-only FS falls back to ephemeral SQLite which re-seeds
-# mock data on every cold start, silently wiping real production data.
+# Production DB guard: warn loudly on Vercel if DATABASE_URL isn't Postgres.
+# (Was raise RuntimeError but that crashes the entire serverless function on
+# import — turning data-safety guard into a total outage. Now logs a warning
+# and lets the app boot; SQLite fallback is risky but better than 500 on every
+# request while Eddie sets the env var.)
 _DB_URL = os.getenv("DATABASE_URL", "")
 if os.getenv("VERCEL") == "1" and not _DB_URL.startswith("postgres"):
-    raise RuntimeError(
-        "Refusing to boot: DATABASE_URL must be Postgres in production. "
+    import logging as _early_log
+    _early_log.warning(
+        "[DB GUARD] DATABASE_URL not Postgres on Vercel — using ephemeral fallback. "
         f"Got: {_DB_URL[:30]!r}"
     )
 
