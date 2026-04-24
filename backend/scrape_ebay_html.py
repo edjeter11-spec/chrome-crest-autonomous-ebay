@@ -190,7 +190,19 @@ async def scrape_ebay_html(mode: str = "sold", queries: Optional[list[str]] = No
     return out
 
 
-async def ingest_ebay_html_sold(db: Optional[Session] = None) -> dict:
+async def ingest_ebay_html_sold(*args, **kwargs):
+    """DISABLED: scraping eBay HTML violates ToS. Use Browse API filter=soldItemsOnly or Marketplace Insights API instead."""
+    return {"disabled": True, "reason": "ebay_tos_compliance"}
+
+
+async def ingest_ebay_html_auction(*args, **kwargs):
+    """DISABLED: scraping eBay HTML violates ToS. Use Browse API filter=soldItemsOnly or Marketplace Insights API instead."""
+    return {"disabled": True, "reason": "ebay_tos_compliance"}
+
+
+# --- Below: original implementations preserved for future migration to official eBay APIs ---
+# Rename-preserved; these remain unreferenced until renamed/rewired through an API client.
+async def _disabled_ingest_ebay_html_sold(db: Optional[Session] = None) -> dict:
     owns = db is None
     if owns:
         db = SessionLocal()
@@ -265,7 +277,7 @@ async def ingest_ebay_html_sold(db: Optional[Session] = None) -> dict:
     return result
 
 
-async def ingest_ebay_html_auction(db: Optional[Session] = None) -> dict:
+async def _disabled_ingest_ebay_html_auction(db: Optional[Session] = None) -> dict:
     owns = db is None
     if owns:
         db = SessionLocal()

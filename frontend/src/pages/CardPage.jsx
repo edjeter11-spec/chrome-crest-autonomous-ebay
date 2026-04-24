@@ -5,6 +5,7 @@ import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/driv
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { ShareMenu } from '../components/AuctionCard'
 import Breadcrumbs from '../components/Breadcrumbs'
+import RawToGradedROI from '../components/RawToGradedROI'
 
 const API = import.meta.env.VITE_API_URL || ''
 const SITE = 'https://www.f1cardvault.com'
@@ -373,6 +374,15 @@ export default function CardPage() {
           </div>
         </div>
       )}
+
+      {/* Raw → PSA 10 ROI calculator */}
+      <RawToGradedROI
+        driver={driver}
+        parallel={parallel}
+        isRookie={/rookie|rc\b/i.test(parallel || '')}
+        isAuto={(parallel || '').toLowerCase().includes('auto')}
+        rawPrice={medianPrice}
+      />
 
       {/* Live listings */}
       <div className="panel p-4">
