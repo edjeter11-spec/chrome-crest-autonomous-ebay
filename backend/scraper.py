@@ -209,6 +209,114 @@ def calculate_snipe_score(auction, card, db: Session | None = None) -> float:
     return score
 
 
+def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> bool:
+    """
+    Decide whether an auction qualifies as a snipe.
+
+    Loosened criteria (OR-based) so the dashboard "Active Snipes" counter actually
+    captures real opportunities even when eBay refreshes lag behind price drops:
+
+      - auction is active and not ended, AND
+      - snipe_score >= 50, AND
+      - EITHER ending within the next 6 hours
+        OR current total cost is <= 50% of median comp price.
+
+    A positive score >= 50 alone is enough when we can't compute a median (no comps)
+    and time-left check passes. Missing end_time is treated as ineligible.
+    """
+    if auction is None:
+        return False
+    status = getattr(auction, "status", "active")
+    if status and status != "active":
+        return False
+    end_time = getattr(auction, "end_time", None)
+    if not end_time:
+        return False
+
+    now = datetime.utcnow()
+    if end_time <= now:
+        return False
+
+    score = getattr(auction, "snipe_score", 0) or 0
+    if score < 50:
+        return False
+
+    # Condition A: ending within 6 hours.
+    ending_soon = (end_time - now) <= timedelta(hours=6)
+
+    # Condition B: price deeply under median (>=50% discount vs comps).
+    cheap = False
+    try:
+        cur_total = (getattr(auction, "current_price", 0) or 0) + (getattr(auction, "shipping_cost", 0) or 0)
+        if card is None:
+            card = getattr(auction, "card", None)
+        if cur_total > 0 and card is not None:
+            owns_db = db is None
+            if owns_db:
+                from database import SessionLocal as _SL
+                db = _SL()
+            try:
+                grade = _extract_grade_from_title(getattr(auction, "title", "") or "")
+                med, n = median_comp_price(db, card.driver_name, card.parallel, grade)
+                ref_price = med if (med and n >= 3) else (getattr(card, "base_value", 0) or 0)
+                if ref_price and cur_total <= ref_price * 0.5:
+                    cheap = True
+            finally:
+                if owns_db:
+                    db.close()
+    except Exception as e:  # median lookup must never make us fail-closed
+        logger.debug(f"compute_snipe_eligible median lookup failed: {e}")
+
+    return ending_soon or cheap
+
+
+def recompute_snipe_eligibility(db: Session) -> dict:
+    """
+    Walk every active auction and re-evaluate snipe_score + snipe_eligible.
+
+    Designed to be called from /api/cron/sync and /api/ebay/refresh so even if the
+    original scrape missed an eligible auction (price hadn't dropped yet, end_time
+    hadn't crept inside the 6h window, etc.), the next cron tick will flip it.
+
+    Returns a small dict of counters for observability.
+    """
+    now = datetime.utcnow()
+    checked = 0
+    flipped_on = 0
+    flipped_off = 0
+    errors = 0
+
+    active = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.end_time > now,
+    ).all()
+
+    for a in active:
+        try:
+            card = db.query(Card).filter(Card.id == a.card_id).first() if a.card_id else None
+            new_score = calculate_snipe_score(a, card, db) if card else (a.snipe_score or 0)
+            a.snipe_score = new_score
+            new_eligible = compute_snipe_eligible(a, card, db)
+            if new_eligible and not a.snipe_eligible:
+                flipped_on += 1
+            elif a.snipe_eligible and not new_eligible:
+                flipped_off += 1
+            a.snipe_eligible = new_eligible
+            checked += 1
+        except Exception as e:
+            errors += 1
+            logger.warning(f"recompute_snipe_eligibility: auction {getattr(a, 'id', '?')} failed: {e}")
+
+    if checked:
+        db.commit()
+    return {
+        "checked": checked,
+        "flipped_on": flipped_on,
+        "flipped_off": flipped_off,
+        "errors": errors,
+    }
+
+
 def _parallel_from_title(title: str) -> str:
     t = title.lower()
     # Insert sets (check before generic refractor/auto)
@@ -352,7 +460,7 @@ async def sync_real_ebay_listings(db: Session) -> int:
             if listing.get("shipping_cost") is not None:
                 existing.shipping_cost = listing.get("shipping_cost")
             existing.snipe_score = calculate_snipe_score(existing, card, db)
-            existing.snipe_eligible = existing.snipe_score >= 50
+            existing.snipe_eligible = compute_snipe_eligible(existing, card, db)
             if listing.get("image_url") and not existing.image_url:
                 existing.image_url = listing["image_url"]
             if buying_opts_json:
@@ -378,7 +486,7 @@ async def sync_real_ebay_listings(db: Session) -> int:
                 status="active",
             )
             a.snipe_score = calculate_snipe_score(a, card, db)
-            a.snipe_eligible = a.snipe_score >= 50
+            a.snipe_eligible = compute_snipe_eligible(a, card, db)
             db.add(a)
             added += 1
 
