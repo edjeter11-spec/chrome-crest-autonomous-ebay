@@ -997,6 +997,18 @@ function rarityWeight(a) {
   return 1.0
 }
 
+// Strip redundant set prefix from display titles so the driver/parallel is visible.
+const cleanTitle = (t) => (t || '').replace(/^2025\s*topps\s*chrome\s*f(ormula)?\s*1\s*/i, '').trim()
+
+// Team-logo / non-driver card reject list. These come through as "cards" but are team entries.
+const TEAM_DRIVER_RE = /^(oracle|red bull|mercedes|ferrari|aston(?:\s*martin)?|alpine|williams|haas|mclaren|stake|rb|alfa(?:\s*romeo)?|alphatauri|racing bulls|kick sauber|sauber)$/i
+const TEAM_TITLE_RE = /\b(racing|team|oracle|mercedes|ferrari|red bull|aston martin|alpine|williams|haas|mclaren|stake|alfa romeo|alphatauri|racing bulls|kick sauber)\b/i
+const isTeamCard = (a) => {
+  const d = (a?.card?.driver_name || a?.driver_name || '').trim()
+  if (!d) return false
+  return TEAM_DRIVER_RE.test(d)
+}
+
 function DealOfTheDay({ auctions }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [])
@@ -1006,55 +1018,76 @@ function DealOfTheDay({ auctions }) {
   const deal = useMemo(() => {
     try {
       if (!safeAuctions.length) return null
-      // Deal of the Day = F1-only, /99 or rarer, or autograph. No base, no F2/F3/Legends,
-      // no common parallels. Prefer exciting autos and rare numbered parallels.
-      const EXCLUDE_PARALLELS = /^(base|refractor|prism refractor|b&w ray wave|b&w lazer|checker flag|floor it|four & more|diamond 75th)$/i
-      const ALLOWED_PRINT_RUN = /\/(5|10|15|20|25|50|75|99)\b/
-      const AUTO_RE = /\bauto(graph)?\b|\bsigned\b/i
-      const EXCITING_INSERT = /(neon nations|vegas at night|helix|ultrasonic|the grail|futuro|speed demons|ace of trades|superfractor|red \/5|black \/10|orange \/25|gold \/50|f1 75th \/75)/i
 
-      const pool = safeAuctions.filter(a => {
+      const EXCLUDE_PARALLELS = /^(base|refractor|prism refractor|b&w ray wave|b&w lazer|checker flag|floor it|four & more|diamond 75th)$/i
+      const AUTO_RE = /\bauto(graph)?\b|\bsigned\b/i
+      const RARE_NUMBERED_RE = /\/(?:5|10|15|20|25|50)\b|superfractor|1\/1|one\s*of\s*one/i
+      const NUMBERED_99_RE = /\/(?:5|10|15|20|25|50|75|99)\b|superfractor|1\/1|one\s*of\s*one/i
+      const STRONG = 'STRONG_BUY'
+      const GOOD = 'GOOD_BUY'
+      const RARE_INSERT_RE = /(neon nations|vegas at night|helix|ultrasonic|the grail|futuro|speed demons|ace of trades|superfractor)/i
+
+      const DAY_MS = 24 * 3600 * 1000
+      const nowMs = Date.now()
+
+      const getParallel = a => a.card?.parallel || a.parallel || ''
+      const getTitle = a => a.title || ''
+      const hasAuction = a => (a.buying_options || []).includes('AUCTION')
+      const hasBIN = a => (a.buying_options || []).includes('FIXED_PRICE')
+
+      const eligible = safeAuctions.filter(a => {
         if (!a) return false
-        const sL = secsLeft(a)
-        if (sL <= 0) return false
-        // F1 drivers only — drop F2/F3/Legends.
         const series = a.card?.series || a.series || 'F1'
         if (series !== 'F1') return false
-        const parallel = a.card?.parallel || a.parallel || ''
-        const title = a.title || ''
-        // Reject plain/common parallels.
+        if (isTeamCard(a)) return false
+        const parallel = getParallel(a)
+        const title = getTitle(a)
+        if (!parallel && !a.card?.driver_name && TEAM_TITLE_RE.test(title)) return false
         if (EXCLUDE_PARALLELS.test(parallel)) return false
-        // Must be either: autograph, exciting insert, or numbered /99 or rarer.
-        const isAuto = AUTO_RE.test(title) || AUTO_RE.test(parallel)
-        const isExciting = EXCITING_INSERT.test(parallel) || EXCITING_INSERT.test(title)
-        const isRareNumbered = ALLOWED_PRINT_RUN.test(parallel) || ALLOWED_PRINT_RUN.test(title)
-        if (!isAuto && !isExciting && !isRareNumbered) return false
-        // Floor price — no $1 junk.
-        if ((a.current_price || 0) < 10 && (a.bid_count || 0) < 2) return false
         return true
       })
-      let best = null
-      let bestScore = -Infinity
-      for (const a of pool) {
-        if (!a) continue
-        const snipe = a.snipe_score || 0
-        if (snipe <= 0) continue
-        const nComps = a.n_comps ?? a.comp_count ?? a.comps_n ?? a.median_n ?? null
-        const compPenalty = (nComps != null && nComps < 5) ? (1 / 10) : 1
-        const rw = rarityWeight(a)
-        // Auto boost: autos get 1.8x weight, exciting inserts 1.4x.
-        const title = a.title || ''
-        const parallel = a.card?.parallel || a.parallel || ''
-        const autoBoost = (AUTO_RE.test(title) || AUTO_RE.test(parallel)) ? 1.8
-          : EXCITING_INSERT.test(parallel) || EXCITING_INSERT.test(title) ? 1.4
-          : 1.0
-        const score = snipe * compPenalty * rw * autoBoost
-        if (score > bestScore) {
-          bestScore = score
-          best = a
-        }
-      }
-      return best
+
+      // Bucket 1: Ending Auction — live steal.
+      const endingAuctions = eligible.filter(a => {
+        if (!hasAuction(a)) return false
+        const sL = secsLeft(a)
+        if (sL <= 0 || sL >= 3600) return false
+        if ((a.current_price || 0) < 10) return false
+        if ((a.bid_count || 0) < 1) return false
+        return true
+      })
+
+      // Bucket 2: Fresh BIN listed within 24h at >= $50 with STRONG/GOOD verdict.
+      const freshBins = eligible.filter(a => {
+        if (!hasBIN(a)) return false
+        const listedAt = a.created_at || a.scraped_at || a.first_seen_at
+        if (!listedAt) return false
+        const t = new Date(listedAt).getTime()
+        if (Number.isNaN(t)) return false
+        if (nowMs - t > DAY_MS) return false
+        const price = a.buy_it_now_price || a.current_price || 0
+        if (price < 50) return false
+        if (a.verdict !== STRONG && a.verdict !== GOOD) return false
+        return true
+      })
+
+      const isAuto = a => AUTO_RE.test(getTitle(a)) || AUTO_RE.test(getParallel(a))
+      const isRareNum = a => RARE_NUMBERED_RE.test(getTitle(a)) || RARE_NUMBERED_RE.test(getParallel(a))
+      const isNum99 = a => NUMBERED_99_RE.test(getTitle(a)) || NUMBERED_99_RE.test(getParallel(a))
+      const isRareInsert = a => RARE_INSERT_RE.test(getTitle(a)) || RARE_INSERT_RE.test(getParallel(a))
+      const byScore = (a, b) => (b.snipe_score || 0) - (a.snipe_score || 0)
+
+      // Priority tiers. Pick the best match within the first non-empty tier.
+      const tier1 = endingAuctions.filter(a => isAuto(a) || isRareNum(a))
+      if (tier1.length) return { ...tier1.sort(byScore)[0], _kind: 'auction' }
+      if (endingAuctions.length) return { ...endingAuctions.sort(byScore)[0], _kind: 'auction' }
+      const tier3 = freshBins.filter(a => a.verdict === STRONG && isAuto(a))
+      if (tier3.length) return { ...tier3.sort(byScore)[0], _kind: 'bin' }
+      const tier4 = freshBins.filter(a => a.verdict === STRONG && isNum99(a))
+      if (tier4.length) return { ...tier4.sort(byScore)[0], _kind: 'bin' }
+      const tier5 = freshBins.filter(a => a.verdict === GOOD && isRareInsert(a))
+      if (tier5.length) return { ...tier5.sort(byScore)[0], _kind: 'bin' }
+      return null
     } catch (err) {
       console.error('[DealOfTheDay] selection failed', err)
       return null
@@ -1063,6 +1096,7 @@ function DealOfTheDay({ auctions }) {
 
   if (!deal) return null
 
+  const isAuctionDeal = deal._kind === 'auction'
   const secs = secsLeft(deal) || Math.max(0, Math.floor(((deal?.end_time ? new Date(deal.end_time).getTime() : 0) - now) / 1000))
   const h = Math.floor(secs / 3600)
   const m = Math.floor((secs % 3600) / 60)
@@ -1076,13 +1110,22 @@ function DealOfTheDay({ auctions }) {
   const medianRaw = deal?.median_total ?? deal?.median_price ?? deal?.median ?? null
   const medianComp = medianRaw != null && Number.isFinite(Number(medianRaw)) ? Number(medianRaw) : null
   const driver = deal?.driver_name || deal?.card?.driver_name || ''
-  const title = deal?.title || [driver, deal?.parallel].filter(Boolean).join(' ') || 'F1 Card Deal'
+  const rawTitle = deal?.title || [driver, deal?.parallel].filter(Boolean).join(' ') || 'F1 Card Deal'
+  const title = cleanTitle(rawTitle) || rawTitle
   const auctionId = deal?.id ?? null
   const cardId = deal?.card_id ?? deal?.card?.id ?? null
+  const listedAt = deal?.created_at || deal?.scraped_at || deal?.first_seen_at
+  const bidCount = deal?.bid_count || 0
 
   const onCtaClick = () => {
     try { trackClick(rawUrl, auctionId, cardId) } catch (err) { console.error('[DealOfTheDay] trackClick', err) }
   }
+
+  const badgeLabel = isAuctionDeal ? '🔴 Live Auction Steal' : '💰 New Buy-It-Now Deal'
+  const formatLine = isAuctionDeal
+    ? `${bidCount} bid${bidCount === 1 ? '' : 's'} · ends ${countdown}`
+    : `Buy Now · Listed ${relTime(listedAt)}`
+  const ctaLabel = isAuctionDeal ? 'Bid on eBay' : 'Buy on eBay'
 
   return (
     <a
@@ -1112,7 +1155,9 @@ function DealOfTheDay({ auctions }) {
         <div className="flex-1 p-5 md:p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="bg-yellow-400 text-red-900 text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">Deal of the Day</span>
+              <span className="bg-yellow-400 text-red-900 text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
+                {badgeLabel}
+              </span>
               {deal.verdict && (
                 <span className="bg-white/20 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
                   {String(deal.verdict).replace('_', ' ')}
@@ -1122,16 +1167,21 @@ function DealOfTheDay({ auctions }) {
                 <span className="text-[10px] text-red-100 font-mono">Score {Math.round(deal.snipe_score)}</span>
               ) : null}
             </div>
-            <h2 className="text-2xl md:text-4xl font-black text-white leading-tight mb-1 line-clamp-2">
+            <h2 className="text-xl md:text-3xl font-black text-white leading-tight mb-1 line-clamp-2">
               {title}
             </h2>
-            <div className="text-sm text-red-100 mb-3 font-semibold">
+            <div className="text-sm text-red-100 mb-2 font-semibold">
               {deal.parallel || '—'}{deal.grade && deal.grade !== 'Raw' ? ` · ${deal.grade}` : ''}
+            </div>
+            <div className="text-xs text-yellow-200 font-bold mb-3">
+              {formatLine}
             </div>
           </div>
           <div className="flex flex-wrap items-end gap-4 md:gap-6">
             <div>
-              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Current price</div>
+              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">
+                {isAuctionDeal ? 'Current bid' : 'Buy it now'}
+              </div>
               <div className="text-4xl md:text-5xl font-black text-white tabular-nums">${price.toFixed(0)}</div>
             </div>
             {medianComp != null && (
@@ -1140,13 +1190,15 @@ function DealOfTheDay({ auctions }) {
                 <div className="text-2xl md:text-3xl font-black text-red-100 tabular-nums">${medianComp.toFixed(0)}</div>
               </div>
             )}
-            <div>
-              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Time left</div>
-              <div className="text-2xl md:text-3xl font-black text-yellow-300 tabular-nums">{countdown}</div>
-            </div>
+            {isAuctionDeal && (
+              <div>
+                <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Time left</div>
+                <div className="text-2xl md:text-3xl font-black text-yellow-300 tabular-nums">{countdown}</div>
+              </div>
+            )}
             <div className="ml-auto">
               <div className="bg-white text-red-700 font-black text-sm md:text-base px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 hover:bg-yellow-50">
-                Bid on eBay <ExternalLink size={14} />
+                {ctaLabel} <ExternalLink size={14} />
               </div>
             </div>
           </div>
