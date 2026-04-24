@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db, Wishlist, Card
 from models import WishlistCreate
+from typing import Optional
+from lib.auth import get_user_id, require_user_id
 
 router = APIRouter(prefix="/api/wishlist", tags=["wishlist"])
 
@@ -27,13 +29,25 @@ def item_to_dict(w: Wishlist) -> dict:
 
 
 @router.get("")
-def list_wishlist(db: Session = Depends(get_db)):
-    items = db.query(Wishlist).order_by(Wishlist.priority.desc()).all()
+def list_wishlist(
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
+    q = db.query(Wishlist)
+    if user_id:
+        q = q.filter(Wishlist.user_id == user_id)
+    else:
+        q = q.filter(Wishlist.user_id.is_(None))
+    items = q.order_by(Wishlist.priority.desc()).all()
     return {"items": [item_to_dict(i) for i in items]}
 
 
 @router.post("")
-def add_to_wishlist(body: dict, db: Session = Depends(get_db)):
+def add_to_wishlist(
+    body: dict,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     """Accepts either {card_id, ...} OR {driver_name, parallel, grade?, ...}.
     The driver-name path looks up an existing matching Card, or creates a
     placeholder Card so the wishlist row has something to FK to."""
@@ -66,7 +80,12 @@ def add_to_wishlist(body: dict, db: Session = Depends(get_db)):
             db.add(card); db.commit(); db.refresh(card)
     if not card:
         raise HTTPException(400, "Driver name or card_id required")
-    existing = db.query(Wishlist).filter(Wishlist.card_id == card.id).first()
+    existing_q = db.query(Wishlist).filter(Wishlist.card_id == card.id)
+    if user_id:
+        existing_q = existing_q.filter(Wishlist.user_id == user_id)
+    else:
+        existing_q = existing_q.filter(Wishlist.user_id.is_(None))
+    existing = existing_q.first()
     if existing:
         return item_to_dict(existing)
     item = Wishlist(
@@ -75,17 +94,28 @@ def add_to_wishlist(body: dict, db: Session = Depends(get_db)):
         priority=body.get("priority", 3),
         notes=body.get("notes"),
         auto_snipe=body.get("auto_snipe", False),
+        user_id=user_id,
     )
     db.add(item); db.commit(); db.refresh(item)
     return item_to_dict(item)
 
 
 @router.patch("/{item_id}")
-def update_wishlist_item(item_id: int, body: dict, db: Session = Depends(get_db)):
+def update_wishlist_item(
+    item_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     item = db.query(Wishlist).filter(Wishlist.id == item_id).first()
     if not item:
         raise HTTPException(404, "Not found")
+    if item.user_id and item.user_id != user_id:
+        raise HTTPException(403, "forbidden")
+    # Don't let callers overwrite user_id via body
     for k, v in body.items():
+        if k == "user_id":
+            continue
         if hasattr(item, k):
             setattr(item, k, v)
     db.commit()
@@ -93,10 +123,16 @@ def update_wishlist_item(item_id: int, body: dict, db: Session = Depends(get_db)
 
 
 @router.delete("/{item_id}")
-def delete_wishlist_item(item_id: int, db: Session = Depends(get_db)):
+def delete_wishlist_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     item = db.query(Wishlist).filter(Wishlist.id == item_id).first()
     if not item:
         raise HTTPException(404, "Not found")
+    if item.user_id and item.user_id != user_id:
+        raise HTTPException(403, "forbidden")
     db.delete(item)
     db.commit()
     return {"ok": True}

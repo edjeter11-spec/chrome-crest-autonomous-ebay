@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import get_db, Portfolio, Card, SoldCard
 from datetime import datetime, timedelta
+from typing import Optional
+from lib.auth import get_user_id, require_user_id
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -82,15 +84,28 @@ def item_to_dict(p: Portfolio, db: Session) -> dict:
 
 
 @router.get("")
-def list_portfolio(db: Session = Depends(get_db)):
-    items = db.query(Portfolio).all()
+def list_portfolio(
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
+    q = db.query(Portfolio)
+    if user_id:
+        q = q.filter(Portfolio.user_id == user_id)
+    else:
+        # Anonymous view — show only legacy rows with no owner (backward compatible)
+        q = q.filter(Portfolio.user_id.is_(None))
+    items = q.all()
     rows = [item_to_dict(i, db) for i in items]
     rows.sort(key=lambda r: r["pnl_pct"], reverse=True)
     return {"items": rows}
 
 
 @router.post("")
-async def add_to_portfolio(body: dict, db: Session = Depends(get_db)):
+async def add_to_portfolio(
+    body: dict,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     """
     Accepts either:
       - {card_id, purchase_price, quantity, notes}
@@ -141,6 +156,7 @@ async def add_to_portfolio(body: dict, db: Session = Depends(get_db)):
         quantity=int(body.get("quantity") or 1),
         notes=body.get("notes"),
         ebay_listing_id=body.get("ebay_item_id"),
+        user_id=user_id,
     )
     db.add(item)
     db.commit()
@@ -149,7 +165,11 @@ async def add_to_portfolio(body: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/bulk")
-def bulk_add(body: dict, db: Session = Depends(get_db)):
+def bulk_add(
+    body: dict,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     """
     Bulk import from CSV. Accepts {rows: [{driver, parallel, grade, purchase_price,
     purchase_date, quantity, notes}, ...]}. Creates placeholder Cards as needed.
@@ -215,6 +235,7 @@ def bulk_add(body: dict, db: Session = Depends(get_db)):
                 current_value=live_val,
                 quantity=quantity,
                 notes=notes,
+                user_id=user_id,
             )
             db.add(item)
             inserted += 1
@@ -227,10 +248,18 @@ def bulk_add(body: dict, db: Session = Depends(get_db)):
 
 
 @router.patch("/{item_id}")
-def update_portfolio_item(item_id: int, body: dict, db: Session = Depends(get_db)):
+def update_portfolio_item(
+    item_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     item = db.query(Portfolio).filter(Portfolio.id == item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")
+    # Ownership check: if the row has an owner, caller must match it
+    if item.user_id and item.user_id != user_id:
+        raise HTTPException(403, "forbidden")
     allowed = {"quantity", "purchase_price", "notes", "current_value"}
     for k, v in body.items():
         if k in allowed:
@@ -241,10 +270,16 @@ def update_portfolio_item(item_id: int, body: dict, db: Session = Depends(get_db
 
 
 @router.delete("/{item_id}")
-def remove_from_portfolio(item_id: int, db: Session = Depends(get_db)):
+def remove_from_portfolio(
+    item_id: int,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     item = db.query(Portfolio).filter(Portfolio.id == item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")
+    if item.user_id and item.user_id != user_id:
+        raise HTTPException(403, "forbidden")
     db.delete(item)
     db.commit()
     return {"ok": True}
