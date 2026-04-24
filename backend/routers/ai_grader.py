@@ -111,25 +111,119 @@ async def predict_grade(image: UploadFile = File(...)):
 
 
 SCAN_PROMPT = (
-    "You are an expert F1 trading card identifier. The user uploaded a photo "
-    "of a 2025 Topps Chrome Formula 1 card (base set, parallels, or autograph). "
-    "Identify the card details AND predict the grade. Return your TOP 3 guesses "
-    "for driver + parallel combinations, ranked by confidence.\n\n"
-    "Respond with ONLY valid JSON (no fences, no prose):\n"
+    "You are an expert Formula 1 trading card identifier specializing in 2025 "
+    "Topps Chrome F1 (base set, parallels, inserts, autographs). You will be "
+    "shown a photo of a single card. Your job is to identify the DRIVER and "
+    "the exact PARALLEL/INSERT and self-rate confidence for each separately.\n\n"
+    "== ALLOWED PARALLEL / INSERT VALUES ==\n"
+    "Match the card's parallel against EXACTLY ONE of these (case-sensitive):\n"
+    "  BASE SET & NUMBERED PARALLELS:\n"
+    "    - Base\n"
+    "    - Refractor\n"
+    "    - Prism Refractor\n"
+    "    - Aqua /199\n"
+    "    - Pink /250\n"
+    "    - Teal /299\n"
+    "    - Blue /150\n"
+    "    - Green /99\n"
+    "    - F1 75th /75\n"
+    "    - Gold /50\n"
+    "    - Orange /25\n"
+    "    - Black /10\n"
+    "    - Red /5\n"
+    "    - SuperFractor (1/1)\n"
+    "  INSERT SETS:\n"
+    "    - Neon Nations\n"
+    "    - Vegas at Night\n"
+    "    - Helix\n"
+    "    - Ultrasonic\n"
+    "    - The Grail\n"
+    "    - Futuro\n"
+    "    - Speed Demons\n"
+    "    - Speed Wheels\n"
+    "    - Ace of Trades\n"
+    "    - Top Speed\n"
+    "    - Floor It\n"
+    "    - Four & More\n"
+    "    - Diamond 75th\n"
+    "    - Checker Flag\n"
+    "    - B&W Ray Wave\n"
+    "    - B&W Lazer\n"
+    "    - Helmet Collection\n"
+    "    - The Chain\n"
+    "    - The Grid\n"
+    "  OTHER:\n"
+    "    - Autograph (any signed card)\n"
+    "\n"
+    "== PARALLEL IDENTIFICATION HINTS ==\n"
+    "Use the dominant background / foil pattern to choose the parallel:\n"
+    "  - Neon Nations: bright neon-colored country FLAG background behind "
+    "driver, usually stylized flag stripes/patterns in saturated neon hues "
+    "matching the driver's nationality. Text usually reads 'NEON NATIONS'.\n"
+    "  - Vegas at Night: dark purple/pink neon Vegas strip lights, skyline "
+    "silhouette, very dark blue/black base with neon signage.\n"
+    "  - Helix: spiraling chrome helix/DNA-like pattern behind driver.\n"
+    "  - Ultrasonic: concentric sound-wave / sonar-ring pattern, often "
+    "turquoise or chrome ripples.\n"
+    "  - Speed Demons: red/orange flame or demon motif, aggressive graphics.\n"
+    "  - Speed Wheels: large stylized wheel/tire graphic behind driver.\n"
+    "  - Futuro: retro-futuristic grid / synthwave aesthetic, pink/cyan sun.\n"
+    "  - The Grail: ornate gold/chrome trophy-like border, 'THE GRAIL' text.\n"
+    "  - Ace of Trades: playing-card suit motif (spade/heart/club/diamond).\n"
+    "  - Top Speed: speedometer / blurred-motion graphics.\n"
+    "  - Floor It: pedal / foot-to-floor graphic, bold yellow/red.\n"
+    "  - Four & More: '4+' numerical graphic, usually for multi-winners.\n"
+    "  - Diamond 75th: diamond facet pattern, F1 75th anniversary branding.\n"
+    "  - Checker Flag: black-and-white checkered flag background.\n"
+    "  - B&W Ray Wave: black-and-white ray/wave refractor pattern (no color).\n"
+    "  - B&W Lazer: black-and-white laser-beam refractor pattern (no color).\n"
+    "  - Helmet Collection: close-up of driver's HELMET (not face) dominant.\n"
+    "  - The Chain / The Grid: team-themed multi-driver or grid-layout card.\n"
+    "  - Refractor vs Prism Refractor: Refractor = smooth rainbow shimmer. "
+    "Prism Refractor = geometric prism/triangle facets visible.\n"
+    "  - Numbered parallels (Aqua, Pink, Teal, Blue, Green, Gold, Orange, "
+    "Black, Red): identify by the DOMINANT color wash of the chrome border/"
+    "background AND by the '/NNN' serial number printed on the card back or "
+    "front. If you can read the serial (e.g. '12/199'), that is definitive.\n"
+    "  - SuperFractor: golden sparkle/starburst chrome, 1/1.\n"
+    "  - Base: no color wash, standard chrome silver/rainbow refractor-lite.\n"
+    "\n"
+    "== RULES ==\n"
+    "1. Driver and parallel confidence are INDEPENDENT — you can be 0.95 "
+    "confident on the driver but only 0.4 on the parallel. Rate them "
+    "separately and honestly.\n"
+    "2. If the parallel is not in the list above, pick the closest match and "
+    "mention the mismatch in 'notes'. Do NOT invent new parallel names.\n"
+    "3. If you cannot read the driver's name/face clearly, set driver_name "
+    "to null and confidence_driver low.\n"
+    "4. If the parallel is ambiguous (e.g. could be Refractor or Prism "
+    "Refractor), return your best guess but keep confidence_parallel below "
+    "0.6 and explain the ambiguity in 'notes'.\n"
+    "5. Return TOP 3 driver+parallel combinations ranked by combined "
+    "confidence. If you're very sure, the 2nd/3rd can repeat the driver "
+    "with alternative parallel guesses.\n"
+    "\n"
+    "== OUTPUT ==\n"
+    "Respond with ONLY valid JSON (no markdown fences, no prose before or "
+    "after):\n"
     '{\n'
     '  "top_guesses": [\n'
     '    {\n'
-    '      "driver_name": string (e.g. "Max Verstappen") or null,\n'
-    '      "parallel": string — one of: "Base", "Refractor", "Prism Refractor", "Aqua /199", "Pink /250", "Blue /150", "Green /99", "Gold /50", "Orange /25", "Black /10", "Red /5", "SuperFractor", "Autograph", "Neon Nations", "Vegas at Night", "Helix", "F1 75th /75", "Teal /299", "Diamond 75th", "Helmet Collection", "Ultrasonic", "Speed Demons", "Floor It", "Four & More", "B&W Ray Wave", "B&W Lazer", or null,\n'
-    '      "confidence": number 0-1 (confidence this is the correct driver/parallel pair),\n'
-    '      "predicted_grade": number 1-10 (0.5 increments) or null\n'
-    '    },\n'
-    '    ...\n'
+    '      "driver_name": string or null,\n'
+    '      "parallel": string (exact value from allowed list) or null,\n'
+    '      "confidence_driver": number 0-1,\n'
+    '      "confidence_parallel": number 0-1,\n'
+    '      "confidence": number 0-1 (combined: min of the two),\n'
+    '      "predicted_grade": number 1-10 in 0.5 increments or null,\n'
+    '      "grade_confidence": number 0-1,\n'
+    '      "print_run": string (e.g. "/199", "/5", "1/1") or null,\n'
+    '      "notes": string — reasoning for THIS guess, what you see\n'
+    '    }\n'
     '  ],\n'
     '  "card_number": string (e.g. "#42") or null,\n'
     '  "team": string or null,\n'
     '  "reasoning": 1-2 sentences explaining the primary guess,\n'
-    '  "issues": array of visible flaws\n'
+    '  "issues": array of visible condition flaws\n'
     '}'
 )
 
@@ -194,6 +288,11 @@ async def scan_card(image: UploadFile = File(...)):
     if not isinstance(guesses, list):
         guesses = []
 
+    def _clamp01(v):
+        if isinstance(v, (int, float)):
+            return max(0.0, min(1.0, float(v)))
+        return 0.0
+
     normalized = []
     for guess in guesses[:3]:  # Top 3 only
         if not isinstance(guess, dict):
@@ -201,11 +300,31 @@ async def scan_card(image: UploadFile = File(...)):
         g = guess.get("predicted_grade")
         if isinstance(g, (int, float)):
             guess["predicted_grade"] = max(0, min(10, round(float(g) * 2) / 2))
+
+        cd = _clamp01(guess.get("confidence_driver"))
+        cp = _clamp01(guess.get("confidence_parallel"))
+        guess["confidence_driver"] = cd
+        guess["confidence_parallel"] = cp
+
+        # Combined confidence = min of driver & parallel if both provided,
+        # otherwise fall back to whatever the model returned.
         c = guess.get("confidence")
         if isinstance(c, (int, float)):
-            guess["confidence"] = max(0, min(1, float(c)))
+            c = _clamp01(c)
+        elif cd > 0 or cp > 0:
+            c = min(cd, cp) if (cd > 0 and cp > 0) else max(cd, cp)
         else:
-            guess["confidence"] = 0
+            c = 0.0
+        guess["confidence"] = c
+
+        gc = guess.get("grade_confidence")
+        guess["grade_confidence"] = _clamp01(gc) if isinstance(gc, (int, float)) else 0.0
+
+        if not isinstance(guess.get("notes"), str):
+            guess["notes"] = ""
+        if not isinstance(guess.get("print_run"), (str, type(None))):
+            guess["print_run"] = None
+
         normalized.append(guess)
 
     parsed["top_guesses"] = normalized
@@ -219,5 +338,9 @@ async def scan_card(image: UploadFile = File(...)):
         parsed["parallel"] = first.get("parallel")
         parsed["predicted_grade"] = first.get("predicted_grade")
         parsed["confidence"] = first.get("confidence")
+        parsed["confidence_driver"] = first.get("confidence_driver")
+        parsed["confidence_parallel"] = first.get("confidence_parallel")
+        parsed["print_run"] = first.get("print_run")
+        parsed["notes"] = first.get("notes") or parsed.get("reasoning")
 
     return parsed
