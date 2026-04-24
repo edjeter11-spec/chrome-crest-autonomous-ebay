@@ -360,3 +360,29 @@ def create_tables():
     except Exception as e:
         import logging
         logging.getLogger("jarvis.db").error(f"create_tables failed: {e}")
+    # Auto-add columns that may be missing on existing Postgres deployments
+    # (Base.metadata.create_all only creates new tables, not new columns).
+    # Safe to run on every boot — uses ADD COLUMN IF NOT EXISTS.
+    try:
+        from sqlalchemy import text
+        adds = [
+            "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS is_lot BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS is_graded BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS is_sealed BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS grade_num REAL",
+            "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS psa_cert TEXT",
+            "ALTER TABLE portfolio ADD COLUMN IF NOT EXISTS user_id TEXT",
+            "ALTER TABLE wishlist ADD COLUMN IF NOT EXISTS user_id TEXT",
+            "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS user_id TEXT",
+        ]
+        with engine.begin() as conn:
+            for sql in adds:
+                try:
+                    conn.execute(text(sql))
+                except Exception as col_err:
+                    # SQLite doesn't support IF NOT EXISTS on ADD COLUMN; ignore.
+                    import logging
+                    logging.getLogger("jarvis.db").debug(f"col add skipped ({sql[:50]}): {col_err}")
+    except Exception as outer:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"auto-migrate skipped: {outer}")
