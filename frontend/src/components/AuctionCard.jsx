@@ -813,22 +813,23 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     if (auction.card?.image_url) return [auction.card.image_url]
     return []
   })
-  // Sync time + real-time expiry detection
+  // Sync time + real-time expiry detection. CRITICAL: re-derive from end_time
+  // every tick (don't decrement state) — decrementing accumulates drift, and
+  // if the initial value was stale (e.g. from a.time_left fetched minutes ago)
+  // we'd never correct it. This is the "says 15 min but actually 50" fix.
   useEffect(() => {
     setTimeLeft(computeSecsLeft(auction))
     const timer = setInterval(() => {
-      setTimeLeft(t => {
-        const newTime = Math.max(0, t - 1)
-        // Trigger parent re-render when listing expires mid-session
-        if (newTime === 0 && t > 0) {
-          // Optionally trigger a refresh callback or visual indicator
+      const fresh = computeSecsLeft(auction)
+      setTimeLeft(prev => {
+        if (fresh === 0 && prev > 0) {
           onExpiry?.(auction.id)
         }
-        return newTime
+        return fresh
       })
     }, 1000)
     return () => clearInterval(timer)
-  }, [auction.time_left, auction.id])
+  }, [auction.end_time, auction.time_left, auction.id])
 
   // Deterministic watching state: single source of truth based on auth.
   // Signed-in -> auction.status. Signed-out -> localStorage `cc_watchlist_v2`.

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
   Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Camera,
-  ArrowLeftRight, Calculator, Sun, Moon, Target, Activity
+  ArrowLeftRight, Calculator, Sun, Moon, Target, Activity, Home, Flame
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
@@ -28,13 +28,14 @@ const NAV = [
   { to: '/sniper', label: 'Sniper', icon: Target },
 ]
 
-// Mobile bottom tab bar — 4 key routes. 4th tab swaps Portfolio/Drivers based on auth.
+// Mobile bottom tab bar — 4 key routes. Deals combines Live Auctions + Buy It Now (toggle on /auctions page).
+// 4th tab swaps Portfolio/Drivers based on auth.
 const mobileTabsFor = (signedIn) => [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/auctions', label: 'Auctions', icon: Gavel },
-  { to: '/bin', label: 'Buy It Now', icon: Tag },
+  { to: '/', label: 'Home', icon: Home, exact: true },
+  { to: '/auctions', label: 'Deals', icon: Flame },
+  { to: '/sniper', label: 'Sniper', icon: Zap },
   signedIn
-    ? { to: '/portfolio', label: 'Portfolio', icon: Briefcase }
+    ? { to: '/portfolio', label: 'Portfolio', icon: User }
     : { to: '/drivers', label: 'Drivers', icon: Users },
 ]
 
@@ -423,13 +424,15 @@ export default function Layout() {
                 key={to}
                 to={to}
                 end={exact}
-                className={({ isActive }) =>
-                  `flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold transition ${
-                    isActive
+                className={({ isActive }) => {
+                  const isDealsActive = to === '/auctions' && (location.pathname === '/auctions' || location.pathname === '/bin')
+                  const active = isActive || isDealsActive
+                  return `flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold transition ${
+                    active
                       ? 'text-red-500 border-t-2 border-red-500 -mt-[2px]'
                       : 'text-gray-400 active:bg-gray-900 hover:text-white'
                   }`
-                }
+                }}
               >
                 <Icon size={20} />
                 <span className="tracking-tight">{label}</span>

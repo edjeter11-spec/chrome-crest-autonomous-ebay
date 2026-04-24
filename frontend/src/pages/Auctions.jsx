@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal, Target, Check, X } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
@@ -168,17 +168,31 @@ export default function Auctions() {
   const handleWatchlist = (id, w) =>
     setAuctions(prev => prev.map(a => a.id === id ? { ...a, status: w ? 'watchlist' : 'active' } : a))
 
-  // end_time is naive UTC → append 'Z' so JS doesn't read as local time.
-  const nowMs = Date.now()
-  const trueTimeLeft = (a) => {
-    if (a.end_time) {
-      const s = String(a.end_time)
-      const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(s)
-      const diff = Math.floor((new Date(hasTz ? s : s + 'Z').getTime() - nowMs) / 1000)
-      if (!Number.isNaN(diff)) return diff
-    }
-    return a.time_left || 0
+  // Canonical UTC-aware timer helper. end_time arrives as naive ISO from backend,
+  // so we force a trailing 'Z' — otherwise JS parses it as local and we get
+  // wildly wrong secs-left (the "Oscar Piastri says 15 min but is actually 50"
+  // bug). Returns clamped non-negative seconds.
+  const parseUtc = (s) => {
+    if (!s) return null
+    const str = String(s).trim()
+    const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(str)
+    return new Date(hasTz ? str : str + 'Z')
   }
+  // Tick every second so secsLeft-derived UI (counts, sort) stays fresh.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const nowMs = Date.now()
+  const computeSecsLeft = (a) => {
+    if (!a?.end_time) return Number(a?.time_left) || 0
+    const dt = parseUtc(a.end_time)
+    if (!dt || Number.isNaN(dt.getTime())) return 0
+    const ms = dt.getTime() - nowMs
+    return Math.max(0, Math.floor(ms / 1000))
+  }
+  const trueTimeLeft = computeSecsLeft
 
   const filtered = auctions
     .map(a => ({ ...a, time_left: trueTimeLeft(a) }))
@@ -253,6 +267,15 @@ export default function Auctions() {
 
   const snipeCount = filtered.filter(a => a.snipe_eligible).length
   const strongBuyCount = auctions.filter(a => a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY').length
+  // Count auctions ending within the next hour. Uses canonical UTC-aware
+  // computeSecsLeft so we don't mis-count due to naive ISO / timezone parsing.
+  const endingThisHour = useMemo(
+    () => filtered.filter(a => {
+      const s = Number(a.time_left) || 0
+      return s > 0 && s <= 3600
+    }).length,
+    [filtered]
+  )
   const { visibleCount, sentinelRef } = useProgressiveRender(filtered.length, 60, 40)
 
   return (
@@ -295,6 +318,14 @@ export default function Auctions() {
             <span className="text-xs font-semibold px-2.5 py-1 rounded-xl bg-gray-800 text-gray-300 border border-gray-700/50">
               {filtered.length} listings
             </span>
+            {endingThisHour > 0 && (
+              <span
+                className="text-xs font-bold px-2.5 py-1 rounded-xl bg-orange-600/15 text-orange-300 border border-orange-600/30"
+                title="Auctions ending in the next 60 minutes"
+              >
+                ⏳ {endingThisHour} ending this hour
+              </span>
+            )}
             {snipeCount > 0 && (
               <button
                 onClick={() => setF({ filterSnipe: !filterSnipe })}
