@@ -282,6 +282,25 @@ async def refresh_stale_listings(request: Request, db: Session = Depends(get_db)
         return {"status": "error", "error": str(e)[:200], "added": 0}
 
 
+# --------------------------------------------------------------------------
+# SECURITY TODO (bid-auth gap)
+# --------------------------------------------------------------------------
+# No `execute-snipe` / `place-bid` endpoint currently exists on the backend.
+# The frontend uses Supabase auth; if/when a live-bidding endpoint is added
+# here (e.g. POST /api/auctions/{id}/execute-snipe or /place-bid), it MUST:
+#   1. Parse `Authorization: Bearer <token>` from the request.
+#   2. Verify the Supabase JWT (`python-jose` is NOT currently in
+#      requirements.txt — either add it, or until then have the endpoint
+#      return HTTP 503 "manual auth pending implementation" so it cannot
+#      be exploited anonymously).
+#   3. Sanity-check the decoded token has a non-empty `sub` claim before
+#      performing any spend-money / place-bid action.
+#   4. Enforce per-user ownership — the bid must belong to the JWT's `sub`,
+#      never be acted on behalf of another user.
+# Do NOT ship a live bid endpoint without these checks.
+# --------------------------------------------------------------------------
+
+
 @router.get("/snipe/targets")
 def snipe_targets(db: Session = Depends(get_db)):
     now = datetime.utcnow()

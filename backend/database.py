@@ -87,6 +87,12 @@ class Auction(Base):
     is_real_ebay = Column(Boolean, default=False)
     buying_options = Column(Text, nullable=True)  # JSON array e.g. '["AUCTION","BEST_OFFER"]'
     extra_images = Column(Text, nullable=True)    # JSON array of additional image URLs
+    # Quick filter flags computed at scrape time so frontend doesn't regex per-render
+    is_lot = Column(Boolean, default=False, nullable=True, index=True)
+    is_graded = Column(Boolean, default=False, nullable=True, index=True)
+    is_sealed = Column(Boolean, default=False, nullable=True, index=True)
+    grade_num = Column(Float, nullable=True)  # 9.5, 10, etc.
+    psa_cert = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     last_updated = Column(DateTime, default=datetime.utcnow)
 
@@ -109,6 +115,7 @@ class Portfolio(Base):
     quantity = Column(Integer, default=1)
     notes = Column(Text, nullable=True)
     ebay_listing_id = Column(String, nullable=True)
+    user_id = Column(String, nullable=True, index=True)  # nullable for backfill
 
     card = relationship("Card", back_populates="portfolio_items")
 
@@ -146,6 +153,7 @@ class Alert(Base):
     auction_id = Column(Integer, nullable=True)
     urgency = Column(String, default="normal")  # low, normal, high, critical
     created_at = Column(DateTime, default=datetime.utcnow)
+    user_id = Column(String, nullable=True, index=True)  # nullable for backfill
 
     card = relationship("Card", back_populates="alerts")
 
@@ -204,6 +212,22 @@ class PsaPop(Base):
     )
 
 
+class PsaPopSnapshot(Base):
+    """Weekly PSA population snapshot — one row per (driver, parallel, grade) per capture.
+    Enables pop-delta / 'who's getting harder to pull a 10 on' queries."""
+    __tablename__ = "psa_pop_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    driver_name = Column(String, nullable=False, index=True)
+    parallel = Column(String, nullable=True)
+    grade = Column(String, nullable=True)  # PSA 10, PSA 9, etc.
+    pop_count = Column(Integer, nullable=False)
+    snapshot_date = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index('ix_psa_snap_driver_grade_date', 'driver_name', 'grade', 'snapshot_date'),
+    )
+
+
 class PsaSale(Base):
     """Individual graded sale record. Sourced from psacard.com/auctionprices + our eBay scraper."""
     __tablename__ = "psa_sales"
@@ -234,6 +258,7 @@ class Wishlist(Base):
     notes = Column(Text, nullable=True)
     auto_snipe = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    user_id = Column(String, nullable=True, index=True)  # nullable for backfill
 
     card = relationship("Card", back_populates="wishlist_items")
 

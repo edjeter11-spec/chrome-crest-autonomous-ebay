@@ -144,3 +144,9 @@ def top_rated_sellers(limit: int = Query(20, le=100), db: Session = Depends(get_
     top = [s for s in sellers if "top_rated" in s["flags"]]
     top.sort(key=lambda s: -(s["total_feedback"] or 0))
     return {"sellers": top[:limit], "total": len(top)}
+
+
+@router.get("/score")
+def seller_score(seller: str, db: Session = Depends(get_db)):
+    from lib.seller_score import compute_seller_score
+    return compute_seller_score(db, seller)

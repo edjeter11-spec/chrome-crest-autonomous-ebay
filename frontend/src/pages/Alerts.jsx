@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, Zap, AlertCircle, X, Trash2, Heart, Flame, ExternalLink } from 'lucide-react'
+import { Bell, Zap, AlertCircle, X, Trash2, Heart, Flame, ExternalLink, Mail } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
+import { useAuth } from '../lib/auth'
+import { supabase, supabaseReady } from '../lib/supabase'
 
 // Pull an eBay URL out of an alert message if it's embedded
 function extractEbayUrl(msg) {
@@ -33,11 +35,59 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const { user } = useAuth()
+  const [emailEnabled, setEmailEnabled] = useState(false)
+  const [emailAddr, setEmailAddr] = useState('')
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [emailMsg, setEmailMsg] = useState('')
 
   const load = () => swrFetch(`${API}/api/alerts?limit=100`, d => { setAlerts(d.alerts || d || []); setLoading(false) }, () => setLoading(false))
 
   useEffect(() => { load() }, [])
   useVisibilityInterval(load, 15000)
+
+  // Hydrate email-alert prefs from Supabase user_metadata
+  useEffect(() => {
+    if (!user) return
+    const meta = user.user_metadata || {}
+    setEmailEnabled(Boolean(meta.email_alerts))
+    setEmailAddr(meta.alert_email || user.email || '')
+  }, [user])
+
+  const saveEmailPrefs = async (nextEnabled, nextAddr) => {
+    if (!supabaseReady || !user) {
+      setEmailMsg('Sign in to enable email alerts')
+      return
+    }
+    setEmailSaving(true)
+    setEmailMsg('')
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: { email_alerts: nextEnabled, alert_email: nextAddr || user.email || '' },
+      })
+      if (error) throw error
+      setEmailMsg(nextEnabled ? 'Email alerts enabled' : 'Email alerts disabled')
+      setTimeout(() => setEmailMsg(''), 2500)
+    } catch (e) {
+      setEmailMsg('Save failed — try again')
+    } finally {
+      setEmailSaving(false)
+    }
+  }
+
+  const toggleEmail = () => {
+    const next = !emailEnabled
+    setEmailEnabled(next)
+    saveEmailPrefs(next, emailAddr)
+  }
+
+  const saveEmailAddr = () => {
+    if (!emailAddr || !emailAddr.includes('@')) {
+      setEmailMsg('Enter a valid email')
+      return
+    }
+    saveEmailPrefs(emailEnabled, emailAddr)
+  }
 
   const dismiss = async (id) => {
     setAlerts(prev => prev.filter(a => a.id !== id))
@@ -86,6 +136,63 @@ export default function AlertsPage() {
               Clear {filter === 'all' ? 'All' : filter}
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Email-alert preferences */}
+      <div className="panel p-4 border border-gray-800/50">
+        <div className="flex items-start gap-3">
+          <Mail size={16} className="text-blue-400 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-sm font-semibold text-gray-100">Send me email alerts</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Get emailed when a watchlist card drops below your alert price.
+                </p>
+              </div>
+              <button
+                onClick={toggleEmail}
+                disabled={!user || emailSaving}
+                className={`relative inline-flex items-center h-6 w-11 rounded-full transition-colors ${
+                  emailEnabled ? 'bg-red-600' : 'bg-gray-700'
+                } ${!user || emailSaving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                aria-pressed={emailEnabled}
+              >
+                <span
+                  className={`inline-block h-5 w-5 bg-white rounded-full shadow transform transition-transform ${
+                    emailEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+            {user ? (
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <input
+                  type="email"
+                  value={emailAddr}
+                  onChange={(e) => setEmailAddr(e.target.value)}
+                  placeholder="you@example.com"
+                  className="flex-1 min-w-[200px] bg-gray-900 border border-gray-700 rounded-xl px-3 py-1.5 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-red-500"
+                  disabled={emailSaving}
+                />
+                <button
+                  onClick={saveEmailAddr}
+                  disabled={emailSaving}
+                  className="text-xs px-3 py-1.5 rounded-xl font-semibold bg-gray-800/80 text-gray-300 hover:bg-gray-700/80 disabled:opacity-50"
+                >
+                  Save
+                </button>
+                {emailMsg && (
+                  <span className="text-[11px] text-gray-400">{emailMsg}</span>
+                )}
+              </div>
+            ) : (
+              <p className="mt-2 text-[11px] text-gray-600">
+                <Link to="/login" className="text-red-400 hover:underline">Sign in</Link> to configure email alerts.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

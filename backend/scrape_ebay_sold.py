@@ -3,6 +3,11 @@ Bulk eBay sold-listings scraper using Playwright.
 Pulls 90 days of completed sales for all 20 F1 drivers and writes them
 directly into the price_history table.
 
+DISABLED: scraping eBay HTML violates ToS and puts the eBay Partner Network
+account at risk of being banned. All public entry points no-op. The rest of
+the module is preserved for context when migrating to the Browse API
+(filter=soldItemsOnly) or Marketplace Insights API.
+
 Usage (run from backend/):
     python scrape_ebay_sold.py
 
@@ -15,6 +20,29 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+# ── Disabled public entry points ──────────────────────────────────────────────
+async def ingest_ebay_html_sold(*args, **kwargs):
+    """DISABLED: scraping eBay HTML violates ToS. Use Browse API filter=soldItemsOnly or Marketplace Insights API instead."""
+    return {"disabled": True, "reason": "ebay_tos_compliance"}
+
+
+def run(*args, **kwargs):
+    """DISABLED: scraping eBay HTML violates ToS. Use Browse API filter=soldItemsOnly or Marketplace Insights API instead."""
+    print("scrape_ebay_sold.run(): DISABLED (ebay_tos_compliance) — migrate to Browse API filter=soldItemsOnly.")
+    return {"disabled": True, "reason": "ebay_tos_compliance"}
+
+
+def run_psa(*args, **kwargs):
+    """DISABLED: scraping eBay HTML violates ToS. Use Browse API filter=soldItemsOnly or Marketplace Insights API instead."""
+    print("scrape_ebay_sold.run_psa(): DISABLED (ebay_tos_compliance) — migrate to Browse API filter=soldItemsOnly.")
+    return {"disabled": True, "reason": "ebay_tos_compliance"}
+
+
+# --- Below: original implementations preserved for future migration to official eBay APIs ---
+# These are intentionally unreferenced by the disabled entry points above; they are kept
+# only as reference for rewiring through an API-backed client.
 
 # ── DB setup ──────────────────────────────────────────────────────────────────
 from database import SessionLocal, create_tables, Card, PriceHistory, engine
@@ -306,7 +334,7 @@ def scrape_driver_psa(driver_name: str) -> list[dict]:
     return results
 
 
-def run():
+def _disabled_run():
     total_added = 0
     for i, driver in enumerate(F1_DRIVERS):
         print(f"\n[{i+1}/{len(F1_DRIVERS)}] Scraping: {driver}")
@@ -324,7 +352,7 @@ def run():
     print(f"\nDone. Total new price_history records: {total_added}")
 
 
-def run_psa():
+def _disabled_run_psa():
     """Dedicated PSA graded pass — searches [driver] PSA to surface graded sold listings."""
     total_added = 0
     for i, driver in enumerate(F1_DRIVERS):

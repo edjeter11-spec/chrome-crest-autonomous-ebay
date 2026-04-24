@@ -4,6 +4,24 @@ sys.path.insert(0, os.path.dirname(__file__))
 from dotenv import load_dotenv
 load_dotenv()
 
+# Production DB guard: refuse to boot on Vercel with a non-Postgres DATABASE_URL.
+# Otherwise Vercel read-only FS falls back to ephemeral SQLite which re-seeds
+# mock data on every cold start, silently wiping real production data.
+_DB_URL = os.getenv("DATABASE_URL", "")
+if os.getenv("VERCEL") == "1" and not _DB_URL.startswith("postgres"):
+    raise RuntimeError(
+        "Refusing to boot: DATABASE_URL must be Postgres in production. "
+        f"Got: {_DB_URL[:30]!r}"
+    )
+
+# UTC helper. All model defaults in database.py currently store naive UTC via
+# datetime.utcnow; frontend appends Z via parseUtc() to interpret as UTC.
+# Long-term fix: migrate routers to emit timezone-aware ISO (follow-up).
+from datetime import datetime as _dt_utc, timezone as _tz_utc
+def utcnow():
+    """Always returns naive UTC for compatibility, but ensures it IS UTC."""
+    return _dt_utc.now(_tz_utc.utc).replace(tzinfo=None)
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query as QueryParam, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -26,18 +44,50 @@ from routers import sniper as sniper_router
 from routers import comps
 from routers import cleanup as cleanup_router
 from routers import click_events
+from routers import email_alerts
+from routers import index as indices_router
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
 app = FastAPI(title="F1 Chrome Crest", version="2.0.0")
 
+# --- CORS lockdown (security) ---------------------------------------------
+# Previously `allow_origins=["*"]` with credentials — unsafe. Lock to prod
+# domains + Vercel preview wildcard; loosen to localhost only outside prod.
+ALLOWED_ORIGINS = [
+    "https://f1cardvault.com",
+    "https://www.f1cardvault.com",
+    "https://chrome-crest-autonomous-ebay.vercel.app",
+    # Vercel preview URLs use a wildcard subdomain — match via regex below
+]
+
+# Dev-only: when not running on Vercel, allow local dev origins.
+if os.getenv("VERCEL") != "1":
+    ALLOWED_ORIGINS += ["http://localhost:3000", "http://localhost:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://chrome-crest-autonomous-ebay-.*\.vercel\.app",  # for preview deploys
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+# --- Admin auth gate -------------------------------------------------------
+# Every `/api/admin/*` route requires a matching ADMIN_TOKEN. If the env var
+# isn't set, the routes return 503 (admin disabled) so there's no blanket
+# open-mode fallback. Token can be passed via `?token=` query or the
+# `X-Admin-Token` header.
+def require_admin(request: Request):
+    from fastapi import HTTPException
+    admin_token = os.getenv("ADMIN_TOKEN", "")
+    if not admin_token:
+        raise HTTPException(503, "admin disabled")
+    given = request.query_params.get("token") or request.headers.get("x-admin-token")
+    if given != admin_token:
+        raise HTTPException(403, "unauthorized")
 
 app.include_router(cards.router)
 app.include_router(auctions.router)
@@ -67,10 +117,12 @@ app.include_router(sniper_router.router)
 app.include_router(comps.router)
 app.include_router(cleanup_router.router)
 app.include_router(click_events.router)
+app.include_router(email_alerts.router)
+app.include_router(indices_router.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")
-def migrate_shared_watchlists():
+def migrate_shared_watchlists(_admin=Depends(require_admin)):
     """Create shared_watchlists table (idempotent)."""
     from sqlalchemy import text
     statements = [
@@ -108,7 +160,7 @@ def migrate_shared_watchlists():
 
 
 @app.post("/api/admin/migrate-watch-rules")
-def migrate_watch_rules():
+def migrate_watch_rules(_admin=Depends(require_admin)):
     """Create watch_rules table (idempotent)."""
     from sqlalchemy import text
     statements = [
@@ -147,7 +199,7 @@ def migrate_watch_rules():
 
 
 @app.post("/api/admin/migrate-bid-intents")
-def migrate_bid_intents():
+def migrate_bid_intents(_admin=Depends(require_admin)):
     """Create bid_intents table (idempotent)."""
     from sqlalchemy import text
     statements = [
@@ -187,7 +239,7 @@ def migrate_bid_intents():
 
 
 @app.post("/api/admin/migrate-scraper-runs")
-def migrate_scraper_runs():
+def migrate_scraper_runs(_admin=Depends(require_admin)):
     """Create scraper_runs table (idempotent)."""
     from sqlalchemy import text
     statements = [
@@ -233,7 +285,7 @@ def migrate_scraper_runs():
 
 
 @app.get("/api/admin/scraper-health")
-def scraper_health(db: Session = Depends(get_db)):
+def scraper_health(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Last 14d of scraper_runs per source — success rate, latency, last success."""
     from database import ScraperRun
     from sqlalchemy import desc as _desc
@@ -396,7 +448,7 @@ def watchlist_changes(since: str = QueryParam(...), db: Session = Depends(get_db
 
 
 @app.post("/api/admin/migrate-sold-source")
-def migrate_sold_source():
+def migrate_sold_source(_admin=Depends(require_admin)):
     """Add source column to sold_cards + backfill existing rows to 'eBay'."""
     from sqlalchemy import text
     statements = [
@@ -426,7 +478,7 @@ def migrate_sold_source():
 
 
 @app.post("/api/admin/migrate-dedup-flag")
-def migrate_dedup_flag():
+def migrate_dedup_flag(_admin=Depends(require_admin)):
     """Add is_duplicate column to sold_cards (idempotent) + index."""
     from sqlalchemy import text
     statements = [
@@ -456,7 +508,7 @@ def migrate_dedup_flag():
 
 
 @app.post("/api/admin/backfill-dedup")
-def backfill_dedup():
+def backfill_dedup(_admin=Depends(require_admin)):
     """Sweep sold_cards, compute fuzzy fingerprints, mark soft duplicates."""
     try:
         from dedup import backfill_duplicates
@@ -467,7 +519,7 @@ def backfill_dedup():
 
 
 @app.post("/api/admin/migrate-push-subscriptions")
-def migrate_push_subscriptions():
+def migrate_push_subscriptions(_admin=Depends(require_admin)):
     """Create push_subscriptions table on Neon Postgres (idempotent)."""
     from sqlalchemy import text
     statements = [
@@ -560,7 +612,7 @@ def psa_timeseries(driver: str, days: int = 90, db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/migrate-sold-cards")
-def migrate_sold_cards():
+def migrate_sold_cards(_admin=Depends(require_admin)):
     """Create the sold_cards table and its index on Neon Postgres (idempotent)."""
     from sqlalchemy import text
     statements = [
@@ -613,7 +665,7 @@ def migrate_sold_cards():
 
 
 @app.post("/api/admin/migrate-psa-tables")
-def migrate_psa_tables():
+def migrate_psa_tables(_admin=Depends(require_admin)):
     """Create psa_pop and psa_sales tables on Neon Postgres (idempotent)."""
     from sqlalchemy import text
     statements = [
@@ -680,7 +732,7 @@ def migrate_psa_tables():
 
 
 @app.get("/api/admin/debug-finding-api")
-async def debug_finding_api():
+async def debug_finding_api(_admin=Depends(require_admin)):
     """Diagnose why the Finding API returns 0 items."""
     from ebay_finding_api import _find_completed_items, _app_id
     import os as _os
@@ -723,7 +775,7 @@ async def debug_finding_api():
 
 
 @app.post("/api/admin/ingest-sold")
-async def admin_ingest_sold():
+async def admin_ingest_sold(_admin=Depends(require_admin)):
     """Pull sold listings from eBay Finding API and upsert non-base 2025 Chrome F1."""
     from sold_ingest import ingest_all_drivers
     try:
@@ -735,14 +787,14 @@ async def admin_ingest_sold():
 
 
 @app.post("/api/admin/scrape-card-images")
-async def trigger_card_image_scrape():
+async def trigger_card_image_scrape(_admin=Depends(require_admin)):
     """Manually trigger a card image scrape from eBay public search."""
     asyncio.create_task(_scrape_card_images())
     return {"status": "scraping started — check logs"}
 
 
 @app.post("/api/admin/scrape-130point")
-async def admin_scrape_130point():
+async def admin_scrape_130point(_admin=Depends(require_admin)):
     """Scrape 130point.com sold comps and upsert into SoldCard."""
     from scrape_130point import ingest_130point
     try:
@@ -754,7 +806,7 @@ async def admin_scrape_130point():
 
 
 @app.post("/api/admin/scrape-ebay-html")
-async def admin_scrape_ebay_html(mode: str = QueryParam("sold")):
+async def admin_scrape_ebay_html(mode: str = QueryParam("sold"), _admin=Depends(require_admin)):
     """Scrape eBay search HTML (mode=sold|auction) — no Browse API quota used."""
     try:
         if mode == "auction":
@@ -770,7 +822,7 @@ async def admin_scrape_ebay_html(mode: str = QueryParam("sold")):
 
 
 @app.post("/api/admin/ingest-finding-api-all")
-async def admin_ingest_finding_api_all():
+async def admin_ingest_finding_api_all(_admin=Depends(require_admin)):
     """Aggressive Finding API ingest: driver × parallel matrix, sold + active."""
     from sold_ingest import ingest_finding_api_all
     try:
@@ -1549,7 +1601,7 @@ async def manual_price_history_sync(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/seed-all-drivers")
-def seed_all_drivers(db: Session = Depends(get_db)):
+def seed_all_drivers(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Add inline column migrations + seed F2/F3/Legends drivers + tag series on existing F1 drivers."""
     from sqlalchemy import text
     # Inline column migrations (safe to run multiple times)
@@ -1569,7 +1621,7 @@ def seed_all_drivers(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/seed-auto-variants")
-def seed_auto_variants(db: Session = Depends(get_db)):
+def seed_auto_variants(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Add missing auto variant cards to existing drivers without wiping data."""
     from seed_data import F1_DRIVERS, GRADE_MULT, BASE_PRICE
     AUTO_VARIANTS = [
@@ -1619,7 +1671,7 @@ def seed_auto_variants(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/reset-price-history-sync")
-def reset_price_history_sync(db: Session = Depends(get_db)):
+def reset_price_history_sync(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Clear all sync logs so every driver is due on the next cron/sync."""
     from database import PriceHistorySyncLog
     deleted = db.query(PriceHistorySyncLog).delete()
@@ -1628,7 +1680,7 @@ def reset_price_history_sync(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/fix-stale-endtimes")
-def fix_stale_endtimes(db: Session = Depends(get_db)):
+def fix_stale_endtimes(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """
     Repair BIN listings whose synthetic 30-day end_time has rolled off.
     These were inserted with `utcnow() + 30 days` and now appear as 'ending
@@ -1654,7 +1706,7 @@ def fix_stale_endtimes(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/fix-parallel-names")
-def fix_parallel_names(db: Session = Depends(get_db)):
+def fix_parallel_names(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Rename old parallel print-run names to correct 2025 values: Gold /10→/50, Orange /50→/25, Red /25→/5."""
     renames = {"Gold /10": "Gold /50", "Orange /50": "Orange /25", "Red /25": "Red /5"}
     card_updated = 0
@@ -1668,7 +1720,7 @@ def fix_parallel_names(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/seed-missing-parallels")
-def seed_missing_parallels(db: Session = Depends(get_db)):
+def seed_missing_parallels(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Add Autograph / Gold /10 / Prism Refractor cards that weren't in original seed."""
     from seed_data import F1_DRIVERS, PARALLELS, GRADE_MULT, BASE_PRICE
     added = 0
@@ -1705,7 +1757,7 @@ def seed_missing_parallels(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/scrape-card-images")
-async def trigger_card_image_scrape_sync(db: Session = Depends(get_db)):
+async def trigger_card_image_scrape_sync(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Synchronously scrape eBay public search for card catalog images."""
     from card_image_scraper import scrape_all_missing
     updated = await scrape_all_missing(db)
@@ -1713,7 +1765,7 @@ async def trigger_card_image_scrape_sync(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/rebuild")
-async def rebuild_auctions(db: Session = Depends(get_db)):
+async def rebuild_auctions(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Delete all active auctions and re-sync from eBay with correct parallel matching."""
     from seed_data import seed_all
     seed_all(db)

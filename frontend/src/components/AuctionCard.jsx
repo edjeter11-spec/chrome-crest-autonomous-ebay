@@ -1006,11 +1006,25 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
 
         {/* Timer — only on auction listings */}
         {((auction.buying_options || []).includes('AUCTION') || !(auction.buying_options?.length)) && (
-          <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 text-xs font-mono font-bold ${timeCls}
-            bg-gray-950/80 backdrop-blur-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5 z-10 shadow`}>
-            <Clock size={9} />
-            {timeText}
-          </div>
+          <>
+            <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 text-xs font-mono font-bold ${timeCls}
+              bg-gray-950/80 backdrop-blur-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5 z-10 shadow`}>
+              <Clock size={9} />
+              {timeText}
+            </div>
+            {/* Countdown progress fill — shows how much of the auction window has elapsed.
+                Color ramps urgency: blue (safe) → orange (<1h) → red pulse (<5m). */}
+            {!isEnded && timeLeft > 0 && (() => {
+              const totalDurationSec = auction.original_duration_sec || (7 * 86400)
+              const elapsedPct = Math.max(0, Math.min(100, 100 - (timeLeft / totalDurationSec * 100)))
+              const urgencyColor = timeLeft < 300 ? 'bg-red-600 animate-pulse' : timeLeft < 3600 ? 'bg-orange-500' : 'bg-blue-500'
+              return (
+                <div className="absolute bottom-0.5 left-0 right-0 h-0.5 bg-gray-800/80 overflow-hidden z-10">
+                  <div className={`h-full ${urgencyColor} transition-all duration-500`} style={{ width: `${elapsedPct}%` }} />
+                </div>
+              )
+            })()}
+          </>
         )}
       </div>
 

@@ -1,6 +1,13 @@
 """
 eBay search-results HTML scraper (no API, no quota).
 
+DISABLED: scraping eBay HTML violates ToS and puts the eBay Partner Network
+account at risk of being banned. Public entry points (ingest_ebay_html_sold
+and ingest_ebay_html_auction) no-op and return
+{"disabled": True, "reason": "ebay_tos_compliance"}. The original
+implementations are preserved as _disabled_* below for future migration
+to the Browse API (filter=soldItemsOnly) or Marketplace Insights API.
+
 Scrapes ebay.com/sch/i.html for 2025 Topps Chrome F1 listings in two modes:
   - mode="auction"  -> live auctions (LH_Auction=1)  -> upserts Auction rows
   - mode="sold"     -> completed sold (LH_Complete=1&LH_Sold=1) -> upserts SoldCard rows
@@ -190,7 +197,19 @@ async def scrape_ebay_html(mode: str = "sold", queries: Optional[list[str]] = No
     return out
 
 
-async def ingest_ebay_html_sold(db: Optional[Session] = None) -> dict:
+async def ingest_ebay_html_sold(*args, **kwargs):
+    """DISABLED: scraping eBay HTML violates ToS. Use Browse API filter=soldItemsOnly or Marketplace Insights API instead."""
+    return {"disabled": True, "reason": "ebay_tos_compliance"}
+
+
+async def ingest_ebay_html_auction(*args, **kwargs):
+    """DISABLED: scraping eBay HTML violates ToS. Use Browse API filter=soldItemsOnly or Marketplace Insights API instead."""
+    return {"disabled": True, "reason": "ebay_tos_compliance"}
+
+
+# --- Below: original implementations preserved for future migration to official eBay APIs ---
+# Rename-preserved; these remain unreferenced until renamed/rewired through an API client.
+async def _disabled_ingest_ebay_html_sold(db: Optional[Session] = None) -> dict:
     owns = db is None
     if owns:
         db = SessionLocal()
@@ -265,7 +284,7 @@ async def ingest_ebay_html_sold(db: Optional[Session] = None) -> dict:
     return result
 
 
-async def ingest_ebay_html_auction(db: Optional[Session] = None) -> dict:
+async def _disabled_ingest_ebay_html_auction(db: Optional[Session] = None) -> dict:
     owns = db is None
     if owns:
         db = SessionLocal()

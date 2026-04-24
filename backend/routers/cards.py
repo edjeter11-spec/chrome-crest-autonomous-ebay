@@ -131,6 +131,18 @@ def drivers_summary(db: Session = Depends(get_db)):
     return sorted(result, key=lambda x: x["investment_score"] or 0, reverse=True)
 
 
+@router.get("/fmv")
+def card_fmv(
+    driver: str,
+    parallel: str | None = None,
+    grade: str | None = None,
+    days: int = 90,
+    db: Session = Depends(get_db),
+):
+    from lib.fmv import compute_fmv
+    return compute_fmv(db, driver, parallel, grade, days)
+
+
 @router.get("/{card_id}")
 def get_card(card_id: int, db: Session = Depends(get_db)):
     card = db.query(Card).filter(Card.id == card_id).first()

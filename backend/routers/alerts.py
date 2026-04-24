@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db, Alert
 from typing import Optional
+from lib.auth import get_user_id, require_user_id
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
@@ -28,8 +29,13 @@ def list_alerts(
     urgency: Optional[str] = None,
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
 ):
     q = db.query(Alert)
+    if user_id:
+        q = q.filter(Alert.user_id == user_id)
+    else:
+        q = q.filter(Alert.user_id.is_(None))
     if triggered is not None:
         q = q.filter(Alert.triggered == triggered)
     if urgency:
@@ -39,18 +45,32 @@ def list_alerts(
 
 
 @router.delete("/{alert_id}")
-def dismiss_alert(alert_id: int, db: Session = Depends(get_db)):
+def dismiss_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     a = db.query(Alert).filter(Alert.id == alert_id).first()
     if not a:
         raise HTTPException(404, "Alert not found")
+    if a.user_id and a.user_id != user_id:
+        raise HTTPException(403, "forbidden")
     db.delete(a)
     db.commit()
     return {"ok": True}
 
 
 @router.delete("")
-def clear_all_alerts(urgency: Optional[str] = None, db: Session = Depends(get_db)):
+def clear_all_alerts(
+    urgency: Optional[str] = None,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     q = db.query(Alert)
+    if user_id:
+        q = q.filter(Alert.user_id == user_id)
+    else:
+        q = q.filter(Alert.user_id.is_(None))
     if urgency:
         q = q.filter(Alert.urgency == urgency)
     count = q.count()
