@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import {
   Gavel, Flame, Database, DollarSign, Zap, Activity,
@@ -138,6 +138,18 @@ export default function Dashboard() {
     const id = setInterval(() => setNowTick(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
+
+  // TEMP: surface any runtime errors so mobile blank-render has a trail in console
+  useEffect(() => {
+    const handler = (e) => { console.error('[Dashboard error]', e.error || e.message) }
+    const rejHandler = (e) => { console.error('[Dashboard unhandled rejection]', e.reason) }
+    window.addEventListener('error', handler)
+    window.addEventListener('unhandledrejection', rejHandler)
+    return () => {
+      window.removeEventListener('error', handler)
+      window.removeEventListener('unhandledrejection', rejHandler)
+    }
+  }, [])
   const [lastSync, setLastSync] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -179,27 +191,52 @@ export default function Dashboard() {
   const loadAll = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
 
+    // Tiny helper: coerce any API shape into an array, never throw.
+    const asArray = (d, key) => {
+      try {
+        if (Array.isArray(d)) return d
+        if (d && key && Array.isArray(d[key])) return d[key]
+        if (d && Array.isArray(d?.sales)) return d.sales
+        if (d && Array.isArray(d?.auctions)) return d.auctions
+        if (d && Array.isArray(d?.targets)) return d.targets
+        if (d && Array.isArray(d?.alerts)) return d.alerts
+      } catch {}
+      return []
+    }
+
     swrFetch(
       `${API}/api/sales?limit=500&year=2025`,
       d => {
-        const all = applySeasonFilter(d.sales || d || [])
-        // Prefer "notable" sales, but fall back to raw data so the feed is
-        // never empty just because filters were too aggressive.
-        const notable = all.filter(isNotable)
-        const feed = notable.length >= 5 ? notable : all
-        setSales(feed.slice(0, 15))
-        setSalesLoading(false)
+        try {
+          const all = applySeasonFilter(asArray(d, 'sales')) || []
+          const notable = (all || []).filter(isNotable)
+          const feed = notable.length >= 5 ? notable : (all || [])
+          setSales((feed || []).slice(0, 15))
+        } catch (err) {
+          console.error('[Dashboard] sales feed handler', err)
+          setSales([])
+        } finally {
+          setSalesLoading(false)
+        }
       }
     )
 
     swrFetch(
       `${API}/api/sales/stats`,
-      d => { setStats(d || {}); setStatsLoading(false) }
+      d => {
+        try { setStats((d && typeof d === 'object') ? d : {}) }
+        catch (err) { console.error('[Dashboard] stats handler', err); setStats({}) }
+        finally { setStatsLoading(false) }
+      }
     )
 
     swrFetch(
       `${API}/api/auctions/with-verdicts?buying=auction&limit=500`,
-      d => { setAuctions(applySeasonFilter(d.auctions || d || [])); setAuctionsLoading(false) }
+      d => {
+        try { setAuctions(applySeasonFilter(asArray(d, 'auctions')) || []) }
+        catch (err) { console.error('[Dashboard] auctions handler', err); setAuctions([]) }
+        finally { setAuctionsLoading(false) }
+      }
     )
 
     // Try fresh snipes endpoint first (real-time eBay lookups); fall back to cached targets
@@ -207,25 +244,41 @@ export default function Dashboard() {
       fetch(`${API}/api/sniper/fresh-snipes/6`).then(r => r.ok ? r.json() : null).catch(() => null),
       new Promise(resolve => setTimeout(() => resolve(null), 5000))
     ]).then(freshRes => {
-      if (freshRes?.auctions) {
-        setSnipes(applySeasonFilter(freshRes.auctions))
-        setSnipesLoading(false)
-        return
+      try {
+        if (freshRes?.auctions && Array.isArray(freshRes.auctions)) {
+          setSnipes(applySeasonFilter(freshRes.auctions) || [])
+          setSnipesLoading(false)
+          return
+        }
+      } catch (err) {
+        console.error('[Dashboard] fresh snipes handler', err)
       }
       // Fallback to cached targets
       swrFetch(
         `${API}/api/auctions/snipe/targets`,
-        d => { setSnipes(applySeasonFilter(d.targets || d.auctions || d || [])); setSnipesLoading(false) }
+        d => {
+          try { setSnipes(applySeasonFilter(asArray(d, 'targets')) || []) }
+          catch (err) { console.error('[Dashboard] snipes handler', err); setSnipes([]) }
+          finally { setSnipesLoading(false) }
+        }
       )
+    }).catch(err => {
+      console.error('[Dashboard] snipes race', err)
+      setSnipesLoading(false)
     })
 
     swrFetch(
       `${API}/api/sales?limit=150&year=2025`,
       d => {
-        const all = applySeasonFilter(d.sales || d || [])
-        const notable = all.filter(isNotable)
-        const src = notable.length >= 3 ? notable : all
-        setTicker(src.slice(0, 10))
+        try {
+          const all = applySeasonFilter(asArray(d, 'sales')) || []
+          const notable = (all || []).filter(isNotable)
+          const src = notable.length >= 3 ? notable : (all || [])
+          setTicker((src || []).slice(0, 10))
+        } catch (err) {
+          console.error('[Dashboard] ticker handler', err)
+          setTicker([])
+        }
       }
     )
 
@@ -233,16 +286,25 @@ export default function Dashboard() {
     swrFetch(
       `${API}/api/sales?limit=10&year=2025`,
       d => {
-        const all = applySeasonFilter(d.sales || d || [])
-        const wins = all.filter(s => (s.sale_price ?? 0) >= 100)
-        setBigWins(wins.slice(0, 10))
-        setBigWinsLoading(false)
+        try {
+          const all = applySeasonFilter(asArray(d, 'sales')) || []
+          const wins = (all || []).filter(s => (s?.sale_price ?? 0) >= 100)
+          setBigWins((wins || []).slice(0, 10))
+        } catch (err) {
+          console.error('[Dashboard] bigWins handler', err)
+          setBigWins([])
+        } finally {
+          setBigWinsLoading(false)
+        }
       }
     )
 
     swrFetch(
       `${API}/api/alerts`,
-      d => setAlertsData(d.alerts || d || [])
+      d => {
+        try { setAlertsData(asArray(d, 'alerts')) }
+        catch (err) { console.error('[Dashboard] alerts handler', err); setAlertsData([]) }
+      }
     )
 
     // eBay sale_date is date-only (midnight UTC), so a literal "last 24h"
@@ -251,10 +313,15 @@ export default function Dashboard() {
     swrFetch(
       `${API}/api/sales?limit=500&year=2025`,
       d => {
-        const all = applySeasonFilter(d.sales || d || [])
-        const cutoff = Date.now() - 7 * 24 * 3600 * 1000
-        const count = all.filter(s => s.sale_date && new Date(s.sale_date).getTime() >= cutoff).length
-        setRecent24hCount(count)
+        try {
+          const all = applySeasonFilter(asArray(d, 'sales')) || []
+          const cutoff = Date.now() - 7 * 24 * 3600 * 1000
+          const count = (all || []).filter(s => s?.sale_date && new Date(s.sale_date).getTime() >= cutoff).length
+          setRecent24hCount(count)
+        } catch (err) {
+          console.error('[Dashboard] 7d count handler', err)
+          setRecent24hCount(0)
+        }
       }
     )
 
@@ -268,45 +335,47 @@ export default function Dashboard() {
 
   // --- KPI derivations ---
   const liveAuctionsCount = useMemo(
-    () => auctions.filter(a => isAuction(a) && secsLeft(a) > 0).length,
+    () => (Array.isArray(auctions) ? auctions : []).filter(a => a && isAuction(a) && secsLeft(a) > 0).length,
     [auctions]
   )
   const strongBuyCount = useMemo(
-    () => auctions.filter(a => isAuction(a) && secsLeft(a) > 0 && (a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')).length,
+    () => (Array.isArray(auctions) ? auctions : []).filter(a => a && isAuction(a) && secsLeft(a) > 0 && (a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')).length,
     [auctions]
   )
   // "Ending Soon" = within 1 hour (label says <1h, counter must match).
   // Loose isAuction check: accept any row with a future end_time, regardless of
   // whether buying_options is populated (it isn't always).
   const isLiveAuctionRow = (a) => {
+    if (!a) return false
     const s = secsLeft(a)
     if (s <= 0) return false
     const bo = a.buying_options || []
     return bo.includes('AUCTION') || (a.bid_count || 0) > 0 || !bo.length
   }
   const endingSoonCount = useMemo(
-    () => auctions.filter(a => isLiveAuctionRow(a) && secsLeft(a) < 3600).length,
+    () => (Array.isArray(auctions) ? auctions : []).filter(a => isLiveAuctionRow(a) && secsLeft(a) < 3600).length,
     [auctions]
   )
   const endingSoonList = useMemo(
-    () => auctions.filter(isLiveAuctionRow).sort((a,b) => secsLeft(a) - secsLeft(b)).slice(0, 5),
+    () => (Array.isArray(auctions) ? auctions : []).filter(isLiveAuctionRow).sort((a,b) => secsLeft(a) - secsLeft(b)).slice(0, 5),
     [auctions]
   )
   const priceTrending = useMemo(() => {
-    if (!sales?.length) return null
+    const list = Array.isArray(sales) ? sales : []
+    if (!list.length) return null
     const now = Date.now()
 
     // This week: last 7 days
     const thisWeekStart = now - 7 * 86400 * 1000
-    const thisWeekSales = sales.filter(
-      s => s.sale_date && new Date(s.sale_date).getTime() >= thisWeekStart && s.sale_price
+    const thisWeekSales = list.filter(
+      s => s?.sale_date && new Date(s.sale_date).getTime() >= thisWeekStart && s?.sale_price
     ).map(s => s.sale_price).sort((a, b) => a - b)
 
     // Last week: 14-7 days ago
     const lastWeekStart = now - 14 * 86400 * 1000
     const lastWeekEnd = thisWeekStart
-    const lastWeekSales = sales.filter(
-      s => s.sale_date && new Date(s.sale_date).getTime() >= lastWeekStart && new Date(s.sale_date).getTime() < lastWeekEnd && s.sale_price
+    const lastWeekSales = list.filter(
+      s => s?.sale_date && new Date(s.sale_date).getTime() >= lastWeekStart && new Date(s.sale_date).getTime() < lastWeekEnd && s?.sale_price
     ).map(s => s.sale_price).sort((a, b) => a - b)
 
     if (!thisWeekSales.length || !lastWeekSales.length) return null
@@ -319,7 +388,9 @@ export default function Dashboard() {
     const thisWeekMedian = median(thisWeekSales)
     const lastWeekMedian = median(lastWeekSales)
 
+    if (!lastWeekMedian) return null
     const pctChange = ((thisWeekMedian - lastWeekMedian) / lastWeekMedian) * 100
+    if (!Number.isFinite(pctChange)) return null
 
     // Consider "flat" within ±2% threshold
     if (Math.abs(pctChange) <= 2) {
@@ -333,22 +404,27 @@ export default function Dashboard() {
     }
   }, [sales])
   const topSnipeScore = useMemo(() => {
-    if (!snipes?.length) return null
-    return Math.max(...snipes.map(s => s.snipe_score || 0))
+    const list = Array.isArray(snipes) ? snipes : []
+    if (!list.length) return null
+    const scores = list.map(s => s?.snipe_score || 0)
+    if (!scores.length) return null
+    const m = Math.max(...scores)
+    return Number.isFinite(m) ? m : null
   }, [snipes])
 
   // --- Derived lists ---
   const endingStrip = useMemo(() => {
-    return auctions
-      .filter(a => { const s = secsLeft(a); return isAuction(a) && s > 0 && s < 7200 })
+    return (Array.isArray(auctions) ? auctions : [])
+      .filter(a => { const s = secsLeft(a); return a && isAuction(a) && s > 0 && s < 7200 })
       .sort((a, b) => secsLeft(a) - secsLeft(b))
       .slice(0, 8)
   }, [auctions])
 
-  const hotSnipes = useMemo(() => (snipes || []).slice(0, 6), [snipes])
+  const hotSnipes = useMemo(() => (Array.isArray(snipes) ? snipes : []).slice(0, 6), [snipes])
 
   const biggestSnipes = useMemo(() => {
-    return auctions.filter(a => {
+    return (Array.isArray(auctions) ? auctions : []).filter(a => {
+      if (!a) return false
       const sL = secsLeft(a)
       if (sL <= 0 || sL > 6 * 3600) return false
       const price = a.current_price || 0
@@ -357,7 +433,7 @@ export default function Dashboard() {
       return price >= 100 || lowPrintRun || a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY'
     })
     .sort((a, b) => {
-      const sA = a.snipe_score || 0, sB = b.snipe_score || 0
+      const sA = a?.snipe_score || 0, sB = b?.snipe_score || 0
       if (sB !== sA) return sB - sA
       return secsLeft(a) - secsLeft(b)
     })
@@ -370,17 +446,20 @@ export default function Dashboard() {
   // buying_options array (cache/legacy), and the strict isAuction check was
   // dropping them — making the count look artificially low (e.g. "only 5").
   const endingUnderHour = useMemo(
-    () => auctions.filter(a => { const s = secsLeft(a); return isLiveAuctionRow(a) && s > 0 && s < 3600 }).length,
+    () => (Array.isArray(auctions) ? auctions : []).filter(a => { const s = secsLeft(a); return isLiveAuctionRow(a) && s > 0 && s < 3600 }).length,
     [auctions]
   )
   const activeSnipesCount = useMemo(
-    () => (alertsData || []).filter(a =>
-      !a.triggered && (a.urgency === 'critical' || a.urgency === 'high')
+    () => (Array.isArray(alertsData) ? alertsData : []).filter(a =>
+      a && !a.triggered && (a.urgency === 'critical' || a.urgency === 'high')
     ).length,
     [alertsData]
   )
   const topDriverChips = useMemo(
-    () => (stats?.top_drivers || []).slice(0, 8),
+    () => {
+      const td = stats?.top_drivers
+      return (Array.isArray(td) ? td : []).slice(0, 8)
+    },
     [stats]
   )
   const POPULAR_PARALLELS = [
@@ -390,13 +469,13 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 max-w-[1800px]">
 
-      <WelcomeBanner />
+      <SectionBoundary><WelcomeBanner /></SectionBoundary>
 
       {/* Deal of the Day hero — above KPI row */}
-      <DealOfTheDay auctions={auctions} />
+      <SectionBoundary><DealOfTheDay auctions={auctions} /></SectionBoundary>
 
       {/* Race calendar strip — top */}
-      <RaceCalendarStrip />
+      <SectionBoundary><RaceCalendarStrip /></SectionBoundary>
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
@@ -478,24 +557,24 @@ export default function Dashboard() {
           <EmptyRow text="No recent sales in feed yet" />
         </div>
       )}
-      {ticker.length > 0 && (
+      {Array.isArray(ticker) && ticker.length > 0 && (
         <div className="relative overflow-hidden bg-gray-900/70 border border-gray-800/60 rounded-2xl">
           <div className="flex gap-3 px-3 py-2.5 ticker-track whitespace-nowrap">
-            {[...ticker, ...ticker].map((s, i) => (
+            {[...ticker, ...ticker].filter(Boolean).map((s, i) => (
               <a
                 key={i}
-                href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : (s.driver_name ? `/sales?driver=${encodeURIComponent(s.driver_name)}` : '#')}
-                target={s.ebay_url ? '_blank' : undefined}
-                rel={s.ebay_url ? 'sponsored noopener' : undefined}
+                href={s?.ebay_url ? ebayAffiliateUrl(s.ebay_url) : (s?.driver_name ? `/sales?driver=${encodeURIComponent(s.driver_name)}` : '#')}
+                target={s?.ebay_url ? '_blank' : undefined}
+                rel={s?.ebay_url ? 'sponsored noopener' : undefined}
                 className="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-800/70 hover:bg-gray-800 border border-gray-700/40 text-xs text-gray-300 transition-colors"
-                title={s.title}
+                title={s?.title || ''}
               >
                 <span className="text-red-400 font-black">●</span>
                 <span className="text-gray-500 text-[10px] uppercase tracking-wide font-bold">Just sold</span>
-                <span className="text-white font-semibold">{s.driver_name || '—'}</span>
-                {s.parallel && <span className="text-cyan-400">{s.parallel}</span>}
-                {s.grade && s.grade !== 'Raw' && <span className="text-amber-400 font-bold">{s.grade}</span>}
-                <span className="text-emerald-400 font-black">${(s.sale_price ?? 0).toFixed(0)}</span>
+                <span className="text-white font-semibold">{s?.driver_name || '—'}</span>
+                {s?.parallel && <span className="text-cyan-400">{s.parallel}</span>}
+                {s?.grade && s.grade !== 'Raw' && <span className="text-amber-400 font-bold">{s.grade}</span>}
+                <span className="text-emerald-400 font-black">${Number(s?.sale_price ?? 0).toFixed(0)}</span>
               </a>
             ))}
           </div>
@@ -546,30 +625,30 @@ export default function Dashboard() {
       </div>
 
       {/* NEW: Quick driver jumps */}
-      {topDriverChips.length > 0 && (
+      {Array.isArray(topDriverChips) && topDriverChips.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Users size={12} className="text-violet-400" />
             <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400 light:text-gray-700">Jump to Driver</h3>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-            {topDriverChips.map((d, i) => (
+            {topDriverChips.filter(Boolean).map((d, i) => (
               <button
                 key={i}
-                onClick={() => navigate(`/drivers?name=${encodeURIComponent(d.driver)}`)}
+                onClick={() => navigate(`/drivers?name=${encodeURIComponent(d?.driver || '')}`)}
                 className="shrink-0 flex flex-col items-center gap-1.5 w-20"
-                title={`${d.count} sold · $${Math.round(d.total_value || 0).toLocaleString()}`}
+                title={`${d?.count ?? 0} sold · $${Math.round(Number(d?.total_value) || 0).toLocaleString()}`}
               >
                 <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-800 border border-gray-700/50 hover:border-red-500/60 transition-colors">
                   <img
-                    src={`${API}/api/drivers/photo?name=${encodeURIComponent(d.driver)}`}
-                    alt={d.driver}
+                    src={`${API}/api/drivers/photo?name=${encodeURIComponent(d?.driver || '')}`}
+                    alt={d?.driver || ''}
                     className="w-full h-full object-cover"
                     onError={e => { e.target.style.display = 'none' }}
                   />
                 </div>
                 <span className="text-[10px] text-gray-300 text-center leading-tight font-semibold truncate w-full light:text-gray-700">
-                  {(d.driver || '').split(' ').slice(-1)[0]}
+                  {(d?.driver || '').split(' ').slice(-1)[0]}
                 </span>
               </button>
             ))}
@@ -607,14 +686,14 @@ export default function Dashboard() {
         <KpiTile
           icon={Gavel}
           label="Live Auctions"
-          value={auctionsLoading ? null : liveAuctionsCount.toLocaleString()}
+          value={auctionsLoading ? null : Number(liveAuctionsCount || 0).toLocaleString()}
           sub={auctionsLoading ? 'Total active' : `🔥 ${strongBuyCount} strong buys`}
           color="blue"
         />
         <KpiTile
           icon={Clock}
           label="Ending ≤ 1h"
-          value={auctionsLoading ? null : endingSoonCount.toLocaleString()}
+          value={auctionsLoading ? null : Number(endingSoonCount || 0).toLocaleString()}
           sub={endingSoonCount > 0 ? 'Hurry' : 'None imminent'}
           color={endingSoonCount > 0 ? 'red' : 'gray'}
           onClick={() => navigate('/auctions')}
@@ -622,14 +701,14 @@ export default function Dashboard() {
         <KpiTile
           icon={Database}
           label="Total Sales"
-          value={statsLoading ? null : (stats?.total_count?.toLocaleString() ?? '0')}
-          sub={stats?.week_count ? `+${stats.week_count.toLocaleString()} this week` : ' '}
+          value={statsLoading ? null : (Number(stats?.total_count ?? 0).toLocaleString())}
+          sub={stats?.week_count != null ? `+${Number(stats.week_count).toLocaleString()} this week` : ' '}
           color="cyan"
         />
         <KpiTile
           icon={TrendingUp}
           label="Price Trending"
-          value={salesLoading ? null : (priceTrending ? `${priceTrending.arrow} ${priceTrending.pctChange.toFixed(0)}%` : '—')}
+          value={salesLoading ? null : (priceTrending ? `${priceTrending.arrow} ${Number(priceTrending.pctChange || 0).toFixed(0)}%` : '—')}
           sub={priceTrending?.trend || 'No data'}
           color={priceTrending?.trend === 'Up' ? 'green' : priceTrending?.trend === 'Down' ? 'red' : 'cyan'}
         />
@@ -637,7 +716,7 @@ export default function Dashboard() {
           icon={Zap}
           label="Top Snipe"
           value={snipesLoading ? null : (topSnipeScore != null ? Math.round(topSnipeScore) : '—')}
-          sub={snipes?.length ? `${snipes.length} tracked` : 'None flagged'}
+          sub={(Array.isArray(snipes) && snipes.length) ? `${snipes.length} tracked` : 'None flagged'}
           color="red"
         />
       </div>
@@ -669,9 +748,9 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1 md:grid md:grid-cols-3 lg:grid-cols-5 md:overflow-visible md:mx-0 md:px-0">
-            {bigWins.map((s, i) => {
-              const driver = s.driver_name || ''
-              const parallel = s.parallel || ''
+            {(Array.isArray(bigWins) ? bigWins : []).filter(Boolean).map((s, i) => {
+              const driver = s?.driver_name || ''
+              const parallel = s?.parallel || ''
               const slugBase = `${driver}${parallel ? ' ' + parallel : ''}`
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, '-')
@@ -679,12 +758,12 @@ export default function Dashboard() {
               const to = slugBase ? `/card/${slugBase}` : '/sales'
               return (
                 <Link
-                  key={s.id ?? i}
+                  key={s?.id ?? i}
                   to={to}
                   className="shrink-0 w-48 md:w-auto snap-start bg-gradient-to-br from-emerald-900/30 to-gray-900 border border-emerald-700/40 hover:border-emerald-500/70 rounded-2xl p-3 transition-colors flex flex-col gap-2 no-underline"
                 >
                   <div className="flex items-start gap-2">
-                    {s.image_url && !s.image_url.includes('placehold') ? (
+                    {s?.image_url && !String(s.image_url).includes('placehold') ? (
                       <img
                         src={s.image_url}
                         alt=""
@@ -699,7 +778,7 @@ export default function Dashboard() {
                       {parallel && (
                         <div className="text-[10px] text-cyan-300 font-semibold truncate">{parallel}</div>
                       )}
-                      {s.grade && s.grade !== 'Raw' && (
+                      {s?.grade && s.grade !== 'Raw' && (
                         <span className="inline-block mt-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-800/40 font-bold">
                           {s.grade}
                         </span>
@@ -708,10 +787,10 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-end justify-between mt-auto">
                     <div className="text-xl font-black text-emerald-400 tabular-nums leading-none">
-                      ${Math.round(s.sale_price ?? 0).toLocaleString()}
+                      ${Math.round(Number(s?.sale_price ?? 0)).toLocaleString()}
                     </div>
                     <div className="text-[10px] text-gray-500 font-mono">
-                      {relTime(s.scraped_at || s.sale_date)}
+                      {relTime(s?.scraped_at || s?.sale_date)}
                     </div>
                   </div>
                 </Link>
@@ -751,45 +830,45 @@ export default function Dashboard() {
                   <div className="h-4 w-14 bg-gray-800 rounded" />
                 </div>
               ))
-            ) : sales.length === 0 ? (
+            ) : (Array.isArray(sales) ? sales : []).length === 0 ? (
               <EmptyRow text="No notable sales yet today" />
-            ) : sales.filter(s => s.image_url && !s.image_url.includes('placehold')).map((s, i) => (
+            ) : (Array.isArray(sales) ? sales : []).filter(s => s && s.image_url && !String(s.image_url).includes('placehold')).map((s, i) => (
               <a
-                key={s.id ?? i}
-                href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : `/sales?driver=${encodeURIComponent(s.driver_name || '')}`}
-                target={s.ebay_url ? '_blank' : undefined}
-                rel={s.ebay_url ? 'noopener sponsored' : undefined}
+                key={s?.id ?? i}
+                href={s?.ebay_url ? ebayAffiliateUrl(s.ebay_url) : `/sales?driver=${encodeURIComponent(s?.driver_name || '')}`}
+                target={s?.ebay_url ? '_blank' : undefined}
+                rel={s?.ebay_url ? 'noopener sponsored' : undefined}
                 className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors no-underline"
               >
                 <img
-                  src={s.image_url}
+                  src={s?.image_url}
                   alt=""
                   className="w-10 h-14 object-cover rounded border border-gray-800 shrink-0"
-                  onError={e => { e.target.closest('a').style.display = 'none' }}
+                  onError={e => { try { e.target.closest('a').style.display = 'none' } catch {} }}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-semibold text-white truncate">
-                      {s.driver_name || '—'}
+                      {s?.driver_name || '—'}
                     </span>
-                    {s.parallel && (
+                    {s?.parallel && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-900/30 text-cyan-300 border border-cyan-800/40 font-semibold">
                         {s.parallel}
                       </span>
                     )}
-                    {s.grade && s.grade !== 'Raw' && (
+                    {s?.grade && s.grade !== 'Raw' && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-800/40 font-bold">
                         {s.grade}
                       </span>
                     )}
                   </div>
-                  <div className="text-[10px] text-gray-600 mt-0.5 truncate" title={s.title}>
-                    {s.title || ''}
+                  <div className="text-[10px] text-gray-600 mt-0.5 truncate" title={s?.title || ''}>
+                    {s?.title || ''}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-sm font-black text-emerald-400">
-                    ${(s.sale_price ?? 0).toFixed(2)}
+                    ${Number(s?.sale_price ?? 0).toFixed(2)}
                   </div>
                   <div className="text-[10px] text-gray-600">{saleTimeLabel(s)}</div>
                 </div>
@@ -829,14 +908,14 @@ export default function Dashboard() {
               <div key={i} className="w-64 shrink-0 h-72 bg-gray-900 rounded-2xl border border-gray-800 animate-pulse" />
             ))}
           </div>
-        ) : endingStrip.length === 0 ? (
+        ) : (endingStrip || []).length === 0 ? (
           <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl">
             <EmptyRow text="Nothing ending in the next 2 hours" />
           </div>
         ) : (
           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
-            {endingStrip.map(a => (
-              <div key={a.id} className="w-64 shrink-0 snap-start">
+            {(endingStrip || []).filter(Boolean).map((a, i) => (
+              <div key={a?.id ?? i} className="w-64 shrink-0 snap-start">
                 <AuctionCard auction={a} />
               </div>
             ))}
@@ -865,30 +944,30 @@ export default function Dashboard() {
               <div key={i} className="h-72 bg-gray-900 rounded-2xl border border-gray-800 animate-pulse" />
             ))}
           </div>
-        ) : hotSnipes.length === 0 ? (
+        ) : (hotSnipes || []).length === 0 ? (
           <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl">
             <EmptyRow text="No active snipe targets right now — check back soon" />
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {hotSnipes.map(a => <AuctionCard key={a.id} auction={a} />)}
+            {(hotSnipes || []).filter(Boolean).map((a, i) => <AuctionCard key={a?.id ?? i} auction={a} />)}
           </div>
         )}
       </div>
 
       {/* Scraper telemetry strip (footer) */}
-      {scraperHealth?.sources?.length > 0 && (
+      {Array.isArray(scraperHealth?.sources) && scraperHealth.sources.length > 0 && (
         <div className="mt-4 bg-gray-900/50 border border-gray-800/50 rounded-2xl px-3 py-2 flex items-center gap-3 flex-wrap text-[10px]">
           <span className="text-gray-500 uppercase font-black tracking-wider">Scrapers</span>
-          {scraperHealth.sources.map(s => {
-            const sym = s.status === 'ok' ? '✓' : s.status === 'warn' ? '⚠' : s.status === 'blocked' ? '✗' : '–'
-            const color = s.status === 'ok' ? 'text-emerald-400' : s.status === 'warn' ? 'text-amber-400' : s.status === 'blocked' ? 'text-red-400' : 'text-gray-500'
-            const lastLabel = s.last_success_at
+          {scraperHealth.sources.filter(Boolean).map((s, i) => {
+            const sym = s?.status === 'ok' ? '✓' : s?.status === 'warn' ? '⚠' : s?.status === 'blocked' ? '✗' : '–'
+            const color = s?.status === 'ok' ? 'text-emerald-400' : s?.status === 'warn' ? 'text-amber-400' : s?.status === 'blocked' ? 'text-red-400' : 'text-gray-500'
+            const lastLabel = s?.last_success_at
               ? relTime(s.last_success_at)
-              : s.status === 'blocked' ? 'blocked' : 'no data'
+              : s?.status === 'blocked' ? 'blocked' : 'no data'
             return (
-              <span key={s.source} className="text-gray-400" title={`${s.runs} runs · ${s.success_rate}% success · avg ${s.avg_new_rows} new rows/run`}>
-                {s.source} <span className={`font-black ${color}`}>{sym}</span> <span className="text-gray-600">{lastLabel}</span>
+              <span key={s?.source ?? i} className="text-gray-400" title={`${s?.runs ?? 0} runs · ${s?.success_rate ?? 0}% success · avg ${s?.avg_new_rows ?? 0} new rows/run`}>
+                {s?.source || '—'} <span className={`font-black ${color}`}>{sym}</span> <span className="text-gray-600">{lastLabel}</span>
               </span>
             )
           })}
@@ -918,81 +997,135 @@ function rarityWeight(a) {
   return 1.0
 }
 
+// Strip redundant set prefix from display titles so the driver/parallel is visible.
+const cleanTitle = (t) => (t || '').replace(/^2025\s*topps\s*chrome\s*f(ormula)?\s*1\s*/i, '').trim()
+
+// Team-logo / non-driver card reject list. These come through as "cards" but are team entries.
+const TEAM_DRIVER_RE = /^(oracle|red bull|mercedes|ferrari|aston(?:\s*martin)?|alpine|williams|haas|mclaren|stake|rb|alfa(?:\s*romeo)?|alphatauri|racing bulls|kick sauber|sauber)$/i
+const TEAM_TITLE_RE = /\b(racing|team|oracle|mercedes|ferrari|red bull|aston martin|alpine|williams|haas|mclaren|stake|alfa romeo|alphatauri|racing bulls|kick sauber)\b/i
+const isTeamCard = (a) => {
+  const d = (a?.card?.driver_name || a?.driver_name || '').trim()
+  if (!d) return false
+  return TEAM_DRIVER_RE.test(d)
+}
+
 function DealOfTheDay({ auctions }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id) }, [])
 
+  // Early bail — if no auctions, render nothing (guards mobile blank render).
+  const safeAuctions = Array.isArray(auctions) ? auctions : []
   const deal = useMemo(() => {
-    // Deal of the Day = F1-only, /99 or rarer, or autograph. No base, no F2/F3/Legends,
-    // no common parallels. Prefer exciting autos and rare numbered parallels.
-    const EXCLUDE_PARALLELS = /^(base|refractor|prism refractor|b&w ray wave|b&w lazer|checker flag|floor it|four & more|diamond 75th)$/i
-    const ALLOWED_PRINT_RUN = /\/(5|10|15|20|25|50|75|99)\b/
-    const AUTO_RE = /\bauto(graph)?\b|\bsigned\b/i
-    const EXCITING_INSERT = /(neon nations|vegas at night|helix|ultrasonic|the grail|futuro|speed demons|ace of trades|superfractor|red \/5|black \/10|orange \/25|gold \/50|f1 75th \/75)/i
+    try {
+      if (!safeAuctions.length) return null
 
-    const pool = (auctions || []).filter(a => {
-      if (!a) return false
-      const sL = secsLeft(a)
-      if (sL <= 0) return false
-      // F1 drivers only — drop F2/F3/Legends.
-      const series = a.card?.series || a.series || 'F1'
-      if (series !== 'F1') return false
-      const parallel = a.card?.parallel || a.parallel || ''
-      const title = a.title || ''
-      // Reject plain/common parallels.
-      if (EXCLUDE_PARALLELS.test(parallel)) return false
-      // Must be either: autograph, exciting insert, or numbered /99 or rarer.
-      const isAuto = AUTO_RE.test(title) || AUTO_RE.test(parallel)
-      const isExciting = EXCITING_INSERT.test(parallel) || EXCITING_INSERT.test(title)
-      const isRareNumbered = ALLOWED_PRINT_RUN.test(parallel) || ALLOWED_PRINT_RUN.test(title)
-      if (!isAuto && !isExciting && !isRareNumbered) return false
-      // Floor price — no $1 junk.
-      if ((a.current_price || 0) < 10 && (a.bid_count || 0) < 2) return false
-      return true
-    })
-    let best = null
-    let bestScore = -Infinity
-    for (const a of pool) {
-      const snipe = a.snipe_score || 0
-      if (snipe <= 0) continue
-      const nComps = a.n_comps ?? a.comp_count ?? a.comps_n ?? a.median_n ?? null
-      const compPenalty = (nComps != null && nComps < 5) ? (1 / 10) : 1
-      const rw = rarityWeight(a)
-      // Auto boost: autos get 1.8x weight, exciting inserts 1.4x.
-      const title = a.title || ''
-      const parallel = a.card?.parallel || a.parallel || ''
-      const autoBoost = (AUTO_RE.test(title) || AUTO_RE.test(parallel)) ? 1.8
-        : EXCITING_INSERT.test(parallel) || EXCITING_INSERT.test(title) ? 1.4
-        : 1.0
-      const score = snipe * compPenalty * rw * autoBoost
-      if (score > bestScore) {
-        bestScore = score
-        best = a
-      }
+      const EXCLUDE_PARALLELS = /^(base|refractor|prism refractor|b&w ray wave|b&w lazer|checker flag|floor it|four & more|diamond 75th)$/i
+      const AUTO_RE = /\bauto(graph)?\b|\bsigned\b/i
+      const RARE_NUMBERED_RE = /\/(?:5|10|15|20|25|50)\b|superfractor|1\/1|one\s*of\s*one/i
+      const NUMBERED_99_RE = /\/(?:5|10|15|20|25|50|75|99)\b|superfractor|1\/1|one\s*of\s*one/i
+      const STRONG = 'STRONG_BUY'
+      const GOOD = 'GOOD_BUY'
+      const RARE_INSERT_RE = /(neon nations|vegas at night|helix|ultrasonic|the grail|futuro|speed demons|ace of trades|superfractor)/i
+
+      const DAY_MS = 24 * 3600 * 1000
+      const nowMs = Date.now()
+
+      const getParallel = a => a.card?.parallel || a.parallel || ''
+      const getTitle = a => a.title || ''
+      const hasAuction = a => (a.buying_options || []).includes('AUCTION')
+      const hasBIN = a => (a.buying_options || []).includes('FIXED_PRICE')
+
+      const eligible = safeAuctions.filter(a => {
+        if (!a) return false
+        const series = a.card?.series || a.series || 'F1'
+        if (series !== 'F1') return false
+        if (isTeamCard(a)) return false
+        const parallel = getParallel(a)
+        const title = getTitle(a)
+        if (!parallel && !a.card?.driver_name && TEAM_TITLE_RE.test(title)) return false
+        if (EXCLUDE_PARALLELS.test(parallel)) return false
+        return true
+      })
+
+      // Bucket 1: Ending Auction — live steal.
+      const endingAuctions = eligible.filter(a => {
+        if (!hasAuction(a)) return false
+        const sL = secsLeft(a)
+        if (sL <= 0 || sL >= 3600) return false
+        if ((a.current_price || 0) < 10) return false
+        if ((a.bid_count || 0) < 1) return false
+        return true
+      })
+
+      // Bucket 2: Fresh BIN listed within 24h at >= $50 with STRONG/GOOD verdict.
+      const freshBins = eligible.filter(a => {
+        if (!hasBIN(a)) return false
+        const listedAt = a.created_at || a.scraped_at || a.first_seen_at
+        if (!listedAt) return false
+        const t = new Date(listedAt).getTime()
+        if (Number.isNaN(t)) return false
+        if (nowMs - t > DAY_MS) return false
+        const price = a.buy_it_now_price || a.current_price || 0
+        if (price < 50) return false
+        if (a.verdict !== STRONG && a.verdict !== GOOD) return false
+        return true
+      })
+
+      const isAuto = a => AUTO_RE.test(getTitle(a)) || AUTO_RE.test(getParallel(a))
+      const isRareNum = a => RARE_NUMBERED_RE.test(getTitle(a)) || RARE_NUMBERED_RE.test(getParallel(a))
+      const isNum99 = a => NUMBERED_99_RE.test(getTitle(a)) || NUMBERED_99_RE.test(getParallel(a))
+      const isRareInsert = a => RARE_INSERT_RE.test(getTitle(a)) || RARE_INSERT_RE.test(getParallel(a))
+      const byScore = (a, b) => (b.snipe_score || 0) - (a.snipe_score || 0)
+
+      // Priority tiers. Pick the best match within the first non-empty tier.
+      const tier1 = endingAuctions.filter(a => isAuto(a) || isRareNum(a))
+      if (tier1.length) return { ...tier1.sort(byScore)[0], _kind: 'auction' }
+      if (endingAuctions.length) return { ...endingAuctions.sort(byScore)[0], _kind: 'auction' }
+      const tier3 = freshBins.filter(a => a.verdict === STRONG && isAuto(a))
+      if (tier3.length) return { ...tier3.sort(byScore)[0], _kind: 'bin' }
+      const tier4 = freshBins.filter(a => a.verdict === STRONG && isNum99(a))
+      if (tier4.length) return { ...tier4.sort(byScore)[0], _kind: 'bin' }
+      const tier5 = freshBins.filter(a => a.verdict === GOOD && isRareInsert(a))
+      if (tier5.length) return { ...tier5.sort(byScore)[0], _kind: 'bin' }
+      return null
+    } catch (err) {
+      console.error('[DealOfTheDay] selection failed', err)
+      return null
     }
-    return best
-  }, [auctions])
+  }, [safeAuctions])
 
   if (!deal) return null
 
-  const secs = secsLeft(deal) || Math.max(0, Math.floor(((deal.end_time ? new Date(deal.end_time).getTime() : 0) - now) / 1000))
+  const isAuctionDeal = deal._kind === 'auction'
+  const secs = secsLeft(deal) || Math.max(0, Math.floor(((deal?.end_time ? new Date(deal.end_time).getTime() : 0) - now) / 1000))
   const h = Math.floor(secs / 3600)
   const m = Math.floor((secs % 3600) / 60)
   const s = secs % 60
   const countdown = h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`
 
-  const img = deal.image_url || deal.primary_image_url
-  const rawUrl = deal.ebay_url || deal.item_web_url || (deal.ebay_item_id ? `https://www.ebay.com/itm/${deal.ebay_item_id}` : '#')
-  const price = deal.current_price || deal.buy_it_now_price || deal.sale_price || 0
-  const medianComp = deal.median_total ?? deal.median_price ?? deal.median ?? null
-  const driver = deal.driver_name || deal.card?.driver_name
-  const title = deal.title || [driver, deal.parallel].filter(Boolean).join(' ') || 'F1 Card Deal'
-  const auctionId = deal.id ?? null
-  const cardId = deal.card_id ?? deal.card?.id ?? null
+  const img = deal?.image_url || deal?.primary_image_url
+  const rawUrl = deal?.ebay_url || deal?.item_web_url || (deal?.ebay_item_id ? `https://www.ebay.com/itm/${deal.ebay_item_id}` : '#')
+  const priceRaw = deal?.current_price ?? deal?.buy_it_now_price ?? deal?.sale_price ?? 0
+  const price = Number.isFinite(Number(priceRaw)) ? Number(priceRaw) : 0
+  const medianRaw = deal?.median_total ?? deal?.median_price ?? deal?.median ?? null
+  const medianComp = medianRaw != null && Number.isFinite(Number(medianRaw)) ? Number(medianRaw) : null
+  const driver = deal?.driver_name || deal?.card?.driver_name || ''
+  const rawTitle = deal?.title || [driver, deal?.parallel].filter(Boolean).join(' ') || 'F1 Card Deal'
+  const title = cleanTitle(rawTitle) || rawTitle
+  const auctionId = deal?.id ?? null
+  const cardId = deal?.card_id ?? deal?.card?.id ?? null
+  const listedAt = deal?.created_at || deal?.scraped_at || deal?.first_seen_at
+  const bidCount = deal?.bid_count || 0
 
   const onCtaClick = () => {
-    try { trackClick(rawUrl, auctionId, cardId) } catch {}
+    try { trackClick(rawUrl, auctionId, cardId) } catch (err) { console.error('[DealOfTheDay] trackClick', err) }
   }
+
+  const badgeLabel = isAuctionDeal ? '🔴 Live Auction Steal' : '💰 New Buy-It-Now Deal'
+  const formatLine = isAuctionDeal
+    ? `${bidCount} bid${bidCount === 1 ? '' : 's'} · ends ${countdown}`
+    : `Buy Now · Listed ${relTime(listedAt)}`
+  const ctaLabel = isAuctionDeal ? 'Bid on eBay' : 'Buy on eBay'
 
   return (
     <a
@@ -1022,7 +1155,9 @@ function DealOfTheDay({ auctions }) {
         <div className="flex-1 p-5 md:p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="bg-yellow-400 text-red-900 text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">Deal of the Day</span>
+              <span className="bg-yellow-400 text-red-900 text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
+                {badgeLabel}
+              </span>
               {deal.verdict && (
                 <span className="bg-white/20 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
                   {String(deal.verdict).replace('_', ' ')}
@@ -1032,31 +1167,38 @@ function DealOfTheDay({ auctions }) {
                 <span className="text-[10px] text-red-100 font-mono">Score {Math.round(deal.snipe_score)}</span>
               ) : null}
             </div>
-            <h2 className="text-2xl md:text-4xl font-black text-white leading-tight mb-1 line-clamp-2">
+            <h2 className="text-xl md:text-3xl font-black text-white leading-tight mb-1 line-clamp-2">
               {title}
             </h2>
-            <div className="text-sm text-red-100 mb-3 font-semibold">
+            <div className="text-sm text-red-100 mb-2 font-semibold">
               {deal.parallel || '—'}{deal.grade && deal.grade !== 'Raw' ? ` · ${deal.grade}` : ''}
+            </div>
+            <div className="text-xs text-yellow-200 font-bold mb-3">
+              {formatLine}
             </div>
           </div>
           <div className="flex flex-wrap items-end gap-4 md:gap-6">
             <div>
-              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Current price</div>
-              <div className="text-4xl md:text-5xl font-black text-white tabular-nums">${Number(price).toFixed(0)}</div>
+              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">
+                {isAuctionDeal ? 'Current bid' : 'Buy it now'}
+              </div>
+              <div className="text-4xl md:text-5xl font-black text-white tabular-nums">${price.toFixed(0)}</div>
             </div>
             {medianComp != null && (
               <div>
                 <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Median comp</div>
-                <div className="text-2xl md:text-3xl font-black text-red-100 tabular-nums">${Number(medianComp).toFixed(0)}</div>
+                <div className="text-2xl md:text-3xl font-black text-red-100 tabular-nums">${medianComp.toFixed(0)}</div>
               </div>
             )}
-            <div>
-              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Time left</div>
-              <div className="text-2xl md:text-3xl font-black text-yellow-300 tabular-nums">{countdown}</div>
-            </div>
+            {isAuctionDeal && (
+              <div>
+                <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Time left</div>
+                <div className="text-2xl md:text-3xl font-black text-yellow-300 tabular-nums">{countdown}</div>
+              </div>
+            )}
             <div className="ml-auto">
               <div className="bg-white text-red-700 font-black text-sm md:text-base px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 hover:bg-yellow-50">
-                Bid on eBay <ExternalLink size={14} />
+                {ctaLabel} <ExternalLink size={14} />
               </div>
             </div>
           </div>
@@ -1195,4 +1337,22 @@ function EmptyRow({ text }) {
       {text}
     </div>
   )
+}
+
+// Scoped error boundary so a single section blowing up never takes the whole
+// dashboard with it (this is what caused mobile "shell only" renders).
+class SectionBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null } }
+  static getDerivedStateFromError(err) { return { err } }
+  componentDidCatch(err, info) { console.error('[Dashboard SectionBoundary]', err, info) }
+  render() {
+    if (this.state.err) {
+      return (
+        <div className="bg-red-950/30 border border-red-800/40 rounded-2xl px-3 py-2 text-[11px] text-red-300">
+          Section failed to render — we're looking into it.
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }

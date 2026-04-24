@@ -1,9 +1,39 @@
 import { useState, useRef } from 'react'
-import { Camera, Upload, X, Sparkles, Check } from 'lucide-react'
+import { Camera, Upload, X, Sparkles, Check, AlertTriangle, Flag } from 'lucide-react'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 
 const API = import.meta.env.VITE_API_URL || ''
+
+// Confidence -> tailwind color classes + label
+function confidenceStyle(conf) {
+  const c = typeof conf === 'number' ? conf : 0
+  if (c >= 0.8) return { cls: 'bg-green-900/40 text-green-300 border-green-700/60', label: 'HIGH' }
+  if (c >= 0.6) return { cls: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/60', label: 'MED' }
+  return { cls: 'bg-red-900/40 text-red-300 border-red-700/60', label: 'LOW' }
+}
+
+function ConfBadge({ label, conf }) {
+  const s = confidenceStyle(conf)
+  const pct = Math.round((conf || 0) * 100)
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${s.cls}`}>
+      {label}: {pct}% {s.label === 'LOW' && <AlertTriangle size={10} />}
+    </span>
+  )
+}
+
+// Log scan correction to localStorage for later analysis
+function logCorrection(entry) {
+  try {
+    const key = 'cc_scan_corrections'
+    const prev = JSON.parse(localStorage.getItem(key) || '[]')
+    prev.push({ ...entry, ts: Date.now() })
+    // Keep last 200 to avoid unbounded growth
+    const trimmed = prev.slice(-200)
+    localStorage.setItem(key, JSON.stringify(trimmed))
+  } catch (_) { /* ignore quota errors */ }
+}
 
 export default function ScanCardModal({ open, onClose, onSaved }) {
   const { user } = useAuth()
@@ -17,6 +47,9 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
     driver_name: '', parallel: '', card_number: '', grade: '',
     purchase_price: '', notes: '',
   })
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedback, setFeedback] = useState({ driver: '', parallel: '', comment: '' })
+  const [feedbackSent, setFeedbackSent] = useState(false)
   const cameraRef = useRef(null)
   const uploadRef = useRef(null)
 
@@ -24,6 +57,7 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
     setFile(null); setPreviewUrl(null); setScanResult(null)
     setForm({ driver_name: '', parallel: '', card_number: '', grade: '', purchase_price: '', notes: '' })
     setError(null)
+    setFeedbackOpen(false); setFeedback({ driver: '', parallel: '', comment: '' }); setFeedbackSent(false)
   }
 
   const close = () => { reset(); onClose() }
@@ -54,7 +88,7 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
         card_number: data.card_number || '',
         grade: firstGuess.predicted_grade != null ? `PSA ${firstGuess.predicted_grade}` : '',
         purchase_price: '',
-        notes: data.reasoning || '',
+        notes: firstGuess.notes || data.reasoning || '',
       })
     } catch (e) {
       setError(e.message || 'Scan error')
@@ -190,7 +224,9 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
                 <div className="space-y-2">
                   {scanResult.top_guesses.map((guess, i) => {
                     const isTopGuess = i === 0
-                    const confidence = Math.round((guess.confidence || 0) * 100)
+                    const cd = guess.confidence_driver ?? guess.confidence ?? 0
+                    const cp = guess.confidence_parallel ?? guess.confidence ?? 0
+                    const lowConf = cd < 0.6 || cp < 0.6
                     return (
                       <button
                         key={i}
@@ -204,7 +240,7 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
                         }}
                         className={`w-full text-left rounded-lg p-3 transition-colors border-2 ${
                           isTopGuess
-                            ? 'bg-green-900/30 border-green-600/60 hover:bg-green-900/40'
+                            ? 'bg-green-900/20 border-green-600/60 hover:bg-green-900/30'
                             : 'bg-gray-800/50 hover:bg-gray-800 border-gray-700/50'
                         }`}
                       >
@@ -212,18 +248,34 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-white">
                               {guess.driver_name || '?'} {guess.parallel && `· ${guess.parallel}`}
+                              {guess.print_run && <span className="ml-1 text-gray-400">{guess.print_run}</span>}
+                            </div>
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              <ConfBadge label="Driver" conf={cd} />
+                              <ConfBadge label="Parallel" conf={cp} />
                             </div>
                             {guess.predicted_grade != null && (
-                              <div className="text-[10px] text-gray-300 mt-1">
+                              <div className="text-[10px] text-gray-300 mt-1.5">
                                 Grade: PSA {guess.predicted_grade}
                                 <span className="ml-1 font-semibold text-green-400">({guess.grade_confidence ? Math.round((guess.grade_confidence || 0) * 100) : '?'}% conf)</span>
                               </div>
                             )}
+                            {guess.notes && (
+                              <div className="text-[10px] text-gray-400 italic mt-1.5 leading-snug">
+                                {guess.notes}
+                              </div>
+                            )}
+                            {lowConf && isTopGuess && (
+                              <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-red-300 bg-red-900/30 border border-red-800/50 px-1.5 py-0.5 rounded">
+                                <AlertTriangle size={10} /> Verify manually
+                              </div>
+                            )}
                           </div>
-                          <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                            <span className="text-lg font-bold text-green-400">{confidence}%</span>
-                            {isTopGuess && <span className="text-[9px] font-bold uppercase tracking-wider text-green-400">Top</span>}
-                          </div>
+                          {isTopGuess && (
+                            <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-green-400">Top</span>
+                            </div>
+                          )}
                         </div>
                       </button>
                     )
@@ -240,6 +292,74 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
                 </div>
               )}
               {scanResult.card_number && <div className="text-xs"><span className="text-gray-500">Number:</span> <span className="text-white">{scanResult.card_number}</span></div>}
+              {scanResult.reasoning && (
+                <div className="text-[10px] text-gray-400 italic leading-snug border-t border-purple-800/40 pt-2">
+                  <span className="text-purple-300 font-bold not-italic">Model notes: </span>
+                  {scanResult.reasoning}
+                </div>
+              )}
+
+              {/* Feedback loop */}
+              <div className="border-t border-purple-800/40 pt-2">
+                {!feedbackOpen && !feedbackSent && (
+                  <button
+                    onClick={() => {
+                      const top = scanResult.top_guesses?.[0] || scanResult
+                      setFeedback({
+                        driver: top.driver_name || '',
+                        parallel: top.parallel || '',
+                        comment: '',
+                      })
+                      setFeedbackOpen(true)
+                    }}
+                    className="text-[11px] text-gray-400 hover:text-white inline-flex items-center gap-1"
+                  >
+                    <Flag size={11} /> Wrong? Report correct identification
+                  </button>
+                )}
+                {feedbackSent && (
+                  <div className="text-[11px] text-green-400 inline-flex items-center gap-1">
+                    <Check size={11} /> Thanks — feedback logged locally
+                  </div>
+                )}
+                {feedbackOpen && !feedbackSent && (
+                  <div className="space-y-2 bg-gray-900/60 border border-gray-800 rounded-lg p-2">
+                    <div className="text-[10px] font-bold text-gray-300 uppercase tracking-wider">Correct identification:</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="Correct driver" value={feedback.driver} onChange={v => setFeedback({ ...feedback, driver: v })} />
+                      <Field label="Correct parallel" value={feedback.parallel} onChange={v => setFeedback({ ...feedback, parallel: v })} />
+                    </div>
+                    <Field label="Notes (optional)" value={feedback.comment} onChange={v => setFeedback({ ...feedback, comment: v })} textarea />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          const top = scanResult.top_guesses?.[0] || scanResult
+                          logCorrection({
+                            model_driver: top.driver_name || null,
+                            model_parallel: top.parallel || null,
+                            model_confidence_driver: top.confidence_driver ?? null,
+                            model_confidence_parallel: top.confidence_parallel ?? null,
+                            correct_driver: feedback.driver || null,
+                            correct_parallel: feedback.parallel || null,
+                            comment: feedback.comment || null,
+                          })
+                          setFeedbackSent(true)
+                          setFeedbackOpen(false)
+                        }}
+                        className="flex-1 bg-red-600 hover:bg-red-500 text-white text-xs font-bold py-1.5 rounded"
+                      >
+                        Submit correction
+                      </button>
+                      <button
+                        onClick={() => setFeedbackOpen(false)}
+                        className="px-3 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold py-1.5 rounded"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

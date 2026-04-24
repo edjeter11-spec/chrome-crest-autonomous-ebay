@@ -388,7 +388,7 @@ export default function Layout() {
           </div>
         )}
 
-        <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-20 md:pb-6">
+        <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-24 md:pb-6">
           <SignedOutBanner />
           <Outlet />
           {/* FTC-required affiliate disclosure */}
@@ -414,24 +414,28 @@ export default function Layout() {
 
         {/* Mobile bottom tab bar — 4 key routes, iOS/Android-style tap targets */}
         <nav
-          className="md:hidden fixed bottom-0 inset-x-0 h-14 bg-gray-950 border-t border-gray-800 z-30 flex"
+          className="md:hidden fixed bottom-0 inset-x-0 bg-gray-950/95 backdrop-blur border-t border-gray-800 z-30"
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
-          {mobileTabsFor(!!user).map(({ to, label, icon: Icon, exact }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={exact}
-              className={({ isActive }) =>
-                `flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold transition ${
-                  isActive ? 'text-red-500' : 'text-gray-500 hover:text-white'
-                }`
-              }
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </NavLink>
-          ))}
+          <div className="flex h-16 min-h-[64px]">
+            {mobileTabsFor(!!user).map(({ to, label, icon: Icon, exact }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={exact}
+                className={({ isActive }) =>
+                  `flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold transition ${
+                    isActive
+                      ? 'text-red-500 border-t-2 border-red-500 -mt-[2px]'
+                      : 'text-gray-400 active:bg-gray-900 hover:text-white'
+                  }`
+                }
+              >
+                <Icon size={20} />
+                <span className="tracking-tight">{label}</span>
+              </NavLink>
+            ))}
+          </div>
         </nav>
       </div>
 
