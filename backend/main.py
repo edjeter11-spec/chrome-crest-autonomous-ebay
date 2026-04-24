@@ -1183,6 +1183,16 @@ async def cron_sync(db: Session = Depends(get_db)):
         import logging as _log
         _log.getLogger("sweep").warning(f"expire sweep failed: {_se}")
 
+    # Recompute snipe_eligible for every active auction so the dashboard
+    # "Active Snipes" counter catches up even when the original scrape missed.
+    snipe_recompute = None
+    try:
+        from scraper import recompute_snipe_eligibility
+        snipe_recompute = recompute_snipe_eligibility(db)
+    except Exception as _re:
+        import logging as _log
+        _log.getLogger("sniper").warning(f"snipe recompute failed: {_re}")
+
     # Feature 1: enhanced snipe alert generation — never blocks sync
     snipe_alerts_created = 0
     snipe_alert_error = None
@@ -1279,6 +1289,7 @@ async def cron_sync(db: Session = Depends(get_db)):
         "wishlist_match_alerts_created": wishlist_match_created,
         "auto_watchlisted": auto_watchlisted,
         "rules_auto_watched": rules_auto_watched,
+        "snipe_recompute": snipe_recompute,
     }
 
 
@@ -1391,6 +1402,16 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
     except Exception:
         pass
 
+    # Recompute snipe_eligible now that prices/end_times are fresh — this is the
+    # catch-up pass that flips newly-eligible auctions on without waiting for the
+    # next /api/cron/sync cycle.
+    snipe_recompute = None
+    try:
+        from scraper import recompute_snipe_eligibility
+        snipe_recompute = recompute_snipe_eligibility(db)
+    except Exception:
+        pass
+
     total_active = db.query(Auction).filter(Auction.status == "active").count()
     return {
         "ok": True,
@@ -1399,6 +1420,7 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
         "total_active": total_active,
         "priority_refreshed": priority_refreshed,
         "stale_refreshed": stale_refreshed,
+        "snipe_recompute": snipe_recompute,
     }
 
 

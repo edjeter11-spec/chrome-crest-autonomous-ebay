@@ -511,20 +511,25 @@ def import_rules(
 def get_fresh_snipes(limit: int = 6, db: Session = Depends(get_db)):
     """Public: return top N "snipe-worthy" auctions with fresh eBay lookups.
 
-    Scans active auctions ending within 6h, filters to rare parallels + high value,
-    and returns with current prices & verdicts. Used by Dashboard on mount for
-    real-time Biggest Snipes display.
+    Pulls active auctions that are either ending within 12h OR already flagged
+    snipe_eligible by the scorer. Drops base / clearly-boring parallels and very
+    low value non-rare listings. Loosened vs the prior 6h+rare-parallel gate so
+    the Dashboard counter keeps up when price drops or end_time updates lag.
     """
     import asyncio
     from ebay_api import get_item_details
 
     BORING_PARALLELS = {"Base", "B&W Ray Wave", "B&W Lazer", "Floor It", "Four & More"}
-    RARE_PRINT_RE = r"/(5|10|15|20|25|50|75)\b"
+    RARE_PRINT_RE = r"/(5|10|15|20|25|50|75|99|150|199|250|299)\b"
 
+    now = datetime.utcnow()
+    window = now + timedelta(hours=12)
     auctions = db.query(Auction).filter(
         Auction.status == "active",
-        Auction.end_time > datetime.utcnow(),
-        Auction.end_time <= datetime.utcnow() + timedelta(hours=6),
+        Auction.end_time > now,
+    ).filter(
+        # Either ending soon-ish OR already flagged eligible by the scorer.
+        (Auction.end_time <= window) | (Auction.snipe_eligible == True)
     ).all()
 
     candidates = []
@@ -537,8 +542,8 @@ def get_fresh_snipes(limit: int = 6, db: Session = Depends(get_db)):
         price = a.current_price or 0
         title = (a.title or "").lower()
 
-        # Skip low-value unless rare print run or autograph
-        if price < 20 and not re.search(RARE_PRINT_RE, title) and "auto" not in title:
+        # Skip very-low-value unless rare print run or autograph
+        if price < 10 and not re.search(RARE_PRINT_RE, title) and "auto" not in title:
             continue
 
         # Attempt fresh fetch to get real-time bid info

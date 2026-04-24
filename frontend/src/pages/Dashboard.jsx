@@ -449,11 +449,13 @@ export default function Dashboard() {
     () => (Array.isArray(auctions) ? auctions : []).filter(a => { const s = secsLeft(a); return isLiveAuctionRow(a) && s > 0 && s < 3600 }).length,
     [auctions]
   )
+  // Active snipes = count of tracked snipe targets. The prior filter
+  // (alertsData with urgency=critical|high && !triggered) was over-restrictive
+  // and returned 0 even when real snipes existed. Source of truth is the
+  // /api/sniper/fresh-snipes endpoint backing `snipes`.
   const activeSnipesCount = useMemo(
-    () => (Array.isArray(alertsData) ? alertsData : []).filter(a =>
-      a && !a.triggered && (a.urgency === 'critical' || a.urgency === 'high')
-    ).length,
-    [alertsData]
+    () => (Array.isArray(snipes) ? snipes.length : 0),
+    [snipes]
   )
   const topDriverChips = useMemo(
     () => {
@@ -469,12 +471,127 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 max-w-[1800px]">
 
-      <SectionBoundary><WelcomeBanner /></SectionBoundary>
+      {/* WelcomeBanner: desktop-only — too noisy on mobile */}
+      <div className="hidden md:block">
+        <SectionBoundary><WelcomeBanner /></SectionBoundary>
+      </div>
 
       {/* Deal of the Day hero — above KPI row */}
       <SectionBoundary><DealOfTheDay auctions={auctions} /></SectionBoundary>
 
-      {/* Race calendar strip — top */}
+      {/* Unified stats + quick-filter zone — KPI tiles + jumps grouped together
+          so mobile users see a single cohesive block instead of scattered tiles. */}
+      <SectionBoundary>
+        <div className="space-y-3">
+          {/* KPI strip — 3 cols mobile (2 rows), 6 cols desktop */}
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
+            <KpiTile
+              icon={Gavel}
+              label={<><span className="md:hidden">Live</span><span className="hidden md:inline">Live Auctions</span></>}
+              value={auctionsLoading ? null : Number(liveAuctionsCount || 0).toLocaleString()}
+              sub={auctionsLoading ? 'Total active' : `🔥 ${strongBuyCount} strong buys`}
+              color="blue"
+              onClick={() => navigate('/auctions?buying=auction')}
+            />
+            <KpiTile
+              icon={Clock}
+              label={<><span className="md:hidden">⏰ &lt;1h</span><span className="hidden md:inline">Ending ≤ 1h</span></>}
+              value={auctionsLoading ? null : Number(endingUnderHour || 0).toLocaleString()}
+              sub={endingUnderHour > 0 ? 'Hurry' : 'None imminent'}
+              color={endingUnderHour > 0 ? 'red' : 'gray'}
+              onClick={() => navigate('/auctions?buying=auction&sort=ending')}
+            />
+            <KpiTile
+              icon={BellRing}
+              label={<><span className="md:hidden">Snipes</span><span className="hidden md:inline">Active Snipes</span></>}
+              value={snipesLoading ? null : Number(activeSnipesCount || 0).toLocaleString()}
+              sub={activeSnipesCount > 0 ? 'Tracking now' : 'None tracked'}
+              color="yellow"
+              onClick={() => navigate('/alerts')}
+            />
+            <KpiTile
+              icon={Flame}
+              label={<><span className="md:hidden">7d</span><span className="hidden md:inline">7d Sales</span></>}
+              value={recent24hCount == null ? null : Number(recent24hCount || 0).toLocaleString()}
+              sub="Fresh comps this week"
+              color="emerald"
+              onClick={() => navigate('/sales')}
+            />
+            <KpiTile
+              icon={Database}
+              label={<><span className="md:hidden">Sales</span><span className="hidden md:inline">Total Sales</span></>}
+              value={statsLoading ? null : (Number(stats?.total_count ?? 0).toLocaleString())}
+              sub={stats?.week_count != null ? `+${Number(stats.week_count).toLocaleString()} this week` : ' '}
+              color="cyan"
+            />
+            <KpiTile
+              icon={Zap}
+              label="Top Snipe"
+              value={snipesLoading ? null : (topSnipeScore != null ? Math.round(topSnipeScore) : '—')}
+              sub={(Array.isArray(snipes) && snipes.length) ? `${snipes.length} tracked` : 'None flagged'}
+              color="red"
+            />
+          </div>
+
+          {/* Quick Jumps — driver chips + parallel chips live with the KPIs */}
+          {Array.isArray(topDriverChips) && topDriverChips.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Users size={12} className="text-violet-400" />
+                <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400 light:text-gray-700">Jump to Driver</h3>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                {topDriverChips.filter(Boolean).map((d, i) => (
+                  <button
+                    key={i}
+                    onClick={() => navigate(`/drivers?name=${encodeURIComponent(d?.driver || '')}`)}
+                    className="shrink-0 flex flex-col items-center gap-1.5 w-20"
+                    title={`${d?.count ?? 0} sold · $${Math.round(Number(d?.total_value) || 0).toLocaleString()}`}
+                  >
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-800 border border-gray-700/50 hover:border-red-500/60 transition-colors">
+                      <img
+                        src={`${API}/api/drivers/photo?name=${encodeURIComponent(d?.driver || '')}`}
+                        alt={d?.driver || ''}
+                        className="w-full h-full object-cover"
+                        onError={e => { e.target.style.display = 'none' }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-gray-300 text-center leading-tight font-semibold truncate w-full light:text-gray-700">
+                      {(d?.driver || '').split(' ').slice(-1)[0]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Layers size={12} className="text-cyan-400" />
+              <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400 light:text-gray-700">Jump to Parallel</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {POPULAR_PARALLELS.map(p => (
+                <button
+                  key={p}
+                  onClick={() => navigate(`/sales?parallel=${encodeURIComponent(p)}`)}
+                  className="px-3 py-1.5 rounded-full bg-gray-800/70 hover:bg-cyan-900/40 border border-gray-700/50 hover:border-cyan-600/50 text-xs font-bold text-gray-300 hover:text-cyan-300 transition-colors light:bg-gray-200 light:text-gray-700 light:border-gray-400 light:hover:bg-cyan-100"
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                onClick={() => navigate('/graded?grade=10')}
+                className="px-3 py-1.5 rounded-full bg-amber-900/30 hover:bg-amber-900/50 border border-amber-700/50 hover:border-amber-500/70 text-xs font-black text-amber-300 transition-colors flex items-center gap-1"
+              >
+                <Shield size={10} /> PSA 10 sales
+              </button>
+            </div>
+          </div>
+        </div>
+      </SectionBoundary>
+
+      {/* Race calendar strip */}
       <SectionBoundary><RaceCalendarStrip /></SectionBoundary>
 
       {/* Header */}
@@ -580,146 +697,6 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-
-      {/* Hot right now — compact on mobile, full-size on desktop */}
-      <div className="grid grid-cols-3 gap-2 md:gap-3">
-        <button
-          onClick={() => navigate('/auctions?buying=auction&sort=ending')}
-          className="text-left bg-gradient-to-br from-red-900/30 to-red-950/20 border border-red-600/40 hover:border-red-500/60 rounded-xl md:rounded-2xl p-2.5 md:p-5 transition-colors"
-        >
-          <div className="flex items-center gap-1.5 text-red-400 mb-0.5 md:mb-1">
-            <Clock size={11} className="md:hidden" /><Clock size={14} className="hidden md:block" />
-            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-wider">Ending &lt; 1h</span>
-          </div>
-          <div className="text-xl md:text-4xl font-black text-red-400 tabular-nums leading-tight">
-            {auctionsLoading ? <span className="opacity-40">…</span> : endingUnderHour}
-          </div>
-          <div className="hidden md:block text-[11px] text-gray-500 mt-1">Auctions closing in the next hour</div>
-        </button>
-        <button
-          onClick={() => navigate('/alerts')}
-          className="text-left bg-gradient-to-br from-orange-900/30 to-orange-950/20 border border-orange-600/40 hover:border-orange-500/60 rounded-xl md:rounded-2xl p-2.5 md:p-5 transition-colors"
-        >
-          <div className="flex items-center gap-1.5 text-orange-400 mb-0.5 md:mb-1">
-            <BellRing size={11} className="md:hidden" /><BellRing size={14} className="hidden md:block" />
-            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-wider">Active Snipes</span>
-          </div>
-          <div className="text-xl md:text-4xl font-black text-orange-400 tabular-nums leading-tight">
-            {activeSnipesCount}
-          </div>
-          <div className="hidden md:block text-[11px] text-gray-500 mt-1">Critical + high-urgency tracking</div>
-        </button>
-        <button
-          onClick={() => navigate('/sales')}
-          className="text-left bg-gradient-to-br from-emerald-900/30 to-emerald-950/20 border border-emerald-600/40 hover:border-emerald-500/60 rounded-xl md:rounded-2xl p-2.5 md:p-5 transition-colors"
-        >
-          <div className="flex items-center gap-1.5 text-emerald-400 mb-0.5 md:mb-1">
-            <Flame size={11} className="md:hidden" /><Flame size={14} className="hidden md:block" />
-            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-wider">7d Sales</span>
-          </div>
-          <div className="text-xl md:text-4xl font-black text-emerald-400 tabular-nums leading-tight">
-            {recent24hCount == null ? <span className="opacity-40">…</span> : recent24hCount}
-          </div>
-          <div className="hidden md:block text-[11px] text-gray-500 mt-1">Fresh comps logged this week</div>
-        </button>
-      </div>
-
-      {/* NEW: Quick driver jumps */}
-      {Array.isArray(topDriverChips) && topDriverChips.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Users size={12} className="text-violet-400" />
-            <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400 light:text-gray-700">Jump to Driver</h3>
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-            {topDriverChips.filter(Boolean).map((d, i) => (
-              <button
-                key={i}
-                onClick={() => navigate(`/drivers?name=${encodeURIComponent(d?.driver || '')}`)}
-                className="shrink-0 flex flex-col items-center gap-1.5 w-20"
-                title={`${d?.count ?? 0} sold · $${Math.round(Number(d?.total_value) || 0).toLocaleString()}`}
-              >
-                <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-800 border border-gray-700/50 hover:border-red-500/60 transition-colors">
-                  <img
-                    src={`${API}/api/drivers/photo?name=${encodeURIComponent(d?.driver || '')}`}
-                    alt={d?.driver || ''}
-                    className="w-full h-full object-cover"
-                    onError={e => { e.target.style.display = 'none' }}
-                  />
-                </div>
-                <span className="text-[10px] text-gray-300 text-center leading-tight font-semibold truncate w-full light:text-gray-700">
-                  {(d?.driver || '').split(' ').slice(-1)[0]}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* NEW: Quick parallel jumps */}
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <Layers size={12} className="text-cyan-400" />
-          <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400 light:text-gray-700">Jump to Parallel</h3>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {POPULAR_PARALLELS.map(p => (
-            <button
-              key={p}
-              onClick={() => navigate(`/sales?parallel=${encodeURIComponent(p)}`)}
-              className="px-3 py-1.5 rounded-full bg-gray-800/70 hover:bg-cyan-900/40 border border-gray-700/50 hover:border-cyan-600/50 text-xs font-bold text-gray-300 hover:text-cyan-300 transition-colors light:bg-gray-200 light:text-gray-700 light:border-gray-400 light:hover:bg-cyan-100"
-            >
-              {p}
-            </button>
-          ))}
-          <button
-            onClick={() => navigate('/graded?grade=10')}
-            className="px-3 py-1.5 rounded-full bg-amber-900/30 hover:bg-amber-900/50 border border-amber-700/50 hover:border-amber-500/70 text-xs font-black text-amber-300 transition-colors flex items-center gap-1"
-          >
-            <Shield size={10} /> PSA 10 sales
-          </button>
-        </div>
-      </div>
-
-      {/* 1. KPI strip — 5 tiles, compact on mobile (eBay API health hidden from public) */}
-      <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
-        <KpiTile
-          icon={Gavel}
-          label="Live Auctions"
-          value={auctionsLoading ? null : Number(liveAuctionsCount || 0).toLocaleString()}
-          sub={auctionsLoading ? 'Total active' : `🔥 ${strongBuyCount} strong buys`}
-          color="blue"
-        />
-        <KpiTile
-          icon={Clock}
-          label="Ending ≤ 1h"
-          value={auctionsLoading ? null : Number(endingSoonCount || 0).toLocaleString()}
-          sub={endingSoonCount > 0 ? 'Hurry' : 'None imminent'}
-          color={endingSoonCount > 0 ? 'red' : 'gray'}
-          onClick={() => navigate('/auctions')}
-        />
-        <KpiTile
-          icon={Database}
-          label="Total Sales"
-          value={statsLoading ? null : (Number(stats?.total_count ?? 0).toLocaleString())}
-          sub={stats?.week_count != null ? `+${Number(stats.week_count).toLocaleString()} this week` : ' '}
-          color="cyan"
-        />
-        <KpiTile
-          icon={TrendingUp}
-          label="Price Trending"
-          value={salesLoading ? null : (priceTrending ? `${priceTrending.arrow} ${Number(priceTrending.pctChange || 0).toFixed(0)}%` : '—')}
-          sub={priceTrending?.trend || 'No data'}
-          color={priceTrending?.trend === 'Up' ? 'green' : priceTrending?.trend === 'Down' ? 'red' : 'cyan'}
-        />
-        <KpiTile
-          icon={Zap}
-          label="Top Snipe"
-          value={snipesLoading ? null : (topSnipeScore != null ? Math.round(topSnipeScore) : '—')}
-          sub={(Array.isArray(snipes) && snipes.length) ? `${snipes.length} tracked` : 'None flagged'}
-          color="red"
-        />
-      </div>
 
       {/* Just Sold — Big Wins (>=$100) — horizontal scroll on mobile, grid on desktop */}
       <div>
