@@ -22,6 +22,25 @@ _GRADE_RE = re.compile(
 )
 
 
+# Quick filter flags — computed once at scrape time so the frontend doesn't regex per-render.
+LOT_RE = re.compile(r"\b(lot\s*(of\s*)?\d*|lot\*?\d+|\d+\s*[\-xX]\s*\d+|\d+\s*(card|pc|pieces?|cards?)\s*(lot|bundle|set)?|\(\d+\)\s*cards?|bundle|\d+\s*card\s*lot|pack\s*of\s*\d+|team\s*set|card\s*lot)\b", re.I)
+GRADE_RE = re.compile(r"\b(PSA|BGS|SGC|CGC)\s*(10|9\.5|9|8\.5|8)\b", re.I)
+SEALED_RE = re.compile(r"\b(sealed|hobby box|jumbo box|blaster|hanger|booster|fat pack|mega box|case)\b", re.I)
+PSA_CERT_RE = re.compile(r"PSA\s*(?:cert|#)\s*(\d{8,10})", re.I)
+
+
+def compute_listing_flags(title: str) -> dict:
+    t = title or ""
+    is_lot = bool(LOT_RE.search(t))
+    grade_m = GRADE_RE.search(t)
+    is_graded = bool(grade_m)
+    grade_num = float(grade_m.group(2)) if grade_m else None
+    is_sealed = bool(SEALED_RE.search(t))
+    cert_m = PSA_CERT_RE.search(t)
+    psa_cert = cert_m.group(1) if cert_m else None
+    return dict(is_lot=is_lot, is_graded=is_graded, is_sealed=is_sealed, grade_num=grade_num, psa_cert=psa_cert)
+
+
 def _extract_grade_from_title(title: str) -> str | None:
     if not title:
         return None
@@ -444,6 +463,8 @@ async def sync_real_ebay_listings(db: Session) -> int:
         buying_opts = listing.get("buying_options", [])
         buying_opts_json = __import__("json").dumps(buying_opts) if buying_opts else None
 
+        flags = compute_listing_flags(title)
+
         if existing:
             existing.current_price = current_price
             existing.bid_count = listing.get("bid_count", existing.bid_count)
@@ -495,12 +516,31 @@ async def sync_real_ebay_listings(db: Session) -> int:
         auction.status = "ended"
         card = db.query(Card).filter(Card.id == auction.card_id).first()
         if card:
+            # Idempotency guard: skip if we already logged this ended auction.
+            # PriceHistory.ebay_item_id is the dedup key; fall back to (card, price, date)
+            # fingerprint when we don't have an eBay listing id.
+            _ebay_id = getattr(auction, "ebay_listing_id", None)
+            if _ebay_id:
+                _dup = db.query(PriceHistory).filter(
+                    PriceHistory.ebay_item_id == _ebay_id,
+                    PriceHistory.source == "eBay Live",
+                ).first()
+            else:
+                _dup = db.query(PriceHistory).filter(
+                    PriceHistory.card_id == card.id,
+                    PriceHistory.price == auction.current_price,
+                    PriceHistory.sale_date == now,
+                    PriceHistory.source == "eBay Live",
+                ).first()
+            if _dup:
+                continue
             db.add(PriceHistory(
                 card_id=card.id,
                 price=auction.current_price,
                 sale_date=now,
                 source="eBay Live",
                 condition=auction.condition,
+                ebay_item_id=_ebay_id,
             ))
 
     db.commit()
