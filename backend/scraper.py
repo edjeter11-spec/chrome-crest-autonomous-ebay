@@ -486,6 +486,11 @@ async def sync_real_ebay_listings(db: Session) -> int:
                 existing.image_url = listing["image_url"]
             if buying_opts_json:
                 existing.buying_options = buying_opts_json
+            existing.is_lot = flags["is_lot"]
+            existing.is_graded = flags["is_graded"]
+            existing.is_sealed = flags["is_sealed"]
+            existing.grade_num = flags["grade_num"]
+            existing.psa_cert = flags["psa_cert"]
             updated += 1
         else:
             a = Auction(
@@ -505,6 +510,11 @@ async def sync_real_ebay_listings(db: Session) -> int:
                 buying_options=buying_opts_json,
                 is_real_ebay=True,
                 status="active",
+                is_lot=flags["is_lot"],
+                is_graded=flags["is_graded"],
+                is_sealed=flags["is_sealed"],
+                grade_num=flags["grade_num"],
+                psa_cert=flags["psa_cert"],
             )
             a.snipe_score = calculate_snipe_score(a, card, db)
             a.snipe_eligible = compute_snipe_eligible(a, card, db)

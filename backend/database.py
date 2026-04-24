@@ -212,6 +212,22 @@ class PsaPop(Base):
     )
 
 
+class PsaPopSnapshot(Base):
+    """Weekly PSA population snapshot — one row per (driver, parallel, grade) per capture.
+    Enables pop-delta / 'who's getting harder to pull a 10 on' queries."""
+    __tablename__ = "psa_pop_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    driver_name = Column(String, nullable=False, index=True)
+    parallel = Column(String, nullable=True)
+    grade = Column(String, nullable=True)  # PSA 10, PSA 9, etc.
+    pop_count = Column(Integer, nullable=False)
+    snapshot_date = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index('ix_psa_snap_driver_grade_date', 'driver_name', 'grade', 'snapshot_date'),
+    )
+
+
 class PsaSale(Base):
     """Individual graded sale record. Sourced from psacard.com/auctionprices + our eBay scraper."""
     __tablename__ = "psa_sales"

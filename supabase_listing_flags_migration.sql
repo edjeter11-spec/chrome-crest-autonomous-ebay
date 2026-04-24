@@ -1,0 +1,8 @@
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS is_lot BOOLEAN DEFAULT FALSE;
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS is_graded BOOLEAN DEFAULT FALSE;
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS is_sealed BOOLEAN DEFAULT FALSE;
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS grade_num REAL;
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS psa_cert TEXT;
+CREATE INDEX IF NOT EXISTS idx_auctions_is_lot ON auctions(is_lot);
+CREATE INDEX IF NOT EXISTS idx_auctions_is_graded ON auctions(is_graded);
+CREATE INDEX IF NOT EXISTS idx_auctions_is_sealed ON auctions(is_sealed);
