@@ -77,12 +77,16 @@ function useProductJsonLd({ driver, parallel, image, medianPrice, slug }) {
       image: image || `${SITE}/og/card/${slug || ''}`,
       description: `${driver} ${parallel} card`,
       brand: { '@type': 'Brand', name: 'Topps Chrome Formula 1' },
-      offers: {
+    }
+    // Only include offers when we have a real, non-zero price.
+    // Google flags $0.00 Offer blocks as spam/invalid in Search Console.
+    if (medianPrice != null && Number(medianPrice) > 0) {
+      data.offers = {
         '@type': 'Offer',
-        price: medianPrice != null ? Number(medianPrice).toFixed(2) : '0.00',
+        price: Number(medianPrice).toFixed(2),
         priceCurrency: 'USD',
         availability: 'https://schema.org/InStock',
-      },
+      }
     }
     let el = document.getElementById(id)
     if (!el) {

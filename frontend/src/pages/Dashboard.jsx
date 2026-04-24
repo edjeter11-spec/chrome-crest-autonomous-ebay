@@ -8,6 +8,7 @@ import {
 import AuctionCard from '../components/AuctionCard'
 import BiggestSnipes from '../components/BiggestSnipes'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
+import IndexTile from '../components/IndexTile'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
@@ -478,6 +479,9 @@ export default function Dashboard() {
 
       {/* Deal of the Day hero — above KPI row */}
       <SectionBoundary><DealOfTheDay auctions={auctions} /></SectionBoundary>
+
+      {/* F1CV25 Indices — basket indices widget */}
+      <SectionBoundary><IndexTile /></SectionBoundary>
 
       {/* Unified stats + quick-filter zone — KPI tiles + jumps grouped together
           so mobile users see a single cohesive block instead of scattered tiles. */}
