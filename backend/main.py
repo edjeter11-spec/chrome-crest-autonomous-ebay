@@ -1343,6 +1343,41 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
         # Priority pass is best-effort — never fail the overall refresh over it.
         pass
 
+    # Stale-sweep pass: pick the 50 auctions with the OLDEST last_updated that
+    # are still active AND ending within 6h, and re-fetch each individually.
+    # Keeps "ending soon" bid_count / end_time fresher than the per-query
+    # broad sync alone can manage.
+    stale_refreshed = 0
+    try:
+        from ebay_api import get_item_details as _get_item_details_stale
+        soon6h_cutoff = datetime.utcnow() + timedelta(hours=6)
+        stale_candidates = db.query(Auction).filter(
+            Auction.status == "active",
+            Auction.is_real_ebay == True,
+            Auction.ebay_listing_id.isnot(None),
+            Auction.end_time.isnot(None),
+            Auction.end_time > datetime.utcnow(),
+            Auction.end_time <= soon6h_cutoff,
+        ).order_by(Auction.last_updated.asc().nulls_first()).limit(50).all()
+        for _a in stale_candidates:
+            try:
+                _item = await _get_item_details_stale(_a.ebay_listing_id)
+                if not _item:
+                    continue
+                _a.current_price = _item.get("current_price", _a.current_price)
+                _a.bid_count = _item.get("bid_count", _a.bid_count)
+                _a.end_time = _item.get("end_time", _a.end_time)
+                _a.last_updated = datetime.utcnow()
+                stale_refreshed += 1
+            except Exception:
+                # Per-item errors must not kill the sweep.
+                continue
+        if stale_refreshed:
+            db.commit()
+    except Exception:
+        # Stale sweep is best-effort — never fail the overall refresh over it.
+        pass
+
     # Sweep expired auctions so the active list stays clean between refreshes.
     expired_swept = 0
     try:
@@ -1363,6 +1398,7 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
         "listings_added": added,
         "total_active": total_active,
         "priority_refreshed": priority_refreshed,
+        "stale_refreshed": stale_refreshed,
     }
 
 

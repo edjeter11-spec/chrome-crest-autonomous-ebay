@@ -95,8 +95,11 @@ export default function Auctions() {
 
   const load = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
+    // Progressive load: small/fast first paint (limit=100), then fill in the
+    // rest (limit=500) 1.5s later so mobile users see auctions quickly and
+    // desktop still gets the full set.
     swrFetch(
-      `${API}/api/auctions/with-verdicts?limit=500&status=active&buying=auction`,
+      `${API}/api/auctions/with-verdicts?limit=100&status=active&buying=auction`,
       d => {
         const list = applySeasonFilter(d.auctions || d || [])
         setAuctions(list)
@@ -122,13 +125,45 @@ export default function Auctions() {
             }
           }
         } catch {}
+        // Fill out the rest of the list after first paint — non-blocking.
+        setTimeout(() => {
+          swrFetch(
+            `${API}/api/auctions/with-verdicts?limit=500&status=active&buying=auction`,
+            d2 => {
+              setAuctions(applySeasonFilter(d2.auctions || d2 || []))
+            }
+          )
+        }, 1500)
       },
       () => setRefreshing(false)
     )
   }, [])
 
+  // Refresh ONLY auctions ending in the next 2h — smaller, cheap query that
+  // keeps live timers + bid counts fresh without re-pulling the whole list.
+  const refreshEndingSoon = useCallback(() => {
+    swrFetch(
+      `${API}/api/auctions/with-verdicts?limit=100&status=active&buying=auction`,
+      d => {
+        const fresh = d.auctions || d || []
+        if (!fresh.length) return
+        // Merge by id: overwrite fields on currently-rendered rows, leave others.
+        const TWO_H = 2 * 3600
+        const updates = new Map()
+        for (const a of fresh) {
+          if ((a.time_left ?? 0) > 0 && (a.time_left ?? 0) <= TWO_H) {
+            updates.set(a.id, a)
+          }
+        }
+        if (!updates.size) return
+        setAuctions(prev => prev.map(a => updates.get(a.id) || a))
+      }
+    )
+  }, [])
+
   useEffect(() => { load() }, [load])
-  useVisibilityInterval(() => load(), 30_000)
+  // Periodic bid/timer refresh — 30s, tab-visible only.
+  useVisibilityInterval(() => refreshEndingSoon(), 30_000)
 
   const handleWatchlist = (id, w) =>
     setAuctions(prev => prev.map(a => a.id === id ? { ...a, status: w ? 'watchlist' : 'active' } : a))
