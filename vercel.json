@@ -93,6 +93,10 @@
     {
       "path": "/api/cleanup/card-lots",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/psa/snapshot",
+      "schedule": "0 6 * * 0"
     }
   ],
   "env": {

@@ -8,15 +8,29 @@ PSA data layer — exposes three views:
 Track A (/observed, /sales via sold_cards, /leaderboard) works today with only
 the existing eBay-scraped data — no PSA scrape required.
 """
-from fastapi import APIRouter, Depends, Query
+import os
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, or_, case
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from database import get_db, SoldCard, PsaPop, PsaSale, Auction
+from database import get_db, SoldCard, PsaPop, PsaSale, PsaPopSnapshot, Auction
 
 router = APIRouter(prefix="/api/psa", tags=["psa"])
+
+
+def _require_admin_or_cron(request: Request) -> None:
+    """Gate admin-only PSA actions — matches /api/ebay/refresh auth pattern.
+    Accepts ADMIN_TOKEN via ?token=, X-Admin-Token header, or vercel-cron UA."""
+    admin_token = os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    if "vercel-cron" in ua:
+        return
+    if not admin_token or (qtoken != admin_token and header_token != admin_token):
+        raise HTTPException(status_code=401, detail="unauthorized")
 
 
 GRADE_ORDER = [
@@ -340,4 +354,116 @@ def leaderboard(db: Session = Depends(get_db)):
              "avg_price": round(float(r.avg_price or 0), 2)}
             for r in par_rows
         ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# PSA Pop snapshots — weekly rollup + pop-delta reporting
+# ---------------------------------------------------------------------------
+
+def capture_pop_snapshot(db: Session) -> dict:
+    """Insert a PsaPopSnapshot row per (driver, parallel, grade) from the
+    current PsaPop table. Idempotent per UTC date — if a snapshot already
+    exists for today, returns a skip result without re-inserting.
+    """
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow = today_start + timedelta(days=1)
+
+    existing_today = db.query(func.count(PsaPopSnapshot.id)).filter(
+        PsaPopSnapshot.snapshot_date >= today_start,
+        PsaPopSnapshot.snapshot_date < tomorrow,
+    ).scalar() or 0
+    if existing_today:
+        return {"ok": True, "skipped": True, "reason": "snapshot_exists_today",
+                "existing_rows": int(existing_today)}
+
+    pop_rows = db.query(PsaPop).filter(PsaPop.driver_name.isnot(None)).all()
+    now = datetime.utcnow()
+    inserted = 0
+    for r in pop_rows:
+        db.add(PsaPopSnapshot(
+            driver_name=r.driver_name,
+            parallel=r.parallel,
+            grade=r.grade,
+            pop_count=int(r.pop_count or 0),
+            snapshot_date=now,
+        ))
+        inserted += 1
+    db.commit()
+    return {"ok": True, "skipped": False, "inserted": inserted,
+            "snapshot_date": now.isoformat()}
+
+
+@router.api_route("/snapshot", methods=["GET", "POST"])
+def snapshot_pop(request: Request, db: Session = Depends(get_db)):
+    """Admin-gated — capture today's PSA pop snapshot. Run via Vercel cron
+    (weekly Sunday 06:00 UTC, which hits via GET) or manually with ?token=<ADMIN_TOKEN>."""
+    _require_admin_or_cron(request)
+    try:
+        return capture_pop_snapshot(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"snapshot_failed: {str(e)[:200]}")
+
+
+@router.get("/deltas")
+def pop_deltas(
+    days: int = Query(7, ge=1, le=365),
+    limit: int = Query(20, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Top pop-count changes over the last N days.
+
+    For each (driver, parallel, grade), compute:
+      delta = latest_snapshot.pop_count - earliest_snapshot_in_window.pop_count
+    Rank by absolute delta, return top `limit`.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    rows = db.query(
+        PsaPopSnapshot.driver_name,
+        PsaPopSnapshot.parallel,
+        PsaPopSnapshot.grade,
+        PsaPopSnapshot.pop_count,
+        PsaPopSnapshot.snapshot_date,
+    ).filter(PsaPopSnapshot.snapshot_date >= cutoff).order_by(
+        PsaPopSnapshot.snapshot_date.asc()
+    ).all()
+
+    # Collapse to earliest+latest per (driver, parallel, grade)
+    by_key: dict = {}
+    for r in rows:
+        key = (r.driver_name or "", r.parallel or "", r.grade or "")
+        slot = by_key.setdefault(key, {"earliest": None, "latest": None})
+        if slot["earliest"] is None or r.snapshot_date < slot["earliest"]["date"]:
+            slot["earliest"] = {"pop": int(r.pop_count or 0), "date": r.snapshot_date}
+        if slot["latest"] is None or r.snapshot_date > slot["latest"]["date"]:
+            slot["latest"] = {"pop": int(r.pop_count or 0), "date": r.snapshot_date}
+
+    deltas = []
+    for (driver, parallel, grade), slot in by_key.items():
+        if not slot["earliest"] or not slot["latest"]:
+            continue
+        earliest_pop = slot["earliest"]["pop"]
+        latest_pop = slot["latest"]["pop"]
+        delta = latest_pop - earliest_pop
+        if delta == 0 and slot["earliest"]["date"] == slot["latest"]["date"]:
+            # Single snapshot in window — no delta to report
+            continue
+        deltas.append({
+            "driver_name": driver,
+            "parallel": parallel or None,
+            "grade": grade or None,
+            "earliest_pop": earliest_pop,
+            "latest_pop": latest_pop,
+            "delta": delta,
+            "earliest_date": slot["earliest"]["date"].isoformat() if slot["earliest"]["date"] else None,
+            "latest_date": slot["latest"]["date"].isoformat() if slot["latest"]["date"] else None,
+        })
+
+    deltas.sort(key=lambda x: abs(x["delta"]), reverse=True)
+    return {
+        "days": days,
+        "window_start": cutoff.isoformat(),
+        "total_tracked": len(by_key),
+        "with_change": sum(1 for d in deltas if d["delta"] != 0),
+        "top": deltas[:limit],
     }

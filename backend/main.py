@@ -44,6 +44,7 @@ from routers import sniper as sniper_router
 from routers import comps
 from routers import cleanup as cleanup_router
 from routers import click_events
+from routers import email_alerts
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -115,6 +116,7 @@ app.include_router(sniper_router.router)
 app.include_router(comps.router)
 app.include_router(cleanup_router.router)
 app.include_router(click_events.router)
+app.include_router(email_alerts.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")
@@ -1667,7 +1669,7 @@ def seed_auto_variants(db: Session = Depends(get_db), _admin=Depends(require_adm
 
 
 @app.post("/api/admin/reset-price-history-sync")
-def reset_price_history_sync(db: Session = Depends(get_db)):
+def reset_price_history_sync(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Clear all sync logs so every driver is due on the next cron/sync."""
     from database import PriceHistorySyncLog
     deleted = db.query(PriceHistorySyncLog).delete()
@@ -1676,7 +1678,7 @@ def reset_price_history_sync(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/fix-stale-endtimes")
-def fix_stale_endtimes(db: Session = Depends(get_db)):
+def fix_stale_endtimes(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """
     Repair BIN listings whose synthetic 30-day end_time has rolled off.
     These were inserted with `utcnow() + 30 days` and now appear as 'ending
@@ -1702,7 +1704,7 @@ def fix_stale_endtimes(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/fix-parallel-names")
-def fix_parallel_names(db: Session = Depends(get_db)):
+def fix_parallel_names(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Rename old parallel print-run names to correct 2025 values: Gold /10→/50, Orange /50→/25, Red /25→/5."""
     renames = {"Gold /10": "Gold /50", "Orange /50": "Orange /25", "Red /25": "Red /5"}
     card_updated = 0
@@ -1716,7 +1718,7 @@ def fix_parallel_names(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/seed-missing-parallels")
-def seed_missing_parallels(db: Session = Depends(get_db)):
+def seed_missing_parallels(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Add Autograph / Gold /10 / Prism Refractor cards that weren't in original seed."""
     from seed_data import F1_DRIVERS, PARALLELS, GRADE_MULT, BASE_PRICE
     added = 0
@@ -1753,7 +1755,7 @@ def seed_missing_parallels(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/scrape-card-images")
-async def trigger_card_image_scrape_sync(db: Session = Depends(get_db)):
+async def trigger_card_image_scrape_sync(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Synchronously scrape eBay public search for card catalog images."""
     from card_image_scraper import scrape_all_missing
     updated = await scrape_all_missing(db)
@@ -1761,7 +1763,7 @@ async def trigger_card_image_scrape_sync(db: Session = Depends(get_db)):
 
 
 @app.post("/api/admin/rebuild")
-async def rebuild_auctions(db: Session = Depends(get_db)):
+async def rebuild_auctions(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Delete all active auctions and re-sync from eBay with correct parallel matching."""
     from seed_data import seed_all
     seed_all(db)
