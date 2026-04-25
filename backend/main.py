@@ -78,6 +78,38 @@ app.add_middleware(
 )
 
 
+# --- Global error handler -------------------------------------------------
+# Hard rule: NO unhandled 500s ever reach the browser. Every API route either
+# returns its real shape or a graceful empty/degraded version.
+# This is the structural guard that keeps the site rendering the shell even
+# when a backend bug or schema drift breaks one endpoint. Without it, a
+# single broken router crashes every page that fetches from it.
+import logging as _root_log
+from fastapi.responses import JSONResponse as _JSONResp
+from fastapi.requests import Request as _ReqType
+
+@app.exception_handler(Exception)
+async def _graceful_500_handler(request: _ReqType, exc: Exception):
+    _root_log.getLogger("api").exception(f"unhandled error on {request.url.path}: {exc}")
+    path = request.url.path or ""
+    # Choose an empty shape that matches what the frontend expects so it
+    # renders an empty list rather than a crashing JSON parse.
+    if "/auctions" in path:
+        return _JSONResp({"total": 0, "auctions": [], "verdict_counts": {"STRONG_BUY": 0, "GOOD_BUY": 0, "with_comps": 0}, "_degraded": True}, status_code=200)
+    if "/sales" in path:
+        return _JSONResp({"sales": [], "total": 0, "_degraded": True}, status_code=200)
+    if "/indices" in path:
+        return _JSONResp({"indices": [], "_degraded": True}, status_code=200)
+    if "/snipe" in path or "/sniper" in path:
+        return _JSONResp({"targets": [], "snipes": [], "_degraded": True}, status_code=200)
+    if "/alerts" in path:
+        return _JSONResp({"alerts": [], "_degraded": True}, status_code=200)
+    if "/portfolio" in path or "/wishlist" in path:
+        return _JSONResp([], status_code=200)
+    # Default: explicit error JSON instead of opaque 500
+    return _JSONResp({"error": str(exc)[:200], "path": path, "_degraded": True}, status_code=200)
+
+
 # --- Admin auth gate -------------------------------------------------------
 # Every `/api/admin/*` route requires a matching ADMIN_TOKEN. If the env var
 # isn't set, the routes return 503 (admin disabled) so there's no blanket

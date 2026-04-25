@@ -180,14 +180,26 @@ def list_with_verdicts(
     out = []
     strong_buy = good_buy = 0
     for a in rows:
-        d = auction_to_dict(a)
+        try:
+            d = auction_to_dict(a)
+        except Exception as _row_err:
+            import logging
+            logging.getLogger("auctions").warning(f"row serialize fail id={a.id}: {_row_err}")
+            continue
         driver_name = a.card.driver_name if a.card else None
         parallel = a.card.parallel if a.card else None
         grade = _extract_grade_from_title(a.title or "")
         verdict_key = None
         comp_block = None
         if driver_name:
-            median, n_comps = _cached_median(db, driver_name, parallel, grade)
+            try:
+                median, n_comps = _cached_median(db, driver_name, parallel, grade)
+            except Exception as _comp_err:
+                # Verdict comp fetch shouldn't break the whole feed —
+                # surface the listing without a verdict and move on.
+                import logging
+                logging.getLogger("auctions").warning(f"comp fetch fail {driver_name}/{parallel}: {_comp_err}")
+                median, n_comps = None, 0
             if median and n_comps >= 3:
                 cur_total = (a.current_price or 0) + (a.shipping_cost or 0)
                 ratio = cur_total / median
