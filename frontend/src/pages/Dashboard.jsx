@@ -9,6 +9,7 @@ import AuctionCard from '../components/AuctionCard'
 import BiggestSnipes from '../components/BiggestSnipes'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import IndexTile from '../components/IndexTile'
+import SoldTicker from '../components/SoldTicker'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
@@ -610,6 +611,9 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* Just-Sold live ticker — mounted just below the header so it's the first thing users see */}
+      <SectionBoundary><SoldTicker /></SectionBoundary>
 
       {/* Welcome-back delta strip */}
       {welcomeDelta && (
