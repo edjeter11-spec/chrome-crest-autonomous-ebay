@@ -79,6 +79,14 @@ def driver_guide(driver_slug: str, db: Session = Depends(get_db), response: Resp
     }
 
 
+def _slug_normalize(s: str) -> str:
+    """Normalize string to slug: lowercase, replace / and spaces with -, collapse multiple dashes."""
+    import re
+    s = s.lower().replace(' ', '-').replace('/', '-')
+    s = re.sub(r'-+', '-', s)  # Collapse multiple dashes
+    return s.strip('-')
+
+
 @router.get("/parallel/{parallel_slug}")
 def parallel_landing_page(parallel_slug: str, db: Session = Depends(get_db), response: Response = None):
     """
@@ -90,10 +98,10 @@ def parallel_landing_page(parallel_slug: str, db: Session = Depends(get_db), res
     from lib.parallels import SCARCITY
 
     # Convert slug back to canonical parallel name by matching SCARCITY keys
-    parallel_slug_lower = parallel_slug.lower()
+    parallel_slug_normalized = _slug_normalize(parallel_slug)
     parallel = None
     for p in SCARCITY.keys():
-        if p.lower().replace(' ', '-').replace('/', '-') == parallel_slug_lower:
+        if _slug_normalize(p) == parallel_slug_normalized:
             parallel = p
             break
 
@@ -201,7 +209,7 @@ def parallels_list(db: Session = Depends(get_db), response: Response = None):
 
     result = []
     for parallel_name in sorted(SCARCITY.keys()):
-        slug = parallel_name.lower().replace(' ', '-').replace('/', '-')
+        slug = _slug_normalize(parallel_name)
         result.append({
             "name": parallel_name,
             "slug": slug,

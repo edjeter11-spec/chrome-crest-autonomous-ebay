@@ -74,8 +74,11 @@ def _iter_parallel_urls(lastmod: str) -> Iterable[str]:
     """Generate URLs for per-parallel SEO landing pages."""
     try:
         from lib.parallels import SCARCITY
+        import re
         for parallel_name in SCARCITY.keys():
-            slug = _slugify(parallel_name)
+            # Match frontend/backend slug normalization: lowercase, collapse dashes
+            slug = parallel_name.lower().replace(' ', '-').replace('/', '-')
+            slug = re.sub(r'-+', '-', slug).strip('-')
             yield _url_tag(
                 f"{SITE}/parallels/{slug}",
                 lastmod,

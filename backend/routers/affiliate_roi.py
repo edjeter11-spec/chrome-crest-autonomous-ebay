@@ -54,8 +54,20 @@ def get_affiliate_roi_data(
     - daily_timeline: array of {date, snipes_count, cumulative_roi}
     - snipes: array of {card_image, driver, rule_name, entry_price, comp_price, gain, pct_gain}
     """
-    if not (SUPABASE_URL and SUPABASE_SERVICE_KEY):
-        raise HTTPException(500, "supabase not configured")
+    if not SUPABASE_URL:
+        # Return empty data structure if Supabase not configured
+        return {
+            "status": "ok",
+            "summary": {
+                "snipes_matched": 0,
+                "avg_purchase_price": 0,
+                "total_unrealized_gain": 0,
+                "percent_roi": 0,
+                "total_investment": 0,
+            },
+            "snipes": [],
+            "daily_timeline": [],
+        }
 
     jwt = None
     if authorization and authorization.lower().startswith("bearer "):
@@ -63,12 +75,13 @@ def get_affiliate_roi_data(
 
     try:
         # Load all STRONG_BUY sniper rules (public endpoint, no JWT required for demo)
-        rules = _sb_get("user_snipe_rules", {"select": "id,name"}, service=True)
-        # Filter to STRONG_BUY rules (name contains 'STRONG_BUY' or mark them differently)
-        # For now, we'll fetch all active rules and calculate ROI
+        rules = _sb_get("user_snipe_rules", {"select": "id,name,active"}, service=True)
+        # Filter to active rules
         rules = [r for r in rules if r.get("active", True)]
     except Exception as e:
-        # If Supabase isn't configured, return demo data
+        # If Supabase fails, return empty
+        import logging
+        logging.getLogger("affiliate_roi").warning(f"Failed to load rules: {e}")
         rules = []
 
     # Fetch snipe matches from last 30 days
@@ -82,7 +95,9 @@ def get_affiliate_roi_data(
             },
             service=True
         )
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger("affiliate_roi").warning(f"Failed to load matches: {e}")
         matches = []
 
     # Enrich matches with card/auction data

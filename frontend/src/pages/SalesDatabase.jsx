@@ -37,6 +37,9 @@ import { swrFetch } from '../lib/cache'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { verdictFor, VERDICT_STYLES } from '../lib/verdict'
 import { applySeasonFilter, isNotable } from '../lib/season'
+import LastUpdatedLabel from '../components/LastUpdatedLabel'
+import InfoTooltip from '../components/InfoTooltip'
+import { JARGON_DEFS } from '../lib/definitions'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -586,6 +589,7 @@ export default function SalesDatabase() {
                 <SortHeader field="grade">Grade</SortHeader>
                 <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-left">Title</th>
                 <SortHeader field="sale_price" align="right">Price</SortHeader>
+                <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-right">FMV</th>
                 <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-center">Verdict</th>
                 <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-center">eBay</th>
               </tr>
@@ -594,14 +598,14 @@ export default function SalesDatabase() {
               {loading ? (
                 Array(12).fill(0).map((_, i) => (
                   <tr key={i} className="border-b border-gray-800/40 animate-pulse">
-                    {Array(9).fill(0).map((_, j) => (
+                    {Array(10).fill(0).map((_, j) => (
                       <td key={j} className="px-3 py-3"><div className="h-3 bg-gray-800 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : filteredSorted.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-gray-600">
+                  <td colSpan={10} className="py-16 text-center text-gray-600">
                     <Database size={32} className="mx-auto mb-3 opacity-30" />
                     <p className="text-sm">No sales match these filters yet</p>
                     <p className="text-xs mt-1 opacity-60">The database grows with each cron run (every 30 min).</p>
