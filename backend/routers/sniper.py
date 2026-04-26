@@ -6,7 +6,9 @@ runs the match engine (invoked by Vercel cron) and handles paste-URL checks.
 import os
 import re
 import json
+import asyncio
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -15,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Query, Header, B
 from sqlalchemy.orm import Session
 
 from database import get_db, Auction, Card, PushSubscription
+from lib.discord_alerts import post_to_discord
 
 router = APIRouter(prefix="/api/sniper", tags=["sniper"])
 log = logging.getLogger("sniper")
@@ -64,6 +67,16 @@ def _sb_patch(path: str, body, service: bool = True, jwt: Optional[str] = None):
     if r.status_code >= 300:
         log.warning(f"supabase PATCH {path} -> {r.status_code}: {r.text[:200]}")
     return r
+
+
+def _fire_discord(webhook_url: str, auction_payload: dict, rule_name: str) -> None:
+    """Fire-and-forget Discord post from a sync context. Runs in a daemon thread."""
+    def _runner():
+        try:
+            asyncio.run(post_to_discord(webhook_url, auction_payload, rule_name))
+        except Exception as e:
+            log.warning(f"discord thread failed: {e}")
+    threading.Thread(target=_runner, daemon=True).start()
 
 
 def _parse_ebay_listing_id(url: str) -> Optional[str]:
@@ -270,6 +283,28 @@ def run_match_engine(
             except Exception as e:
                 log.warning(f"push failed: {e}")
 
+            # Discord (per-rule webhook, optional)
+            try:
+                if rule.get("discord_enabled") and rule.get("discord_webhook_url"):
+                    time_left_secs = 0
+                    if auction.end_time:
+                        time_left_secs = max(0, int((auction.end_time - datetime.utcnow()).total_seconds()))
+                    auction_payload = {
+                        "title": auction.title,
+                        "current_price": total,
+                        "median_price": median_val,
+                        "ebay_url": auction.ebay_url,
+                        "image_url": getattr(auction, "image_url", None),
+                        "time_left": time_left_secs,
+                    }
+                    _fire_discord(
+                        rule["discord_webhook_url"],
+                        auction_payload,
+                        rule.get("name") or "Snipe Match",
+                    )
+            except Exception as e:
+                log.warning(f"discord dispatch failed: {e}")
+
     return {"rules_checked": rules_checked, "matches_found": matches_found, "notified": notified}
 
 
@@ -337,6 +372,8 @@ def update_rule(
     ending_soon_only: Optional[bool] = None,
     max_per_day: Optional[int] = None,
     active: Optional[bool] = None,
+    discord_enabled: Optional[bool] = None,
+    discord_webhook_url: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ):
     """Update a snipe rule. User must own the rule (enforce via JWT validation)."""
@@ -376,6 +413,10 @@ def update_rule(
         update_data["max_per_day"] = max_per_day
     if active is not None:
         update_data["active"] = active
+    if discord_enabled is not None:
+        update_data["discord_enabled"] = discord_enabled
+    if discord_webhook_url is not None:
+        update_data["discord_webhook_url"] = discord_webhook_url or None
 
     if update_data:
         resp = _sb_patch(f"user_snipe_rules?id=eq.{rule_id}", update_data, service=False, jwt=jwt)
@@ -418,6 +459,8 @@ def export_rules(
             "ending_soon_only": rule.get("ending_soon_only", False),
             "max_per_day": rule.get("max_per_day", 3),
             "name": rule.get("name"),
+            "discord_enabled": rule.get("discord_enabled", False),
+            "discord_webhook_url": rule.get("discord_webhook_url"),
         })
 
     return {
@@ -483,6 +526,8 @@ def import_rules(
                 "max_per_day": int(rule.get("max_per_day", 3)),
                 "active": True,
                 "name": rule.get("name") or "Imported rule",
+                "discord_enabled": bool(rule.get("discord_enabled", False)),
+                "discord_webhook_url": rule.get("discord_webhook_url") or None,
             }
 
             # Validate numeric fields
