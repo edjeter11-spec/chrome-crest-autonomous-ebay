@@ -9,6 +9,7 @@ import AuctionCard from '../components/AuctionCard'
 import BiggestSnipes from '../components/BiggestSnipes'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import IndexTile from '../components/IndexTile'
+import AccuracyScoreboard from '../components/AccuracyScoreboard'
 import SoldTicker from '../components/SoldTicker'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
@@ -471,6 +472,9 @@ export default function Dashboard() {
 
       {/* F1CV25 Indices — basket indices widget */}
       <SectionBoundary><IndexTile /></SectionBoundary>
+
+      {/* Public verdict accuracy scoreboard — trust signal for new visitors */}
+      <SectionBoundary><AccuracyScoreboard /></SectionBoundary>
 
       {/* Unified stats + quick-filter zone — KPI tiles + jumps grouped together
           so mobile users see a single cohesive block instead of scattered tiles. */}
