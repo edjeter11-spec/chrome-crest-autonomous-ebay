@@ -61,6 +61,13 @@ def _iter_driver_urls(db: Session, lastmod: str) -> Iterable[str]:
             "weekly",
             "0.7",
         )
+        # Programmatic SEO: per-driver investment guide page
+        yield _url_tag(
+            f"{SITE}/drivers/{_slugify(key)}/guide",
+            lastmod,
+            "daily",
+            "0.8",
+        )
 
 
 def _iter_card_urls(db: Session, lastmod: str, limit: int = 1000) -> Iterable[str]:
@@ -104,6 +111,7 @@ def sitemap_xml(db: Session = Depends(get_db)):
         _url_tag(f"{SITE}/bin", lastmod, "daily", "0.9"),
         _url_tag(f"{SITE}/drivers", lastmod, "daily", "0.9"),
         _url_tag(f"{SITE}/sales", lastmod, "daily", "0.9"),
+        _url_tag(f"{SITE}/race-weekend", lastmod, "daily", "0.9"),
     ]
     parts.extend(_iter_driver_urls(db, lastmod))
     parts.extend(_iter_card_urls(db, lastmod, limit=1000))

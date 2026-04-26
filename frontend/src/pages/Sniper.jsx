@@ -123,6 +123,8 @@ export default function Sniper() {
   const [maxPct, setMaxPct] = useState('')
   const [endingSoon, setEndingSoon] = useState(false)
   const [maxPerDay, setMaxPerDay] = useState(3)
+  const [discordEnabled, setDiscordEnabled] = useState(false)
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState('')
 
   const [urlInput, setUrlInput] = useState('')
   const [urlResult, setUrlResult] = useState(null)
@@ -188,6 +190,12 @@ export default function Sniper() {
     if (!user) { setError('Sign in first'); return }
     // Max price / max % is now optional — leaving both blank means "alert on any match"
     setSaving(true)
+    const trimmedWebhook = (discordWebhookUrl || '').trim()
+    if (discordEnabled && trimmedWebhook && !trimmedWebhook.startsWith('https://discord.com/api/webhooks/')) {
+      setSaving(false)
+      setError('Discord webhook URL must start with https://discord.com/api/webhooks/')
+      return
+    }
     const row = {
       user_id: user.id,
       driver_name: driver || null,
@@ -199,6 +207,8 @@ export default function Sniper() {
       max_per_day: Number(maxPerDay) || 3,
       active: true,
       name: [driver || 'Any', parallel || 'any', grade, maxPrice ? `<$${maxPrice}` : '', maxPct ? `<${maxPct}%` : ''].filter(Boolean).join(' '),
+      discord_enabled: !!discordEnabled,
+      discord_webhook_url: discordEnabled ? (trimmedWebhook || null) : null,
     }
 
     if (editingId) {
@@ -214,6 +224,7 @@ export default function Sniper() {
     }
 
     setDriver(''); setParallel(''); setGrade(''); setMaxPrice(''); setMaxPct(''); setEndingSoon(false); setMaxPerDay(3); setEditingId(null)
+    setDiscordEnabled(false); setDiscordWebhookUrl('')
     loadRules()
   }
 
@@ -226,6 +237,8 @@ export default function Sniper() {
     setMaxPct(r.max_percent_of_median ? String(r.max_percent_of_median) : '')
     setEndingSoon(r.ending_soon_only || false)
     setMaxPerDay(r.max_per_day || 3)
+    setDiscordEnabled(!!r.discord_enabled)
+    setDiscordWebhookUrl(r.discord_webhook_url || '')
     setError('')
     document.querySelector('form')?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -233,6 +246,7 @@ export default function Sniper() {
   const cancelEdit = () => {
     setEditingId(null)
     setDriver(''); setParallel(''); setGrade(''); setMaxPrice(''); setMaxPct(''); setEndingSoon(false); setMaxPerDay(3)
+    setDiscordEnabled(false); setDiscordWebhookUrl('')
     setError('')
   }
 
@@ -416,6 +430,33 @@ export default function Sniper() {
           <input type="checkbox" checked={endingSoon} onChange={e => setEndingSoon(e.target.checked)} />
           Only alert when auction has &lt;6h left
         </label>
+
+        {/* Discord webhook (per-rule) */}
+        <div className="bg-indigo-900/20 border border-indigo-700/40 rounded-lg p-3 space-y-2">
+          <label className="flex items-center gap-2 text-sm text-indigo-200 font-semibold">
+            <input
+              type="checkbox"
+              checked={discordEnabled}
+              onChange={e => setDiscordEnabled(e.target.checked)}
+            />
+            Send to Discord
+          </label>
+          {discordEnabled && (
+            <>
+              <input
+                type="url"
+                value={discordWebhookUrl}
+                onChange={e => setDiscordWebhookUrl(e.target.value)}
+                placeholder="https://discord.com/api/webhooks/..."
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white"
+              />
+              <div className="text-[11px] text-indigo-300/70 leading-relaxed">
+                Get a webhook URL from your Discord server's channel settings → Integrations → Webhooks.
+              </div>
+            </>
+          )}
+        </div>
+
         {error && <div className="text-xs text-red-400">{error}</div>}
         <div className="flex gap-2">
           <button type="submit" disabled={saving || !user} className={`font-semibold text-sm px-4 py-2 rounded-lg flex items-center gap-2 text-white ${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'} disabled:bg-gray-700 disabled:cursor-not-allowed`}>

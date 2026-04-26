@@ -49,6 +49,7 @@ from routers import cleanup as cleanup_router
 from routers import click_events
 from routers import email_alerts
 from routers import index as indices_router
+from routers import seo_pages as seo_pages_router
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -154,6 +155,7 @@ app.include_router(cleanup_router.router)
 app.include_router(click_events.router)
 app.include_router(email_alerts.router)
 app.include_router(indices_router.router)
+app.include_router(seo_pages_router.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")

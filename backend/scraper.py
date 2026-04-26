@@ -228,6 +228,40 @@ def calculate_snipe_score(auction, card, db: Session | None = None) -> float:
     return score
 
 
+def explain_snipe_score(auction) -> dict:
+    """Re-derive the snipe_score breakdown from a stored Auction row.
+
+    Pure function — does NOT recompute the score. Just inspects the stored
+    fields and returns human-readable factor breakdown for the
+    "Why this score?" tooltip in the UI.
+
+    Returns: {factors, summary, score} dict.
+
+    TODO: expose this via `GET /api/auctions/{id}/explain` in
+    backend/routers/auctions.py once that router is in scope. For now the
+    frontend hard-codes equivalent heuristics in ScoreExplain.jsx.
+    """
+    factors = {}
+    price = getattr(auction, "current_price", 0) or 0
+    bid_count = getattr(auction, "bid_count", 0) or 0
+    score = getattr(auction, "snipe_score", 0) or 0
+    factors["price_attractive"] = price < 50
+    factors["has_bids"] = bid_count > 0
+    factors["snipe_eligible"] = bool(getattr(auction, "snipe_eligible", False))
+    summary = []
+    if score >= 80:
+        summary.append("High snipe score — strong indicators across the board.")
+    elif score >= 50:
+        summary.append("Moderate snipe score — some positives.")
+    else:
+        summary.append("Low snipe score — limited indicators.")
+    if factors["price_attractive"]:
+        summary.append("Price is below typical threshold.")
+    if not factors["has_bids"]:
+        summary.append("No bids yet — could be a steal or could be overlooked.")
+    return {"factors": factors, "summary": " ".join(summary), "score": score}
+
+
 def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> bool:
     """
     Decide whether an auction qualifies as a snipe.
