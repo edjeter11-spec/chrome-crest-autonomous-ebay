@@ -105,26 +105,48 @@ export default function SalesDatabase() {
     setTimeout(() => setAlertToast(''), ms)
   }
 
-  const [urlParams] = useSearchParams()
+  const [urlParams, setUrlParams] = useSearchParams()
   // Seed filters from URL (e.g. /sales?parallel=Gold%20/50&driver=Max%20Verstappen)
   // so "Jump to Parallel" on Dashboard actually lands filtered.
   const [driver, setDriver] = useState(() => urlParams.get('driver') || 'All')
   const [parallel, setParallel] = useState(() => urlParams.get('parallel') || 'All')
   const [grade, setGrade] = useState(() => urlParams.get('grade') || 'All')
   // Show all sales by default; user can filter up with $ min input.
-  const [minPrice, setMinPrice] = useState('')
-  const [maxPrice, setMaxPrice] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [search, setSearch] = useState('')
-  const [sortField, setSortField] = useState('sale_date')
-  const [sortDir, setSortDir] = useState('desc')
+  const [minPrice, setMinPrice] = useState(() => urlParams.get('minPrice') || '')
+  const [maxPrice, setMaxPrice] = useState(() => urlParams.get('maxPrice') || '')
+  const [dateFrom, setDateFrom] = useState(() => urlParams.get('dateFrom') || '')
+  const [dateTo, setDateTo] = useState(() => urlParams.get('dateTo') || '')
+  const [search, setSearch] = useState(() => urlParams.get('search') || '')
+  const [sortField, setSortField] = useState(() => urlParams.get('sortField') || 'sale_date')
+  const [sortDir, setSortDir] = useState(() => urlParams.get('sortDir') || 'desc')
   const [page, setPage] = useState(0)
   // Default-on filters for quality feed.
-  const [only2025, setOnly2025] = useState(true)
-  const [onlyNotable, setOnlyNotable] = useState(true)
+  const [only2025, setOnly2025] = useState(() => urlParams.get('only2025') ? urlParams.get('only2025') === '1' : true)
+  const [onlyNotable, setOnlyNotable] = useState(() => urlParams.get('onlyNotable') ? urlParams.get('onlyNotable') === '1' : true)
   // Client-side source filter — don't refetch, just trim the visible set.
-  const [source, setSource] = useState('All')
+  const [source, setSource] = useState(() => urlParams.get('source') || 'All')
+  // Toast for "Link copied!"
+  const [copiedToast, setCopiedToast] = useState(false)
+
+  // Sync filter state -> URL so the location bar is shareable.
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (driver !== 'All') params.set('driver', driver)
+    if (parallel !== 'All') params.set('parallel', parallel)
+    if (grade !== 'All') params.set('grade', grade)
+    if (minPrice) params.set('minPrice', minPrice)
+    if (maxPrice) params.set('maxPrice', maxPrice)
+    if (dateFrom) params.set('dateFrom', dateFrom)
+    if (dateTo) params.set('dateTo', dateTo)
+    if (search) params.set('search', search)
+    if (sortField && sortField !== 'sale_date') params.set('sortField', sortField)
+    if (sortDir && sortDir !== 'desc') params.set('sortDir', sortDir)
+    if (!only2025) params.set('only2025', '0')
+    if (!onlyNotable) params.set('onlyNotable', '0')
+    if (source && source !== 'All') params.set('source', source)
+    setUrlParams(params, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driver, parallel, grade, minPrice, maxPrice, dateFrom, dateTo, search, sortField, sortDir, only2025, onlyNotable, source])
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
@@ -326,8 +348,21 @@ export default function SalesDatabase() {
             {total.toLocaleString()} sales
           </span>
         )}
+        <button
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(window.location.href)
+              setCopiedToast(true)
+              setTimeout(() => setCopiedToast(false), 2000)
+            } catch {}
+          }}
+          className="ml-auto flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] md:text-xs font-bold transition-colors"
+          title="Copy shareable link to this filter view"
+        >
+          <Share2 size={12} /> <span className="hidden sm:inline">Share</span>
+        </button>
         <button onClick={exportCsv}
-          className="ml-auto flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-600/40 text-[11px] md:text-xs font-bold transition-colors">
+          className="flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-600/40 text-[11px] md:text-xs font-bold transition-colors">
           <Download size={12} /> <span className="hidden sm:inline">Export </span>CSV
         </button>
         <button onClick={() => load(true)}
@@ -710,6 +745,10 @@ export default function SalesDatabase() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4 py-2.5 rounded-xl bg-gray-900 border border-amber-600/40 text-amber-200 text-xs font-semibold shadow-2xl max-w-[90vw] text-center">
           {alertToast}
         </div>
+      )}
+
+      {copiedToast && (
+        <div className="fixed bottom-20 right-4 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-2xl z-50 text-sm font-bold">Link copied!</div>
       )}
     </div>
   )

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { NavLink } from 'react-router-dom'
-import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal, Target, Check, X } from 'lucide-react'
+import { NavLink, useSearchParams } from 'react-router-dom'
+import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal, Target, Check, X, Share2 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import ThemeToggle from '../components/ThemeToggle'
@@ -78,7 +78,50 @@ export default function Auctions() {
   const [refreshing, setRefreshing] = useState(false)
   const [showSaveRule, setShowSaveRule] = useState(false)
   const [ruleToast, setRuleToast] = useState('')
+  const [copiedToast, setCopiedToast] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth() || { user: null }
+
+  // On mount: hydrate filters from URL params if present (overrides localStorage).
+  // Lets users share /auctions?search=verstappen&parallel=Gold%20%2F50 in Discord.
+  useEffect(() => {
+    if (searchParams.toString()) {
+      const fromUrl = {}
+      if (searchParams.get('search')) fromUrl.search = searchParams.get('search')
+      if (searchParams.get('parallel')) fromUrl.filterParallel = searchParams.get('parallel')
+      if (searchParams.get('sort')) fromUrl.sortBy = searchParams.get('sort')
+      if (searchParams.get('strongBuy')) fromUrl.filterStrongBuy = searchParams.get('strongBuy') === '1'
+      if (searchParams.get('rookie')) fromUrl.filterRookie = searchParams.get('rookie') === '1'
+      if (searchParams.get('snipe')) fromUrl.filterSnipe = searchParams.get('snipe') === '1'
+      if (searchParams.get('series')) fromUrl.formulaType = searchParams.get('series')
+      if (searchParams.get('team')) fromUrl.teamFilter = searchParams.get('team')
+      if (searchParams.get('printRun')) fromUrl.printRun = searchParams.get('printRun')
+      if (searchParams.get('listing')) fromUrl.listingType = searchParams.get('listing')
+      if (searchParams.get('watchlist')) fromUrl.filterWatchlist = searchParams.get('watchlist') === '1'
+      if (searchParams.get('autoVariant')) fromUrl.autoVariant = searchParams.get('autoVariant')
+      if (Object.keys(fromUrl).length) setFilters(prev => ({ ...prev, ...fromUrl }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // On filters change: reflect in URL so the location bar is shareable.
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (filters.search) params.set('search', filters.search)
+    if (filters.filterParallel && filters.filterParallel !== 'All') params.set('parallel', filters.filterParallel)
+    if (filters.sortBy && filters.sortBy !== 'ending') params.set('sort', filters.sortBy)
+    if (filters.filterStrongBuy) params.set('strongBuy', '1')
+    if (filters.filterRookie) params.set('rookie', '1')
+    if (filters.filterSnipe) params.set('snipe', '1')
+    if (filters.filterWatchlist) params.set('watchlist', '1')
+    if (filters.formulaType && filters.formulaType !== 'F1') params.set('series', filters.formulaType)
+    if (filters.teamFilter && filters.teamFilter !== 'All') params.set('team', filters.teamFilter)
+    if (filters.printRun && filters.printRun !== 'Any') params.set('printRun', filters.printRun)
+    if (filters.listingType && filters.listingType !== 'All') params.set('listing', filters.listingType)
+    if (filters.autoVariant && filters.autoVariant !== 'Any') params.set('autoVariant', filters.autoVariant)
+    setSearchParams(params, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters])
 
   // Detect whether any filter is non-default so the "Save as Snipe Rule" CTA only
   // appears when there's actually something to save.
@@ -419,15 +462,31 @@ export default function Auctions() {
           </button>
         ))}
 
-        {user && hasActiveFilter && (
+        <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => setShowSaveRule(true)}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-600/40 transition-colors"
-            title="Save the current filter combination as a Sniper rule"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(window.location.href)
+                setCopiedToast(true)
+                setTimeout(() => setCopiedToast(false), 2000)
+              } catch {}
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold"
+            title="Copy shareable link to this filter view"
           >
-            <Target size={12} /> Save as Snipe Rule
+            <Share2 size={12} /> Share
           </button>
-        )}
+
+          {user && hasActiveFilter && (
+            <button
+              onClick={() => setShowSaveRule(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-600/40 transition-colors"
+              title="Save the current filter combination as a Sniper rule"
+            >
+              <Target size={12} /> Save as Snipe Rule
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Auto-variant sub-filter — only when parent filter is Autograph */}
@@ -508,6 +567,10 @@ export default function Auctions() {
           onClose={() => setShowSaveRule(false)}
           onSaved={(name) => { setShowSaveRule(false); setRuleToast(name || 'Snipe rule saved') }}
         />
+      )}
+
+      {copiedToast && (
+        <div className="fixed bottom-20 right-4 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-2xl z-50 text-sm font-bold">Link copied!</div>
       )}
 
       {ruleToast && (
