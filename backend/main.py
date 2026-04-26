@@ -4,6 +4,21 @@ sys.path.insert(0, os.path.dirname(__file__))
 from dotenv import load_dotenv
 load_dotenv()
 
+# Initialize Sentry early (before other imports) for comprehensive error capture
+import sentry_sdk
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=os.getenv("ENVIRONMENT", "development"),
+        release=os.getenv("APP_VERSION", "unknown"),
+        traces_sample_rate=0.1 if os.getenv("ENVIRONMENT") == "production" else 1.0,
+        integrations=[
+            sentry_sdk.integrations.fastapi.FastApiIntegration(),
+            sentry_sdk.integrations.sqlalchemy.SqlalchemyIntegration(),
+        ]
+    )
+
 # Production DB guard: warn loudly on Vercel if DATABASE_URL isn't Postgres.
 # (Was raise RuntimeError but that crashes the entire serverless function on
 # import — turning data-safety guard into a total outage. Now logs a warning
@@ -48,8 +63,10 @@ from routers import comps
 from routers import cleanup as cleanup_router
 from routers import click_events
 from routers import email_alerts
+from routers import weekly_digest as weekly_digest_router
 from routers import index as indices_router
 from routers import seo_pages as seo_pages_router
+from routers import affiliate_roi as affiliate_roi_router
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -92,6 +109,9 @@ from fastapi.requests import Request as _ReqType
 @app.exception_handler(Exception)
 async def _graceful_500_handler(request: _ReqType, exc: Exception):
     _root_log.getLogger("api").exception(f"unhandled error on {request.url.path}: {exc}")
+    # Capture exception in Sentry for monitoring
+    if SENTRY_DSN:
+        sentry_sdk.capture_exception(exc)
     path = request.url.path or ""
     # Choose an empty shape that matches what the frontend expects so it
     # renders an empty list rather than a crashing JSON parse.
@@ -154,8 +174,10 @@ app.include_router(comps.router)
 app.include_router(cleanup_router.router)
 app.include_router(click_events.router)
 app.include_router(email_alerts.router)
+app.include_router(weekly_digest_router.router)
 app.include_router(indices_router.router)
 app.include_router(seo_pages_router.router)
+app.include_router(affiliate_roi_router.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")
