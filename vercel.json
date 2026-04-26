@@ -83,6 +83,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/ebay/refresh-top-page",
+      "schedule": "0 * * * *"
+    },
+    {
       "path": "/api/ebay/refresh",
       "schedule": "*/15 * * * *"
     },

@@ -1410,6 +1410,52 @@ async def cron_sync(db: Session = Depends(get_db)):
     }
 
 
+@app.api_route("/api/ebay/refresh-top-page", methods=["GET", "POST"])
+async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db)):
+    """
+    Fast hourly refresh of the top 50 ending-soonest active auctions.
+    Keeps the first page of live auctions always fresh (< 1 hour old).
+    """
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    try:
+        from ebay_api import get_item_details as _get_item_details
+        # Refresh top 50 ending-soonest (regardless of time until end)
+        top_auctions = db.query(Auction).filter(
+            Auction.status == "active",
+            Auction.is_real_ebay == True,
+            Auction.ebay_listing_id.isnot(None),
+            Auction.end_time.isnot(None),
+            Auction.end_time > datetime.utcnow(),
+        ).order_by(Auction.end_time.asc()).limit(50).all()
+
+        updated = 0
+        for _a in top_auctions:
+            try:
+                _item = await _get_item_details(_a.ebay_listing_id)
+                if _item:
+                    _a.current_price = _item.get("current_price", _a.current_price)
+                    _a.bid_count = _item.get("bid_count", _a.bid_count)
+                    _a.last_updated = datetime.utcnow()
+                    updated += 1
+            except Exception:
+                pass
+        db.commit()
+        return {"ok": True, "updated": updated, "message": f"Refreshed top {updated} ending-soonest auctions"}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Top-page refresh failed: {e}")
+        return {"ok": False, "error": str(e)[:300]}
+
+
 @app.api_route("/api/ebay/refresh", methods=["GET", "POST"])
 async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
     """
