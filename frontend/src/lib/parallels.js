@@ -48,6 +48,17 @@ const PARALLEL_PATTERNS = [
   ['Autograph', [/\bauto(graph)?\b/, /\bsigned\b/]],
 ]
 
+// Convert parallel name to URL slug — matches backend normalization
+export function parallelToSlug(parallelName) {
+  if (!parallelName) return ''
+  return parallelName
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/\//g, '-')
+    .replace(/-+/g, '-')  // Collapse multiple dashes
+    .trim()
+}
+
 export function parallelFromTitle(title) {
   const t = (title || '').toLowerCase()
   if (!t) return null

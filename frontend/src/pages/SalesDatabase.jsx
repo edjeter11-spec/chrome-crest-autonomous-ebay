@@ -625,11 +625,25 @@ export default function SalesDatabase() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-xs font-semibold text-white whitespace-nowrap">{s.driver_name || '—'}</td>
-                  <td className="px-3 py-2 text-xs text-cyan-300 whitespace-nowrap">{s.parallel || '—'}</td>
+                  <td className="px-3 py-2 text-xs text-cyan-300 whitespace-nowrap">
+                    {s.parallel && JARGON_DEFS[s.parallel] ? (
+                      <InfoTooltip content={JARGON_DEFS[s.parallel]}>
+                        {s.parallel || '—'}
+                      </InfoTooltip>
+                    ) : (
+                      s.parallel || '—'
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-xs whitespace-nowrap">
                     {s.grade ? (
                       <span className="px-2 py-0.5 rounded bg-amber-600/15 text-amber-400 border border-amber-600/30 font-bold text-[10px]">
-                        {s.grade}
+                        {s.grade === 'PSA 10' && JARGON_DEFS['PSA 10'] ? (
+                          <InfoTooltip content={JARGON_DEFS['PSA 10']}>
+                            {s.grade}
+                          </InfoTooltip>
+                        ) : (
+                          s.grade
+                        )}
                       </span>
                     ) : (
                       <span className="text-gray-500 text-[10px]">Raw</span>
@@ -641,6 +655,13 @@ export default function SalesDatabase() {
                     ${(s.total_cost ?? s.sale_price)?.toFixed(2)}
                     {s.shipping_cost > 0 && (
                       <div className="text-[9px] text-gray-500 font-medium">+${s.shipping_cost?.toFixed(2)} ship</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+                    {s.median_price ? (
+                      <span className="text-cyan-400 font-semibold">${s.median_price.toFixed(0)}</span>
+                    ) : (
+                      <span className="text-gray-600">—</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-center whitespace-nowrap">
