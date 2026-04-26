@@ -423,22 +423,10 @@ export default function Dashboard() {
 
   const hotSnipes = useMemo(() => (Array.isArray(snipes) ? snipes : []).slice(0, 6), [snipes])
 
+  // Deprecated: BiggestSnipes does its own comprehensive filtering.
+  // Just check if there are ANY auctions to avoid showing empty state prematurely.
   const biggestSnipes = useMemo(() => {
-    return (Array.isArray(auctions) ? auctions : []).filter(a => {
-      if (!a) return false
-      const sL = secsLeft(a)
-      if (sL <= 0 || sL > 6 * 3600) return false
-      const price = a.current_price || 0
-      const title = (a.title || '').toLowerCase()
-      const lowPrintRun = /\/(?:5|10|25|50)\b/.test(title) && !/\/500\b|\/150\b/.test(title)
-      return price >= 100 || lowPrintRun || a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY'
-    })
-    .sort((a, b) => {
-      const sA = a?.snipe_score || 0, sB = b?.snipe_score || 0
-      if (sB !== sA) return sB - sA
-      return secsLeft(a) - secsLeft(b)
-    })
-    .slice(0, 6)
+    return Array.isArray(auctions) && auctions.length > 0 ? [1] : []
   }, [auctions])
 
   // New enthusiast-row derivations.
