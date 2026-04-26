@@ -27,6 +27,7 @@ const NAV = [
   { to: '/volatility', label: 'Volatility', icon: Activity },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/sniper', label: 'Sniper', icon: Target },
+  { to: '/affiliate-roi', label: 'Affiliate ROI', icon: TrendingUp },
 ]
 
 // Mobile bottom tab bar — 4 key routes. Deals combines Live Auctions + Buy It Now (toggle on /auctions page).

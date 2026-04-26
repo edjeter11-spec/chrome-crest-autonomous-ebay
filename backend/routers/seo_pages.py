@@ -8,7 +8,7 @@ sales data into an SEO-rich payload that the frontend renders as a unique page.
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
 
@@ -103,11 +103,12 @@ def parallel_landing_page(parallel_slug: str, db: Session = Depends(get_db), res
 
     # Fetch all active auctions for this parallel
     auctions = db.query(Auction).options(
-        __import__('sqlalchemy.orm').joinedload(Auction.card)
+        joinedload(Auction.card)
     ).filter(
         Auction.status == "active",
+    ).join(Card).filter(
         Card.parallel == parallel,
-    ).join(Card).all()
+    ).all()
 
     if not auctions:
         return {
