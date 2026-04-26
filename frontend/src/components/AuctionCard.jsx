@@ -7,11 +7,14 @@ import {
 import { Link } from 'react-router-dom'
 import { scarcityBadgeStyle, resolveWatchingState, toggleLocalWatchlist } from '../lib/hooks'
 import { verdictFor } from '../lib/verdict'
+import { calculateFMV } from '../lib/fmv'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
 import VerdictBadge from './VerdictBadge'
 import LastUpdatedLabel from './LastUpdatedLabel'
 import ScoreExplain from './ScoreExplain'
+import InfoTooltip from './InfoTooltip'
+import { JARGON_DEFS } from '../lib/definitions'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -391,6 +394,11 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
               {verdict}
               {medianPill}
+            </div>
+          )}
+          {comp?.median_total && (
+            <div className="text-[10px] text-cyan-400 font-semibold mt-1">
+              Fair value: ${comp.median_total.toFixed(0)} (n={comp.n || 0})
             </div>
           )}
           {hasAuction && (
@@ -1089,12 +1097,24 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             )}
             {parallel && (
               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700/50">
-                {parallel}
+                {JARGON_DEFS[parallel] ? (
+                  <InfoTooltip content={JARGON_DEFS[parallel]}>
+                    {parallel}
+                  </InfoTooltip>
+                ) : (
+                  parallel
+                )}
               </span>
             )}
             {grade && grade !== 'Raw' && (
               <span className="text-xs font-black px-2 py-0.5 rounded bg-yellow-900/40 text-yellow-300 border border-yellow-700/60 shadow-sm">
-                {grade}
+                {grade === 'PSA 10' && JARGON_DEFS['PSA 10'] ? (
+                  <InfoTooltip content={JARGON_DEFS['PSA 10']}>
+                    {grade}
+                  </InfoTooltip>
+                ) : (
+                  grade
+                )}
               </span>
             )}
           </div>

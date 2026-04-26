@@ -3,9 +3,11 @@ import { useParams, Link } from 'react-router-dom'
 import { TrendingUp, TrendingDown, ExternalLink, Tag, Award, Users, ArrowLeft, Share2, BarChart2 } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import { calculateFMV } from '../lib/fmv'
 import { ShareMenu } from '../components/AuctionCard'
 import Breadcrumbs from '../components/Breadcrumbs'
 import RawToGradedROI from '../components/RawToGradedROI'
+import LastUpdatedLabel from '../components/LastUpdatedLabel'
 
 const API = import.meta.env.VITE_API_URL || ''
 const SITE = 'https://www.f1cardvault.com'
@@ -295,6 +297,14 @@ export default function CardPage() {
                 {nComps > 0 ? `median across ${nComps} sales (90d)` : 'not enough sales'}
                 {median?.low_confidence && nComps > 0 && <span className="text-yellow-500"> · low confidence</span>}
               </div>
+              {median && (
+                <div className="text-[10px] text-cyan-400 mt-2 font-semibold">
+                  Fair value: ${median.median_total.toFixed(0)} (n={median.n || 0})
+                </div>
+              )}
+              {median?.scraped_at && (
+                <LastUpdatedLabel timestamp={median.scraped_at} prefix="Data" className="mt-1" />
+              )}
             </div>
             {median?.max_total && (
               <div>
@@ -435,7 +445,12 @@ export default function CardPage() {
       <div className="panel p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold text-white text-sm flex items-center gap-2"><TrendingUp size={14} className="text-green-400" /> Recent Sold Comps</h2>
-          <span className="text-[11px] text-gray-500">last {recent.length}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-gray-500">last {recent.length}</span>
+            {recent.length > 0 && recent[0]?.sale_date && (
+              <LastUpdatedLabel timestamp={recent[0]?.sale_date} prefix="Updated" className="ml-2" />
+            )}
+          </div>
         </div>
         {loading ? (
           <div className="h-32 animate-pulse bg-gray-800/40 rounded-lg" />

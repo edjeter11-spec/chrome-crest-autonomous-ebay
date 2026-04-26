@@ -422,6 +422,12 @@ def server_time():
     }
 
 
+@app.get("/api/test-error")
+def test_error():
+    """Test endpoint for Sentry error monitoring — triggers a test exception."""
+    raise Exception("Test error from /api/test-error — this should be captured by Sentry")
+
+
 @app.post("/api/auctions/{auction_id}/bid-intent")
 def save_bid_intent(auction_id: int, body: dict, db: Session = Depends(get_db)):
     """Record a planned max bid even if we can't auto-execute."""

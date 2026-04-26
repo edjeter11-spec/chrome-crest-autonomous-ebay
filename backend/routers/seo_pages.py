@@ -79,6 +79,141 @@ def driver_guide(driver_slug: str, db: Session = Depends(get_db), response: Resp
     }
 
 
+@router.get("/parallel/{parallel_slug}")
+def parallel_landing_page(parallel_slug: str, db: Session = Depends(get_db), response: Response = None):
+    """
+    SEO-optimized landing page for each parallel type.
+    Lists all active auctions of that parallel, grouped by driver,
+    with price stats (lowest, avg, highest) and filters.
+    """
+    from database import Auction, Card
+    from lib.parallels import SCARCITY
+
+    # Convert slug back to canonical parallel name by matching SCARCITY keys
+    parallel_slug_lower = parallel_slug.lower()
+    parallel = None
+    for p in SCARCITY.keys():
+        if p.lower().replace(' ', '-').replace('/', '-') == parallel_slug_lower:
+            parallel = p
+            break
+
+    if not parallel:
+        # Fallback: try exact slug match or close match
+        return {"error": f"parallel '{parallel_slug}' not found", "status": 404}
+
+    # Fetch all active auctions for this parallel
+    auctions = db.query(Auction).options(
+        __import__('sqlalchemy.orm').joinedload(Auction.card)
+    ).filter(
+        Auction.status == "active",
+        Card.parallel == parallel,
+    ).join(Card).all()
+
+    if not auctions:
+        return {
+            "parallel": parallel,
+            "slug": parallel_slug,
+            "cards": [],
+            "total": 0,
+            "price_stats": {
+                "lowest": None,
+                "average": None,
+                "highest": None,
+            },
+            "unique_drivers": [],
+            "unique_grades": [],
+        }
+
+    # Extract unique drivers and grades
+    drivers = set()
+    grades = set()
+    prices = []
+
+    card_list = []
+    for a in auctions:
+        if not a.card or not a.card.driver_name:
+            continue
+
+        drivers.add(a.card.driver_name)
+        if a.card.grade:
+            grades.add(a.card.grade)
+        if a.current_price and a.current_price > 0:
+            prices.append(a.current_price)
+
+        # Safe grade extraction from title
+        try:
+            from scraper import _extract_grade_from_title
+            safe_grade = _extract_grade_from_title(a.title or "")
+        except Exception:
+            safe_grade = a.card.grade
+
+        card_list.append({
+            "id": a.id,
+            "ebay_listing_id": a.ebay_listing_id,
+            "title": a.title,
+            "driver": a.card.driver_name,
+            "driver_slug": a.card.driver_name.lower().replace(' ', '-'),
+            "parallel": a.card.parallel,
+            "grade": safe_grade or a.card.grade,
+            "current_price": a.current_price,
+            "buy_now_price": a.buy_now_price,
+            "image_url": a.image_url or a.card.image_url,
+            "ebay_url": a.ebay_url,
+            "condition": a.condition,
+            "is_graded": a.is_graded,
+            "team": a.card.team,
+            "team_color": a.card.team_color,
+            "investment_score": a.card.investment_score,
+        })
+
+    # Sort by price
+    card_list.sort(key=lambda c: c["current_price"] or 0)
+
+    # Calculate price stats
+    price_stats = {
+        "lowest": min(prices) if prices else None,
+        "average": round(sum(prices) / len(prices), 2) if prices else None,
+        "highest": max(prices) if prices else None,
+    }
+
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=3600"
+
+    return {
+        "parallel": parallel,
+        "slug": parallel_slug,
+        "cards": card_list,
+        "total": len(card_list),
+        "price_stats": price_stats,
+        "unique_drivers": sorted(list(drivers)),
+        "unique_grades": sorted(list(grades)),
+    }
+
+
+@router.get("/parallels-list")
+def parallels_list(db: Session = Depends(get_db), response: Response = None):
+    """
+    Returns all available parallels from SCARCITY map + any in auctions table.
+    Used by sitemap generator and frontend discovery.
+    """
+    from lib.parallels import SCARCITY
+
+    result = []
+    for parallel_name in sorted(SCARCITY.keys()):
+        slug = parallel_name.lower().replace(' ', '-').replace('/', '-')
+        result.append({
+            "name": parallel_name,
+            "slug": slug,
+            "tier": SCARCITY[parallel_name].get('tier'),
+            "count": SCARCITY[parallel_name].get('count'),
+        })
+
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=3600"
+
+    return {"parallels": result}
+
+
 @router.get("/race-weekend-movers")
 def race_weekend_movers(db: Session = Depends(get_db), response: Response = None):
     """Top driver card movers over the trailing 7 days vs the prior 30-day baseline.

@@ -70,6 +70,22 @@ def _iter_driver_urls(db: Session, lastmod: str) -> Iterable[str]:
         )
 
 
+def _iter_parallel_urls(lastmod: str) -> Iterable[str]:
+    """Generate URLs for per-parallel SEO landing pages."""
+    try:
+        from lib.parallels import SCARCITY
+        for parallel_name in SCARCITY.keys():
+            slug = _slugify(parallel_name)
+            yield _url_tag(
+                f"{SITE}/parallels/{slug}",
+                lastmod,
+                "daily",
+                "0.75",
+            )
+    except ImportError:
+        logger.warning("sitemap: lib.parallels not available")
+
+
 def _iter_card_urls(db: Session, lastmod: str, limit: int = 1000) -> Iterable[str]:
     try:
         rows = (
@@ -114,6 +130,7 @@ def sitemap_xml(db: Session = Depends(get_db)):
         _url_tag(f"{SITE}/race-weekend", lastmod, "daily", "0.9"),
     ]
     parts.extend(_iter_driver_urls(db, lastmod))
+    parts.extend(_iter_parallel_urls(lastmod))
     parts.extend(_iter_card_urls(db, lastmod, limit=1000))
     parts.append("</urlset>")
 
