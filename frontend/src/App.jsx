@@ -62,6 +62,8 @@ const Sniper = lazy(() => import('./pages/Sniper'))
 const Volatility = lazy(() => import('./pages/Volatility'))
 const Releases = lazy(() => import('./pages/Releases'))
 const Indices = lazy(() => import('./pages/Indices'))
+const DriverGuide = lazy(() => import('./pages/DriverGuide'))
+const RaceWeekend = lazy(() => import('./pages/RaceWeekend'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -102,6 +104,8 @@ export default function App() {
           <Route path="volatility" element={<Suspense fallback={<PageFallback />}><Volatility /></Suspense>} />
           <Route path="releases" element={<Suspense fallback={<PageFallback />}><Releases /></Suspense>} />
           <Route path="indices" element={<Suspense fallback={<PageFallback />}><Indices /></Suspense>} />
+          <Route path="drivers/:slug/guide" element={<Suspense fallback={<PageFallback />}><DriverGuide /></Suspense>} />
+          <Route path="race-weekend" element={<Suspense fallback={<PageFallback />}><RaceWeekend /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 import Tutorial from './Tutorial'
+import OnboardingTour from './OnboardingTour'
 import SignedOutBanner from './SignedOutBanner'
 import { useAuth } from '../lib/auth'
 import { LogIn, LogOut } from 'lucide-react'
@@ -390,6 +391,7 @@ export default function Layout() {
         )}
 
         <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-24 md:pb-6">
+          <OnboardingTour />
           <SignedOutBanner />
           <Outlet />
           {/* FTC-required affiliate disclosure */}
