@@ -1,27 +1,69 @@
-import { useState } from 'react'
-import { ImageOff } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { upscaleEbayImage } from '../lib/imageUrl'
+import CardImagePlaceholder from './CardImagePlaceholder'
 
-// Image with automatic fallback to a muted placeholder on load error.
-// Replaces scattered `<img onError={...}>` patterns across pages.
-export default function CardImage({ src, alt = '', className = '', aspect = '3/4' }) {
+// Card image with three upgrades baked in:
+//   1. Auto-upscales eBay CDN URLs to a higher-res variant (s-l500 by default).
+//   2. Shows a skeleton (`bg-gray-800 animate-pulse`) while loading.
+//   3. Falls back to a clean F1-themed placeholder on error / missing src.
+//
+// Drop-in replacement for any small/medium card thumbnail.
+export default function CardImage({
+  src,
+  alt = '',
+  className = '',
+  // Tailwind aspect-ratio fallback when a placeholder is shown standalone
+  aspect = '3/4',
+  // Pixel size hint for eBay upscaling
+  size = 500,
+  // Driver context drives the placeholder label + accent
+  driverName,
+  teamColor,
+  // 'lazy' (default) or 'eager' for above-the-fold hero shots
+  loading = 'lazy',
+  // 'cover' (default — crop to fill) or 'contain' (fit, letterbox)
+  fit = 'cover',
+  // Optional inline styles forwarded onto the rendered <img> / placeholder
+  style,
+  // Extra padding around the image when using contain fit (e.g. 'p-3')
+  imgClassName = '',
+}) {
   const [failed, setFailed] = useState(false)
-  if (!src || failed) {
+  const [loaded, setLoaded] = useState(false)
+  const upscaled = src ? upscaleEbayImage(src, size) : ''
+
+  // Reset loading/error state when src changes — important for lists that
+  // recycle the same DOM node across rows.
+  useEffect(() => {
+    setFailed(false)
+    setLoaded(false)
+  }, [upscaled])
+
+  if (!upscaled || failed) {
     return (
       <div
-        className={`${className} bg-gray-800/60 border border-gray-800 flex items-center justify-center text-gray-700`}
-        style={{ aspectRatio: aspect }}
+        className={className}
+        style={{ aspectRatio: aspect, ...style }}
       >
-        <ImageOff size={18} />
+        <CardImagePlaceholder driverName={driverName} teamColor={teamColor} />
       </div>
     )
   }
+
   return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className={className}
-    />
+    <div className={`relative overflow-hidden ${className}`} style={style}>
+      {!loaded && (
+        <div className="absolute inset-0 bg-gray-800 animate-pulse" aria-hidden="true" />
+      )}
+      <img
+        src={upscaled}
+        alt={alt}
+        loading={loading}
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'} ${imgClassName}`}
+      />
+    </div>
   )
 }

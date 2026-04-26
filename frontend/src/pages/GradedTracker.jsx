@@ -4,6 +4,7 @@ import {
   X, Clock, Gavel, Info,
 } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import CardImage from '../components/CardImage'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -302,7 +303,7 @@ export default function GradedTracker() {
             {activeAuctions.map(a => (
               <a key={a.id} href={ebayAffiliateUrl(a.ebay_url)} target="_blank" rel="sponsored noopener"
                 className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-900/60 transition-colors">
-                {a.image_url && <img src={a.image_url} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" loading="lazy" />}
+                <CardImage src={a.image_url} alt="" driverName={a.driver_name || a.card?.driver_name} className="w-10 h-10 rounded-lg shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-white truncate">{a.title}</div>
                   <div className="text-[10px] text-gray-500 flex items-center gap-2 mt-0.5">
@@ -342,11 +343,7 @@ export default function GradedTracker() {
             {sales.map(s => (
               <a key={s.id} href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
                 className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-900/60 transition-colors">
-                {s.image_url ? (
-                  <img src={s.image_url} alt="" className="w-8 h-8 rounded object-cover shrink-0" loading="lazy" />
-                ) : (
-                  <div className="w-8 h-8 rounded bg-gray-800 shrink-0" />
-                )}
+                <CardImage src={s.image_url} alt="" driverName={s.driver_name} className="w-8 h-8 rounded shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-white truncate">{s.driver_name || s.title?.slice(0, 60)}</div>
                   <div className="text-[10px] text-gray-500 flex items-center gap-1.5 mt-0.5">

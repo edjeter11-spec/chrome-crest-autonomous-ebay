@@ -5,12 +5,16 @@ import {
   DollarSign, BarChart2, User, Package, Heart, Check, Plus
 } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import { upscaleEbayImage } from '../lib/imageUrl'
+import CardImagePlaceholder from './CardImagePlaceholder'
 
 const API = import.meta.env.VITE_API_URL || ''
 const proxyImg = url => {
   if (!url) return ''
-  if (url.includes('i.ebayimg.com')) return url
-  return `${API}/api/proxy/image?url=${encodeURIComponent(url)}`
+  // Modal renders larger — bump to 800px for crisper detail.
+  const sized = upscaleEbayImage(url, 800)
+  if (sized.includes('i.ebayimg.com')) return sized
+  return `${API}/api/proxy/image?url=${encodeURIComponent(sized)}`
 }
 
 const EBAY_BUYER_PROTECTION = 0.0345 // 3.45%
@@ -23,23 +27,33 @@ function formatTimeLeft(s) {
   return { text: `${Math.floor(s/86400)}d`, cls: 'text-gray-400' }
 }
 
-function ImageGallery({ images, title }) {
+function ImageGallery({ images, title, driverName, teamColor }) {
   const [idx, setIdx] = useState(0)
   const [failed, setFailed] = useState(new Set())
+  const [loaded, setLoaded] = useState(new Set())
   const valid = images?.filter(Boolean) || []
   const displayable = valid.filter((_, i) => !failed.has(i))
   const safe = Math.min(idx, Math.max(0, displayable.length - 1))
+  const isLoaded = loaded.has(safe)
 
   if (!displayable.length) return (
-    <div className="w-full h-64 flex items-center justify-center bg-gray-900 rounded-xl text-gray-700 text-4xl">🏎</div>
+    <div className="w-full h-64 rounded-xl overflow-hidden">
+      <CardImagePlaceholder driverName={driverName} teamColor={teamColor} labelClassName="text-base font-black tracking-widest" />
+    </div>
   )
 
   return (
     <div className="relative rounded-xl overflow-hidden bg-gray-900 select-none">
+      {!isLoaded && (
+        <div className="absolute inset-0 bg-gray-800 animate-pulse" aria-hidden="true" />
+      )}
       <img
         src={proxyImg(displayable[safe])}
         alt={title}
-        className="w-full h-64 object-contain bg-gray-950"
+        loading="lazy"
+        decoding="async"
+        className={`w-full h-64 object-contain bg-gray-950 transition-opacity duration-200 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        onLoad={() => setLoaded(p => new Set([...p, safe]))}
         onError={() => setFailed(p => new Set([...p, valid.indexOf(displayable[safe])]))}
       />
       {displayable.length > 1 && (
@@ -262,7 +276,12 @@ export default function AuctionModal({ auction, onClose, onWatchlistChange }) {
 
         <div className="p-5 space-y-5">
           {/* Image gallery */}
-          <ImageGallery images={images} title={auction.title} />
+          <ImageGallery
+            images={images}
+            title={auction.title}
+            driverName={auction.card?.driver_name || auction.driver_name}
+            teamColor={auction.card?.team_color}
+          />
 
           {/* Title + card info */}
           <div>

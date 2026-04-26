@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, Flag } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import CardImage from './CardImage'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -150,13 +151,16 @@ function PickCard({ auction: a }) {
 
   return (
     <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden hover:border-red-600/50 transition-colors flex flex-col">
-      {img ? (
-        <div className="aspect-[3/4] bg-black/30 flex items-center justify-center">
-          <img src={img} alt={a.title || ''} className="h-full w-full object-contain p-2" />
-        </div>
-      ) : (
-        <div className="aspect-[3/4] bg-gray-800/50" />
-      )}
+      <div className="aspect-[3/4] bg-black/30">
+        <CardImage
+          src={img}
+          alt={a.title || ''}
+          driverName={a.driver_name || a.card?.driver_name}
+          className="h-full w-full"
+          fit="contain"
+          imgClassName="p-2"
+        />
+      </div>
       <div className="p-3 flex-1 flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 flex-wrap">
           {verdict && (

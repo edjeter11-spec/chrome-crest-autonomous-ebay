@@ -40,6 +40,7 @@ import { applySeasonFilter, isNotable } from '../lib/season'
 import LastUpdatedLabel from '../components/LastUpdatedLabel'
 import InfoTooltip from '../components/InfoTooltip'
 import { JARGON_DEFS } from '../lib/definitions'
+import CardImage from '../components/CardImage'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -498,14 +499,13 @@ export default function SalesDatabase() {
           </div>
         ) : filteredSorted.map(s => (
           <div key={s.id} className="bg-gray-900/70 border border-gray-800/60 rounded-2xl p-3 flex gap-3">
-            {s.image_url ? (
-              <img src={s.image_url} alt="" className="w-14 h-18 object-cover rounded border border-gray-800 shrink-0"
-                style={{ height: '72px' }}
-                onError={(e) => { e.target.style.display = 'none' }} />
-            ) : (
-              <div className="w-14 shrink-0 rounded bg-gray-800/50 border border-gray-800 flex items-center justify-center text-[9px] text-gray-600"
-                style={{ height: '72px' }}>No img</div>
-            )}
+            <CardImage
+              src={s.image_url}
+              alt=""
+              driverName={s.driver_name}
+              className="w-14 rounded border border-gray-800 shrink-0"
+              style={{ height: '72px' }}
+            />
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2 mb-1">
                 <span className="text-sm font-bold text-white truncate">{s.driver_name || '—'}</span>
@@ -617,12 +617,12 @@ export default function SalesDatabase() {
                     {s.sale_date ? new Date(s.sale_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                   </td>
                   <td className="px-3 py-2">
-                    {s.image_url ? (
-                      <img src={s.image_url} alt="" className="w-10 h-12 object-cover rounded border border-gray-800"
-                        onError={(e) => { e.target.style.display = 'none' }} />
-                    ) : (
-                      <div className="w-10 h-12 rounded bg-gray-800/50 border border-gray-800 flex items-center justify-center text-[9px] text-gray-600">No img</div>
-                    )}
+                    <CardImage
+                      src={s.image_url}
+                      alt=""
+                      driverName={s.driver_name}
+                      className="w-10 h-12 rounded border border-gray-800"
+                    />
                   </td>
                   <td className="px-3 py-2 text-xs font-semibold text-white whitespace-nowrap">{s.driver_name || '—'}</td>
                   <td className="px-3 py-2 text-xs text-cyan-300 whitespace-nowrap">

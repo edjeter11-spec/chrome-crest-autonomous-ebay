@@ -6,6 +6,7 @@ import { ebayAffiliateUrl } from '../lib/ebay'
 import AuctionCard from '../components/AuctionCard'
 import Breadcrumbs from '../components/Breadcrumbs'
 import LoadingSpinner from '../components/LoadingSpinner'
+import CardImage from '../components/CardImage'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -228,18 +229,14 @@ export default function ParallelLanding() {
                 className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden hover:border-gray-500 transition-colors"
               >
                 {/* Card Image */}
-                {card.image_url && (
-                  <div className="aspect-square bg-gray-700 overflow-hidden">
-                    <img
-                      src={card.image_url}
-                      alt={card.title}
-                      className="w-full h-full object-cover"
-                      onError={e => {
-                        e.target.style.display = 'none'
-                      }}
-                    />
-                  </div>
-                )}
+                <div className="aspect-square bg-gray-700 overflow-hidden">
+                  <CardImage
+                    src={card.image_url}
+                    alt={card.title}
+                    driverName={card.driver}
+                    className="w-full h-full"
+                  />
+                </div>
 
                 {/* Card Details */}
                 <div className="p-4">

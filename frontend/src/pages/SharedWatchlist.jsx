@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Eye, ExternalLink, Gavel, Tag, Heart } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import CardImage from '../components/CardImage'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -69,9 +70,12 @@ export default function SharedWatchlist() {
                   rel="sponsored noopener"
                   className="bg-gray-900/70 border border-gray-800 hover:border-gray-700 rounded-2xl p-3 flex gap-3 transition-colors"
                 >
-                  <div className="w-14 h-20 rounded-lg bg-gray-800 overflow-hidden shrink-0">
-                    {a.image_url && <img src={a.image_url} alt="" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />}
-                  </div>
+                  <CardImage
+                    src={a.image_url}
+                    alt=""
+                    driverName={a.driver}
+                    className="w-14 h-20 rounded-lg bg-gray-800 shrink-0"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-gray-400 line-clamp-2">{a.title}</div>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">

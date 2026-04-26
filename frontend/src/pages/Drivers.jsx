@@ -5,12 +5,14 @@ import { swrFetch } from '../lib/cache'
 import { usePersistedState } from '../lib/hooks'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { fetchDriverPhoto, driverInitials } from '../lib/driverPhotos'
+import { teamColor as resolveTeamColor } from '../lib/teamColors'
 import { ShareMenu } from '../components/AuctionCard'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import Breadcrumbs from '../components/Breadcrumbs'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ScoreExplain from '../components/ScoreExplain'
+import CardImage from '../components/CardImage'
 
 function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
   const [photo, setPhoto] = useState('')
@@ -406,12 +408,14 @@ export default function Drivers() {
               const tier = getTier(d.investment_score || 0)
               const isSelected = selected?.driver_name === d.driver_name
               const dSeries = d.series || 'F1'
+              const dTeamColor = d.team_color || resolveTeamColor(d.team)
               return (
                 <button key={d.driver_name} onClick={() => setSelected(d)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
                     isSelected ? 'bg-gray-800 border border-gray-700/60 shadow-sm' : 'hover:bg-gray-900/70 border border-transparent'
-                  }`}>
-                  <DriverAvatar name={d.driver_name} teamColor={d.team_color} size={36} />
+                  }`}
+                  style={dTeamColor ? { borderLeft: `4px solid ${dTeamColor}` } : undefined}>
+                  <DriverAvatar name={d.driver_name} teamColor={dTeamColor} size={36} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-white truncate flex items-center gap-1.5">
                       {d.driver_name}
@@ -439,15 +443,31 @@ export default function Drivers() {
 
         {/* Driver detail */}
         {selected ? (
-          <div className="flex-1 panel p-3 md:p-6 min-w-0">
+          (() => {
+            const selTeamColor = selected.team_color || resolveTeamColor(selected.team)
+            return (
+          <div
+            className="flex-1 panel p-3 md:p-6 min-w-0 relative overflow-hidden"
+            style={selTeamColor
+              ? { borderTop: `3px solid ${selTeamColor}`, background: `linear-gradient(180deg, ${selTeamColor}10 0%, transparent 140px)` }
+              : undefined}
+          >
             <div className="flex items-start gap-3 md:gap-5 mb-4 md:mb-6 flex-wrap">
-              <div className="w-14 h-14 md:w-20 md:h-20 rounded-2xl overflow-hidden shrink-0 shadow-xl border border-gray-700/50">
-                <DriverAvatar name={selected.driver_name} teamColor={selected.team_color} size={80} rounded="rounded-2xl" textClass="text-2xl" />
+              <div
+                className="w-14 h-14 md:w-20 md:h-20 rounded-2xl overflow-hidden shrink-0 shadow-xl border-2"
+                style={{ borderColor: selTeamColor || 'rgba(75,85,99,0.5)' }}
+              >
+                <DriverAvatar name={selected.driver_name} teamColor={selTeamColor} size={80} rounded="rounded-2xl" textClass="text-2xl" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 md:gap-3 mb-1 flex-wrap justify-between">
                   <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-                    <h2 className="text-lg md:text-2xl font-black text-white tracking-tight">{selected.driver_name}</h2>
+                    <h2
+                      className="text-lg md:text-2xl font-black tracking-tight"
+                      style={selTeamColor ? { color: selTeamColor } : { color: '#fff' }}
+                    >
+                      {selected.driver_name}
+                    </h2>
                     <span className={`text-xs font-black px-2.5 py-1 rounded-xl border ${TIER_STYLE[getTier(selected.investment_score||0)]}`}>
                       {getTier(selected.investment_score||0)}-Tier
                     </span>
@@ -491,7 +511,7 @@ export default function Drivers() {
             </div>
 
             <div className="mb-5">
-              <ScoreMeter score={selected.investment_score||0} color={selected.team_color} />
+              <ScoreMeter score={selected.investment_score||0} color={selTeamColor || selected.team_color} />
             </div>
 
             {/* Rookie premium insight */}
@@ -548,9 +568,12 @@ export default function Drivers() {
                 </h3>
                 <a href={topGraded.ebay_url ? ebayAffiliateUrl(topGraded.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
                   className="flex items-center gap-3 bg-gradient-to-r from-amber-900/20 to-transparent border border-amber-800/30 rounded-2xl p-3 hover:from-amber-900/30 transition-colors">
-                  {topGraded.image_url && (
-                    <img src={topGraded.image_url} alt="" className="w-12 h-16 rounded object-cover shrink-0" onError={e => e.target.style.display='none'} />
-                  )}
+                  <CardImage
+                    src={topGraded.image_url}
+                    alt=""
+                    driverName={topGraded.driver_name}
+                    className="w-12 h-16 rounded shrink-0"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-white truncate" title={topGraded.title || ''}>{topGraded.title}</div>
                     <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2 flex-wrap">
@@ -651,6 +674,8 @@ export default function Drivers() {
               </div>
             )}
           </div>
+            )
+          })()
         ) : (
           <div className="flex-1 panel flex items-center justify-center py-24 text-gray-600">
             <p className="text-sm">Select a driver</p>

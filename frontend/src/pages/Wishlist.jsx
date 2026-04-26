@@ -9,6 +9,7 @@ import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/driv
 import ShareWatchlistModal from '../components/ShareWatchlistModal'
 import SmartRules from '../components/SmartRules'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import CardImage from '../components/CardImage'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -327,12 +328,12 @@ export default function Watchlist() {
               const total = (a.current_price || 0) + (a.shipping_cost || 0)
               return (
                 <div key={a.id} className="bg-gray-900/70 border border-gray-800/60 rounded-2xl p-3 flex gap-3 items-start">
-                  <div className="w-14 h-20 rounded-lg bg-gray-800 overflow-hidden shrink-0">
-                    {a.image_url
-                      ? <img src={a.image_url.includes('i.ebayimg.com') ? a.image_url : `${API}/api/proxy/image?url=${encodeURIComponent(a.image_url)}`}
-                             alt="" className="w-full h-full object-cover" onError={e => e.target.style.display='none'} />
-                      : <div className="w-full h-full flex items-center justify-center text-gray-700 text-xs">🏎</div>}
-                  </div>
+                  <CardImage
+                    src={a.image_url}
+                    alt=""
+                    driverName={a.driver || a.card?.driver_name}
+                    className="w-14 h-20 rounded-lg bg-gray-800 shrink-0"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-gray-400 line-clamp-2 leading-snug">{a.title}</div>
                     <div className="flex items-center gap-2 mt-1.5">

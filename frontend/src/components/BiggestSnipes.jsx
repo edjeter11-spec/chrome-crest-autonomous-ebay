@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Target, Clock } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import { upscaleEbayImage } from '../lib/imageUrl'
+import CardImagePlaceholder from './CardImagePlaceholder'
 
 function parseUtc(s) {
   if (!s) return null
@@ -52,39 +54,50 @@ function isBigSnipe(a, maxSecs) {
   return false
 }
 
-function initialsOf(name) {
-  if (!name) return 'F1'
-  const parts = String(name).trim().split(/\s+/)
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
 function SnipeImage({ src, driverName }) {
+  // Pre-upscale eBay CDN URLs for sharper thumbs at the same render size.
+  const upscaled = src ? upscaleEbayImage(src, 500) : ''
   const [stage, setStage] = useState('initial') // initial | retry | failed
-  const [url, setUrl] = useState(src || '')
-  if (!src || stage === 'failed') {
+  const [url, setUrl] = useState(upscaled)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    setStage('initial')
+    setUrl(upscaled)
+    setLoaded(false)
+  }, [upscaled])
+
+  if (!upscaled || stage === 'failed') {
     return (
-      <div className="w-16 h-20 rounded bg-gray-800 shrink-0 flex items-center justify-center text-gray-400 font-black text-xs">
-        {initialsOf(driverName)}
+      <div className="w-16 h-20 rounded shrink-0 overflow-hidden">
+        <CardImagePlaceholder
+          driverName={driverName}
+          labelClassName="text-[10px] font-black tracking-widest"
+        />
       </div>
     )
   }
   return (
-    <img
-      src={url}
-      alt=""
-      loading="lazy"
-      className="w-16 h-20 object-cover rounded shrink-0 bg-gray-800"
-      onError={() => {
-        if (stage === 'initial') {
-          const sep = src.includes('?') ? '&' : '?'
-          setUrl(`${src}${sep}1`)
-          setStage('retry')
-        } else {
-          setStage('failed')
-        }
-      }}
-    />
+    <div className="relative w-16 h-20 rounded shrink-0 overflow-hidden bg-gray-800">
+      {!loaded && <div className="absolute inset-0 bg-gray-800 animate-pulse" aria-hidden="true" />}
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className={`w-full h-full object-cover transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          if (stage === 'initial') {
+            const sep = upscaled.includes('?') ? '&' : '?'
+            setUrl(`${upscaled}${sep}1`)
+            setStage('retry')
+          } else {
+            setStage('failed')
+          }
+        }}
+      />
+    </div>
   )
 }
 

@@ -16,6 +16,8 @@ import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
 import { ebayAffiliateUrl, trackClick } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
+import { teamColor as resolveTeamColor } from '../lib/teamColors'
+import { teamOf } from '../lib/drivers'
 
 function WelcomeBanner() {
   const { user } = useAuth()
@@ -538,26 +540,40 @@ export default function Dashboard() {
                 <h3 className="text-[11px] font-black uppercase tracking-wider text-gray-400 light:text-gray-700">Jump to Driver</h3>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-                {topDriverChips.filter(Boolean).map((d, i) => (
-                  <button
-                    key={i}
-                    onClick={() => navigate(`/drivers?name=${encodeURIComponent(d?.driver || '')}`)}
-                    className="shrink-0 flex flex-col items-center gap-1.5 w-20"
-                    title={`${d?.count ?? 0} sold · $${Math.round(Number(d?.total_value) || 0).toLocaleString()}`}
-                  >
-                    <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-800 border border-gray-700/50 hover:border-red-500/60 transition-colors">
-                      <img
-                        src={`${API}/api/drivers/photo?name=${encodeURIComponent(d?.driver || '')}`}
-                        alt={d?.driver || ''}
-                        className="w-full h-full object-cover"
-                        onError={e => { e.target.style.display = 'none' }}
-                      />
-                    </div>
-                    <span className="text-[10px] text-gray-300 text-center leading-tight font-semibold truncate w-full light:text-gray-700">
-                      {(d?.driver || '').split(' ').slice(-1)[0]}
-                    </span>
-                  </button>
-                ))}
+                {topDriverChips.filter(Boolean).map((d, i) => {
+                  const driverName = d?.driver || ''
+                  // Resolve team via card-style lookup so we can paint the ring.
+                  const team = d?.team || teamOf({ card: { driver_name: driverName }, title: driverName })
+                  const tColor = d?.team_color || resolveTeamColor(team)
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => navigate(`/drivers?name=${encodeURIComponent(driverName)}`)}
+                      className="shrink-0 flex flex-col items-center gap-1.5 w-20"
+                      title={`${d?.count ?? 0} sold · $${Math.round(Number(d?.total_value) || 0).toLocaleString()}${team ? ` · ${team}` : ''}`}
+                    >
+                      <div
+                        className="w-16 h-16 rounded-full overflow-hidden bg-gray-800 border-2 transition-colors"
+                        style={tColor
+                          ? { borderColor: tColor, boxShadow: `0 0 0 1px ${tColor}33` }
+                          : { borderColor: 'rgba(75,85,99,0.5)' }}
+                      >
+                        <img
+                          src={`${API}/api/drivers/photo?name=${encodeURIComponent(driverName)}`}
+                          alt={driverName}
+                          className="w-full h-full object-cover"
+                          onError={e => { e.target.style.display = 'none' }}
+                        />
+                      </div>
+                      <span
+                        className="text-[10px] text-center leading-tight font-semibold truncate w-full light:text-gray-700"
+                        style={tColor ? { color: tColor } : { color: '#d1d5db' }}
+                      >
+                        {driverName.split(' ').slice(-1)[0]}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}

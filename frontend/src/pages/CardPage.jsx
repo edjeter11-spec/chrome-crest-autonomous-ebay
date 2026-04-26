@@ -8,6 +8,7 @@ import { ShareMenu } from '../components/AuctionCard'
 import Breadcrumbs from '../components/Breadcrumbs'
 import RawToGradedROI from '../components/RawToGradedROI'
 import LastUpdatedLabel from '../components/LastUpdatedLabel'
+import CardImage from '../components/CardImage'
 
 const API = import.meta.env.VITE_API_URL || ''
 const SITE = 'https://www.f1cardvault.com'
@@ -355,14 +356,13 @@ export default function CardPage() {
                   to={`/card/${pSlug}`}
                   className="bg-gray-800/60 hover:bg-gray-800 rounded-xl p-3 border border-gray-700/40 hover:border-cyan-700/50 transition-colors flex gap-3 items-start"
                 >
-                  {s.image_url && (
-                    <img
-                      src={s.image_url}
-                      alt=""
-                      className="w-12 h-16 rounded object-cover bg-gray-900 shrink-0"
-                      onError={e => { e.currentTarget.style.display = 'none' }}
-                    />
-                  )}
+                  <CardImage
+                    src={s.image_url}
+                    alt=""
+                    driverName={driver}
+                    className="w-12 h-16 rounded bg-gray-900 shrink-0"
+                  />
+
                   <div className="min-w-0 flex-1">
                     <div className="text-xs text-white font-semibold line-clamp-2 leading-tight">
                       {s.title || `${driver} ${s.parallel}`}
@@ -418,7 +418,7 @@ export default function CardPage() {
                 <a key={a.id} href={ebayAffiliateUrl(a.ebay_url)} target="_blank" rel="sponsored noopener"
                   className={`bg-gray-800/60 hover:bg-gray-800 rounded-xl p-3 border transition-colors ${isDeal ? 'border-green-700/50' : 'border-gray-700/40'}`}>
                   <div className="flex gap-3">
-                    {a.image_url && <img src={a.image_url} alt="" className="w-14 h-16 rounded object-cover bg-gray-900" />}
+                    <CardImage src={a.image_url} alt="" driverName={driver} className="w-14 h-16 rounded bg-gray-900 shrink-0" />
                     <div className="min-w-0 flex-1">
                       <div className="text-xs text-white font-semibold line-clamp-2 leading-tight">{a.title}</div>
                       <div className="flex items-baseline gap-2 mt-1.5">
