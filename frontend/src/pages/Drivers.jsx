@@ -10,6 +10,7 @@ import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import Breadcrumbs from '../components/Breadcrumbs'
 import LoadingSpinner from '../components/LoadingSpinner'
+import ScoreExplain from '../components/ScoreExplain'
 
 function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
   const [photo, setPhoto] = useState('')
@@ -474,7 +475,9 @@ export default function Drivers() {
               </div>
               <div className="flex flex-col items-end gap-2 md:gap-3 shrink-0">
                 <div className="text-right">
-                  <div className="text-2xl md:text-4xl font-black text-white tracking-tight">{Math.round(selected.investment_score||0)}</div>
+                  <ScoreExplain score={Math.round(selected.investment_score||0)} type="invest" auction={selected}>
+                    <span className="text-2xl md:text-4xl font-black text-white tracking-tight">{Math.round(selected.investment_score||0)}</span>
+                  </ScoreExplain>
                   <div className="text-[10px] md:text-xs text-gray-500 uppercase tracking-wide mt-0.5">Invest Score</div>
                 </div>
                 <button

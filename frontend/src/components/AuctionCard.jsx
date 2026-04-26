@@ -11,6 +11,7 @@ import { ebayAffiliateUrl } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
 import VerdictBadge from './VerdictBadge'
 import LastUpdatedLabel from './LastUpdatedLabel'
+import ScoreExplain from './ScoreExplain'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -403,11 +404,13 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
         </div>
         {auction.snipe_score > 0 && (
           <div className="text-right shrink-0">
-            <div className={`text-base font-black tabular-nums leading-none ${
-              auction.snipe_score >= 80 ? 'text-red-400' :
-              auction.snipe_score >= 60 ? 'text-orange-400' :
-              auction.snipe_score >= 40 ? 'text-yellow-400' : 'text-gray-600'
-            }`}>{Math.round(auction.snipe_score)}</div>
+            <ScoreExplain score={Math.round(auction.snipe_score)} type="snipe" auction={auction}>
+              <span className={`text-base font-black tabular-nums leading-none ${
+                auction.snipe_score >= 80 ? 'text-red-400' :
+                auction.snipe_score >= 60 ? 'text-orange-400' :
+                auction.snipe_score >= 40 ? 'text-yellow-400' : 'text-gray-600'
+              }`}>{Math.round(auction.snipe_score)}</span>
+            </ScoreExplain>
             <div className="text-[10px] text-gray-600 uppercase tracking-wide mt-0.5">snipe</div>
           </div>
         )}
