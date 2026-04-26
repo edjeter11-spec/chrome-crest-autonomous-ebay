@@ -65,7 +65,7 @@ export default function Auctions() {
   const [loading, setLoading] = useState(true)
   // Persisted filter state (localStorage-backed — fail-gracefully)
   const [filters, setFilters] = usePersistedState('cc_filters_auctions_v2', {
-    search: '', sortBy: 'ending', filterParallel: 'All', printRun: 'Any',
+    search: '', sortBy: 'ending', filterParallel: 'No Base', printRun: 'Any',
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
     filterRookie: false, formulaType: 'F1', teamFilter: 'All',
     filterStrongBuy: false, autoVariant: 'Any',
