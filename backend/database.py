@@ -346,6 +346,56 @@ class ClickEvent(Base):
     )
 
 
+class CardSet(Base):
+    """
+    Lookup table for card sets across years/brands.
+    Backbone for multi-year support — every Card / SoldCard / Auction can reference one.
+    enabled_in_ui = False keeps a set fully hidden from the live site.
+    """
+    __tablename__ = "card_sets"
+    id = Column(String, primary_key=True)              # 'topps-chrome-2025'
+    year = Column(Integer, nullable=False, index=True)
+    brand = Column(String, nullable=False)             # 'Topps Chrome', 'Sapphire', 'Finest'
+    name = Column(String, nullable=False)              # 'Topps Chrome F1 2025'
+    slug = Column(String, nullable=False, unique=True) # '2025-topps-chrome'
+    enabled_for_live_tracking = Column(Boolean, default=False)
+    enabled_in_ui = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SoldCardArchive(Base):
+    """
+    Historical sold-listing archive — isolated from sold_cards so backfilled
+    pre-2025 data NEVER leaks into UI queries that target sold_cards.
+    Same shape as SoldCard so we can later UNION or migrate when ready.
+    """
+    __tablename__ = "sold_cards_archive"
+    id = Column(Integer, primary_key=True, index=True)
+    set_id = Column(String, ForeignKey("card_sets.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False, index=True)
+    ebay_item_id = Column(String, unique=True, index=True, nullable=False)
+    title = Column(String, nullable=False)
+    driver_name = Column(String, index=True, nullable=True)
+    parallel = Column(String, index=True, nullable=True)
+    grade = Column(String, nullable=True)
+    condition = Column(String, nullable=True)
+    sale_price = Column(Float, nullable=False)
+    sale_date = Column(DateTime, index=True, nullable=False)
+    image_url = Column(String, nullable=True)
+    ebay_url = Column(String, nullable=True)
+    shipping_cost = Column(Float, nullable=True)
+    is_auction = Column(Boolean, default=False)
+    series = Column(String, default="F1", nullable=True)
+    source = Column(String, default="eBay", index=True)
+    is_duplicate = Column(Boolean, default=False, index=True)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_sold_archive_year_set", "year", "set_id"),
+        Index("ix_sold_archive_driver_parallel_date", "driver_name", "parallel", "sale_date"),
+    )
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -386,3 +436,37 @@ def create_tables():
     except Exception as outer:
         import logging
         logging.getLogger("jarvis.db").warning(f"auto-migrate skipped: {outer}")
+    # Seed card_sets lookup (idempotent — INSERT ON CONFLICT DO NOTHING).
+    # Only 2025 is enabled_in_ui; the rest are silent backfill targets.
+    try:
+        from sqlalchemy import text
+        seed_rows = [
+            ("topps-chrome-2025", 2025, "Topps Chrome", "Topps Chrome F1 2025", "2025-topps-chrome", True, True),
+            ("topps-chrome-2024", 2024, "Topps Chrome", "Topps Chrome F1 2024", "2024-topps-chrome", False, False),
+            ("topps-chrome-2023", 2023, "Topps Chrome", "Topps Chrome F1 2023", "2023-topps-chrome", False, False),
+            ("topps-chrome-2022", 2022, "Topps Chrome", "Topps Chrome F1 2022", "2022-topps-chrome", False, False),
+            ("topps-chrome-2021", 2021, "Topps Chrome", "Topps Chrome F1 2021", "2021-topps-chrome", False, False),
+            ("topps-chrome-2020", 2020, "Topps Chrome", "Topps Chrome F1 2020", "2020-topps-chrome", False, False),
+            ("topps-chrome-sapphire-2024", 2024, "Topps Chrome Sapphire", "Topps Chrome Sapphire F1 2024", "2024-sapphire", False, False),
+            ("topps-chrome-sapphire-2023", 2023, "Topps Chrome Sapphire", "Topps Chrome Sapphire F1 2023", "2023-sapphire", False, False),
+            ("topps-flagship-2024", 2024, "Topps Flagship", "Topps Flagship F1 2024", "2024-flagship", False, False),
+            ("topps-finest-2024", 2024, "Topps Finest", "Topps Finest F1 2024", "2024-finest", False, False),
+        ]
+        with engine.begin() as conn:
+            is_pg = "postgresql" in str(engine.url)
+            for row in seed_rows:
+                if is_pg:
+                    sql = ("INSERT INTO card_sets (id, year, brand, name, slug, enabled_for_live_tracking, enabled_in_ui) "
+                           "VALUES (:id,:year,:brand,:name,:slug,:lt,:ui) ON CONFLICT (id) DO NOTHING")
+                else:
+                    sql = ("INSERT OR IGNORE INTO card_sets (id, year, brand, name, slug, enabled_for_live_tracking, enabled_in_ui) "
+                           "VALUES (:id,:year,:brand,:name,:slug,:lt,:ui)")
+                try:
+                    conn.execute(text(sql), {"id": row[0], "year": row[1], "brand": row[2], "name": row[3],
+                                              "slug": row[4], "lt": row[5], "ui": row[6]})
+                except Exception as seed_err:
+                    import logging
+                    logging.getLogger("jarvis.db").debug(f"seed skipped {row[0]}: {seed_err}")
+    except Exception as seed_outer:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"card_sets seed skipped: {seed_outer}")

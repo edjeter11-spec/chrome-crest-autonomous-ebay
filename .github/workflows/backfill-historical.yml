@@ -1,0 +1,59 @@
+name: Backfill historical year (sold cards)
+
+# Manual-trigger only. This workflow writes to sold_cards_archive (NOT sold_cards),
+# so backfilled data stays isolated from the live UI.
+#
+# To run: GitHub → Actions → "Backfill historical year (sold cards)" → Run workflow
+# → choose year + set_id.
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Set year (e.g. 2024)'
+        required: true
+        default: '2024'
+      set_id:
+        description: 'card_sets.id (e.g. topps-chrome-2024)'
+        required: true
+        default: 'topps-chrome-2024'
+      pages:
+        description: 'Pages per query (1-5)'
+        required: false
+        default: '2'
+      max_queries:
+        description: 'Optional cap for smoke test (blank = no cap)'
+        required: false
+        default: ''
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install httpx sqlalchemy psycopg2-binary python-dotenv
+
+      - name: Run backfill
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          EBAY_APP_ID: ${{ secrets.EBAY_APP_ID }}
+          EBAY_CERT_ID: ${{ secrets.EBAY_CERT_ID }}
+        run: |
+          MAXQ_FLAG=""
+          if [ -n "${{ github.event.inputs.max_queries }}" ]; then
+            MAXQ_FLAG="--max-queries ${{ github.event.inputs.max_queries }}"
+          fi
+          python scripts/backfill/scrape_historical_year.py \
+            --year ${{ github.event.inputs.year }} \
+            --set-id ${{ github.event.inputs.set_id }} \
+            --pages ${{ github.event.inputs.pages }} \
+            $MAXQ_FLAG
