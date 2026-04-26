@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Trophy } from 'lucide-react'
+import { teamColor as resolveTeamColor } from '../lib/teamColors'
 
 const API = import.meta.env.VITE_API_URL || ''
 const proxyImg = (url) => {
@@ -17,14 +18,19 @@ const TIER_STYLES = {
 
 export default function DriverCard({ driver, onClick }) {
   const tier = driver.investment_score >= 90 ? 'S' : driver.investment_score >= 80 ? 'A' : driver.investment_score >= 65 ? 'B' : 'C'
-  const teamColor = driver.team_color || '#666'
+  // Prefer DB-supplied team_color, fall back to our palette lookup, then neutral gray.
+  const resolvedColor = driver.team_color || resolveTeamColor(driver.team)
+  const teamColor = resolvedColor || '#666'
+  const hasTeamColor = !!resolvedColor
   const photoUrl = driver.image_url && !driver.image_url.includes('placehold.co')
     ? driver.image_url : null
 
   return (
     <div
       className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden card-hover cursor-pointer"
-      style={{ borderTopColor: teamColor, borderTopWidth: 3 }}
+      style={hasTeamColor
+        ? { borderLeftColor: teamColor, borderLeftWidth: 4, borderTopColor: teamColor, borderTopWidth: 3 }
+        : undefined}
       onClick={() => onClick?.(driver)}
     >
       {/* Driver headshot */}
@@ -45,7 +51,12 @@ export default function DriverCard({ driver, onClick }) {
       <div className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div>
-            <h3 className="font-bold text-white text-sm">{driver.driver_name}</h3>
+            <h3
+              className="font-bold text-sm"
+              style={hasTeamColor ? { color: teamColor } : { color: '#fff' }}
+            >
+              {driver.driver_name}
+            </h3>
             <p className="text-xs text-gray-400">{driver.team}</p>
           </div>
           {(!photoUrl || photoUrl.includes('placehold.co')) && (

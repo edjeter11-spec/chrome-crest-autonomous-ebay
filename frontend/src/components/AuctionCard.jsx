@@ -10,6 +10,7 @@ import { verdictFor } from '../lib/verdict'
 import { calculateFMV } from '../lib/fmv'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
+import { teamColor as resolveTeamColor } from '../lib/teamColors'
 import VerdictBadge from './VerdictBadge'
 import LastUpdatedLabel from './LastUpdatedLabel'
 import ScoreExplain from './ScoreExplain'
@@ -907,7 +908,10 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   // Parallel/grade badge from card data
   const parallel = auction.card?.parallel
   const grade = auction.card?.grade
-  const teamColor = auction.card?.team_color
+  // Prefer DB-supplied team_color, fall back to palette lookup from card.team.
+  const teamColor = auction.card?.team_color || resolveTeamColor(auction.card?.team)
+  const teamName = auction.card?.team
+  const driverName = auction.card?.driver_name || auction.driver_name
 
   const shareToX = (e) => {
     e.stopPropagation()
@@ -1041,6 +1045,28 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
 
       {/* Body */}
       <div className="p-3 flex flex-col flex-1 gap-2">
+
+        {/* Driver + team chip — small color dot next to driver name */}
+        {driverName && (
+          <div className="flex items-center gap-1.5 -mb-0.5">
+            {teamColor && (
+              <span
+                className="inline-block w-2 h-2 rounded-full shrink-0 shadow-sm"
+                style={{ backgroundColor: teamColor }}
+                title={teamName || 'Team'}
+              />
+            )}
+            <span
+              className="text-[11px] font-bold tracking-tight truncate"
+              style={teamColor ? { color: teamColor } : { color: '#e5e7eb' }}
+            >
+              {driverName}
+            </span>
+            {teamName && (
+              <span className="text-[10px] text-gray-500 truncate">· {teamName}</span>
+            )}
+          </div>
+        )}
 
         {/* Title */}
         <p className="text-xs text-gray-400 leading-snug line-clamp-2 min-h-[2.5rem]">
