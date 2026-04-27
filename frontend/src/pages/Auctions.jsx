@@ -62,10 +62,11 @@ const isCardLot = (a) => {
 }
 
 export default function Auctions() {
+  usePageTitle('Live Auctions')
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(true)
   // Persisted filter state (localStorage-backed — fail-gracefully)
-  const [filters, setFilters] = usePersistedState('cc_filters_auctions_v2', {
+  const [filters, setFilters] = usePersistedState('cc_filters_auctions_v3', {
     search: '', sortBy: 'ending', filterParallel: 'No Base', printRun: 'Any',
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
     filterRookie: false, formulaType: 'F1', teamFilter: 'All',
@@ -414,10 +415,11 @@ export default function Auctions() {
         </div>
       </div>
 
-      {/* Filter bar */}
+      {/* Primary filter bar — only the high-frequency controls. Power-user
+          filters live in the "Advanced filters" disclosure below. */}
       <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
         {/* Search */}
-        <div className="relative min-w-44">
+        <div className="relative min-w-44 flex-1 sm:flex-initial">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input value={search} onChange={e => setF({ search: e.target.value })}
             placeholder="Driver, title…"
@@ -428,30 +430,10 @@ export default function Auctions() {
             className="input-field w-full pl-8 pr-3 py-2 text-xs" />
         </div>
 
-        <div className="w-px h-5 bg-gray-700/60 shrink-0" />
-
-        {/* Formula type */}
-        <select value={formulaType} onChange={e => setF({ formulaType: e.target.value })}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
-        </select>
-
-        {/* Team */}
-        <select value={teamFilter} onChange={e => setF({ teamFilter: e.target.value })}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
-        </select>
-
         {/* Parallel */}
         <select value={filterParallel} onChange={e => setF({ filterParallel: e.target.value })}
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {PARALLELS.map(p => <option key={p} value={p}>{p === 'All' ? 'All Parallels' : p === 'No Base' ? 'No Base Cards' : p}</option>)}
-        </select>
-
-        {/* Print run */}
-        <select value={printRun} onChange={e => setF({ printRun: e.target.value })}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {PRINT_RUNS.map(p => <option key={p} value={p}>{p === 'Any' ? 'Any Print Run' : p}</option>)}
         </select>
 
         {/* Sort */}
@@ -460,23 +442,23 @@ export default function Auctions() {
           {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
 
-        <div className="w-px h-5 bg-gray-700/60 shrink-0" />
+        {/* Premium toggle */}
+        <button onClick={() => setF({ filterPremium: !filterPremium })}
+          aria-pressed={filterPremium}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+            filterPremium ? 'bg-amber-600/25 text-amber-300 border border-amber-500/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+          }`}>
+          💎 Premium ($100+ bid)
+        </button>
 
-        {/* Toggle pills */}
-        {[
-          { label: '💎 Premium ($100+ bid)', active: filterPremium, key: 'filterPremium', activeCls: 'bg-amber-600/25 text-amber-300 border border-amber-500/50' },
-          { label: '🔥 Strong Buys', active: filterStrongBuy, key: 'filterStrongBuy', activeCls: 'bg-green-600/20 text-green-400 border border-green-600/40' },
-          { label: '⭐ Rookies', active: filterRookie, key: 'filterRookie' },
-          { label: '⚡ Snipe Only', active: filterSnipe, key: 'filterSnipe' },
-          { label: '🔖 Watchlist', active: filterWatchlist, key: 'filterWatchlist' },
-        ].map(({ label, active, key, activeCls }) => (
-          <button key={label} onClick={() => setF({ [key]: !active })}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-              active ? (activeCls || 'bg-red-600/15 text-red-400 border border-red-600/30') : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
-            }`}>
-            {label}
-          </button>
-        ))}
+        {/* Strong Buys toggle */}
+        <button onClick={() => setF({ filterStrongBuy: !filterStrongBuy })}
+          aria-pressed={filterStrongBuy}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+            filterStrongBuy ? 'bg-green-600/20 text-green-400 border border-green-600/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+          }`}>
+          🔥 Strong Buys
+        </button>
 
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -505,18 +487,66 @@ export default function Auctions() {
         </div>
       </div>
 
-      {/* Auto-variant sub-filter — only when parent filter is Autograph */}
-      {filterParallel === 'Autograph' && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1 -mt-1">
-          <span className="text-[10px] text-gray-500 uppercase tracking-wider font-bold shrink-0 mr-1">Auto type:</span>
-          {AUTO_VARIANTS.map(v => (
-            <button key={v} onClick={() => setF({ autoVariant: v })}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 transition-colors ${
-                autoVariant === v
-                  ? 'bg-yellow-500 text-black border border-yellow-400'
-                  : 'bg-gray-800/60 text-gray-400 border border-transparent hover:border-gray-700/50 hover:text-gray-200'
+      {/* Advanced filters disclosure — secondary filters tuck behind a single
+          toggle so the default filter row stays clean for newcomers. */}
+      <button
+        type="button"
+        onClick={() => setAdvancedFiltersOpen(v => !v)}
+        aria-expanded={advancedFiltersOpen}
+        className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-gray-300 hover:bg-gray-800 w-full text-left flex items-center justify-between"
+      >
+        <span className="font-bold text-sm flex items-center gap-2">
+          <SlidersHorizontal size={14} />
+          Advanced filters
+        </span>
+        <ChevronDown
+          size={16}
+          className={`transition-transform duration-200 ${advancedFiltersOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {advancedFiltersOpen && (
+        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
+          {/* Formula type */}
+          <select value={formulaType} onChange={e => setF({ formulaType: e.target.value })}
+            className="input-field px-3 py-2 text-xs cursor-pointer">
+            {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
+          </select>
+
+          {/* Team */}
+          <select value={teamFilter} onChange={e => setF({ teamFilter: e.target.value })}
+            className="input-field px-3 py-2 text-xs cursor-pointer">
+            {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
+          </select>
+
+          {/* Print run */}
+          <select value={printRun} onChange={e => setF({ printRun: e.target.value })}
+            className="input-field px-3 py-2 text-xs cursor-pointer">
+            {PRINT_RUNS.map(p => <option key={p} value={p}>{p === 'Any' ? 'Any Print Run' : p}</option>)}
+          </select>
+
+          {/* Auto-variant sub-filter — only when parent filter is Autograph */}
+          {filterParallel === 'Autograph' && (
+            <select value={autoVariant} onChange={e => setF({ autoVariant: e.target.value })}
+              className="input-field px-3 py-2 text-xs cursor-pointer border-yellow-500/40">
+              {AUTO_VARIANTS.map(v => <option key={v} value={v}>{v === 'Any' ? 'Any Auto Type' : `Auto · ${v}`}</option>)}
+            </select>
+          )}
+
+          <div className="w-px h-5 bg-gray-700/60 shrink-0" />
+
+          {/* Secondary toggle pills */}
+          {[
+            { label: '⭐ First-Year Cards', active: filterRookie, key: 'filterRookie' },
+            { label: '⚡ Snipe Only', active: filterSnipe, key: 'filterSnipe' },
+            { label: '🔖 Watchlist', active: filterWatchlist, key: 'filterWatchlist' },
+          ].map(({ label, active, key }) => (
+            <button key={label} onClick={() => setF({ [key]: !active })}
+              aria-pressed={active}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                active ? 'bg-red-600/15 text-red-400 border border-red-600/30' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
               }`}>
-              {v}
+              {label}
             </button>
           ))}
         </div>
@@ -637,7 +667,7 @@ function SaveFilterAsSniperModal({ user, filters, onClose, onSaved }) {
     filters.printRun && filters.printRun !== 'Any' ? filters.printRun : null,
     filters.filterSnipe ? 'Snipe-only' : null,
     filters.filterStrongBuy ? 'Strong Buys' : null,
-    filters.filterRookie ? 'Rookies' : null,
+    filters.filterRookie ? 'First-Year Cards' : null,
     filters.search ? `"${filters.search}"` : null,
   ].filter(Boolean)
   const summary = summaryParts.length ? summaryParts.join(' · ') : 'All auctions'

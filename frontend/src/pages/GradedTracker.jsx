@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import CardImage from '../components/CardImage'
+import { usePageTitle } from '../lib/pageTitle'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -87,6 +88,7 @@ function Countdown({ endTime }) {
 }
 
 export default function GradedTracker() {
+  usePageTitle('Graded')
   const [leaderboard, setLeaderboard] = useState(null)
   const [sourceCounts, setSourceCounts] = useState(null)
   const [activeAuctions, setActiveAuctions] = useState([])

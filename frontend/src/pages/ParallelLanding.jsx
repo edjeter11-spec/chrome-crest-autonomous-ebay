@@ -66,7 +66,7 @@ export default function ParallelLanding() {
 
   // SEO metadata
   useEffect(() => {
-    const title = `${parallelName} F1 Cards - Prices & Comps | F1 Card Vault`
+    const title = `${parallelName} F1 Cards - Prices & Recent Sales | F1 Card Vault`
     const description = `Shop ${parallelName} trading cards. ${sorted.length} listings. Lowest: $${priceStats.lowest?.toFixed(2) || 'N/A'}, Avg: $${priceStats.average?.toFixed(2) || 'N/A'}.`
 
     document.title = title

@@ -55,7 +55,7 @@ export default function About() {
             <li className="flex gap-2">
               <span className="text-red-500 font-black shrink-0">•</span>
               <span>
-                <strong className="text-white">Sold comps:</strong> 130point HTML scraper, every
+                <strong className="text-white">Recent sales:</strong> 130point HTML scraper, every
                 10 minutes. We pull the most recent sold prices so medians reflect what cards are
                 actually selling for right now — not month-old list prices.
               </span>
@@ -72,7 +72,7 @@ export default function About() {
               <span className="text-red-500 font-black shrink-0">•</span>
               <span>
                 <strong className="text-white">Data transparency:</strong> All prices are real eBay
-                sales. Median calculations use the last 90 days of confirmed sold comps — nothing
+                sales. Median calculations use the last 90 days of confirmed recent sales — nothing
                 simulated, nothing projected.
               </span>
             </li>

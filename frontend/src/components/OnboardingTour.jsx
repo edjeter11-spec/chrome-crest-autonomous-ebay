@@ -9,7 +9,7 @@ const STEPS = [
   {
     icon: Sparkles,
     title: 'Welcome to F1 Card Vault',
-    body: 'The fastest way to track every 2025 Topps Chrome F1 card. Live auctions, sold comps, and PSA pop — all in one place.',
+    body: 'The fastest way to track every 2025 Topps Chrome F1 card. Live auctions, recent sales, and PSA pop — all in one place.',
     cta: 'Show me around',
   },
   {

@@ -171,17 +171,17 @@ export default function CardPage() {
 
   useSeo({
     title: driver && parallel
-      ? `2025 Topps Chrome F1 ${driver} ${parallel} — Prices, Comps & Auctions | F1 Card Vault`
+      ? `2025 Topps Chrome F1 ${driver} ${parallel} — Prices, Recent Sales & Auctions | F1 Card Vault`
       : 'Card — F1 Card Vault',
     description: driver && parallel
       ? `Live tracker for the 2025 Topps Chrome Formula 1 ${driver} ${parallel}. ${median?.n || 0} recent sales, ${median?.median_total ? `$${median.median_total.toFixed(0)} median` : 'price data'}, PSA pop, and active eBay auctions. Free, always updated.`
       : 'Live 2025 Topps Chrome Formula 1 card prices.',
     ogTitle: driver && parallel
-      ? `2025 Topps Chrome F1 ${driver} ${parallel} — Prices, Comps & Auctions`
+      ? `2025 Topps Chrome F1 ${driver} ${parallel} — Prices, Recent Sales & Auctions`
       : 'F1 Card Vault',
     ogDescription: driver && parallel
       ? `Live tracker for the 2025 Topps Chrome Formula 1 ${driver} ${parallel}. ${median?.n || 0} recent sales, ${median?.median_total ? `$${median.median_total.toFixed(0)} median` : 'price data'}, PSA pop, and active eBay auctions.`
-      : 'Live eBay prices and median comps for 2025 Topps Chrome F1.',
+      : 'Live eBay prices and median recent sales for 2025 Topps Chrome F1.',
     ogImage: slug ? `${SITE}/og/card/${slug}` : undefined,
   })
 
@@ -444,7 +444,7 @@ export default function CardPage() {
       {/* Recent sales */}
       <div className="panel p-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-white text-sm flex items-center gap-2"><TrendingUp size={14} className="text-green-400" /> Recent Sold Comps</h2>
+          <h2 className="font-bold text-white text-sm flex items-center gap-2"><TrendingUp size={14} className="text-green-400" /> Recent Sales</h2>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-gray-500">last {recent.length}</span>
             {recent.length > 0 && recent[0]?.sale_date && (

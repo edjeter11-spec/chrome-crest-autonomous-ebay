@@ -53,7 +53,7 @@ export default function WelcomeModal() {
         </h2>
 
         <ul className="space-y-3 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-          <li>🏎️ Live tracker for every Topps F1 card on eBay — auctions, sold prices, graded comps.</li>
+          <li>🏎️ Live tracker for every Topps F1 card on eBay — auctions, sold prices, graded recent sales.</li>
           <li>💎 We default to Premium cards ($100+ on auctions, $150+ on Buy It Now) — toggle off to see everything.</li>
           <li>🔥 Look for the flame rating — more flames = better deal vs. recent sales.</li>
         </ul>

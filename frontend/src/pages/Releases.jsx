@@ -120,7 +120,7 @@ export default function Releases() {
 
         <p className="text-[11px] text-gray-600 leading-relaxed pt-2 border-t border-gray-800">
           Dates and configurations are based on public Topps announcements and historical release patterns.
-          "TBA" dates will update as Topps confirms. Price ranges are projections based on prior-year comps.
+          "TBA" dates will update as Topps confirms. Price ranges are projections based on prior-year recent sales.
         </p>
       </div>
     </div>

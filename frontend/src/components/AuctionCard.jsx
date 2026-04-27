@@ -232,7 +232,7 @@ function ScarcityBadge({ tier, count }) {
   return (
     <span
       className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${style.color} tabular-nums`}
-      title={`Scarcity tier ${tier}${count ? ` · /${count}` : ''}`}
+      title={`Rarity ${tier}${count ? ` · /${count}` : ''}`}
     >
       {style.label}
     </span>

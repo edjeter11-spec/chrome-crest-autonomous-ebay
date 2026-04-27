@@ -85,7 +85,7 @@ function ScanInfoModal({ item, onClose, onDelete }) {
             <span className="text-gray-300 text-right">{confidence != null ? `${Math.round(confidence * 100)}%` : '—'}</span>
             <span className="text-gray-500">Market value (Raw comp):</span>
             <span className="text-emerald-400 font-bold text-right">{item.has_valuation ? `$${Math.round(item.current_value)}` : '—'}</span>
-            <span className="text-gray-500">Comps (n):</span>
+            <span className="text-gray-500">Recent sales (n):</span>
             <span className="text-gray-300 text-right">{item.comps_n ?? '—'}</span>
             <span className="text-gray-500">Your paid:</span>
             <span className="text-gray-300 text-right">{item.purchase_price ? `$${Number(item.purchase_price).toFixed(0)}` : '—'}</span>
@@ -97,7 +97,7 @@ function ScanInfoModal({ item, onClose, onDelete }) {
             </div>
           )}
           <div className="text-[10px] text-gray-500 italic">
-            Market value uses sold comps for this driver + parallel (graded + raw). The AI grade is a prediction only — treat as raw for pricing until you actually send it to PSA.
+            Market value uses recent sales for this driver + parallel (graded + raw). The AI grade is a prediction only — treat as raw for pricing until you actually send it to PSA.
           </div>
           <button onClick={onDelete} className="w-full px-3 py-2 bg-red-900/40 hover:bg-red-900/60 border border-red-800/50 text-red-300 text-xs font-bold rounded-lg">
             Remove from collection
@@ -197,7 +197,7 @@ function ScannedCardsBlock({ refreshKey, onCount }) {
                 <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px]">
                   <span className="text-gray-500">Market value:</span>
                   <span className="text-white font-bold text-right">{est != null ? `$${Math.round(est)}` : '—'}</span>
-                  <span className="text-gray-500">Comps (n):</span>
+                  <span className="text-gray-500">Recent sales (n):</span>
                   <span className="text-gray-300 text-right">{comp?.n ?? '—'}</span>
                   <span className="text-gray-500">Sold last 30d:</span>
                   <span className="text-gray-300 text-right">{comp?.last30 ?? '—'}</span>
@@ -614,7 +614,7 @@ export default function Portfolio() {
             </div>
             <div>
               <div className="font-black text-white text-lg">Snap a card to get started</div>
-              <div className="text-xs text-purple-200/80 mt-0.5">AI identifies driver + parallel, finds eBay comps, saves to your collection with sold-history insights.</div>
+              <div className="text-xs text-purple-200/80 mt-0.5">AI identifies driver + parallel, finds eBay recent sales, saves to your collection with sold-history insights.</div>
             </div>
           </div>
         </button>
@@ -706,7 +706,7 @@ export default function Portfolio() {
         <div className="panel flex flex-col items-center justify-center py-20">
           <div className="text-5xl mb-4">📦</div>
           <p className="text-lg font-bold text-white">Time to build your portfolio</p>
-          <p className="text-sm text-gray-400 mt-2 mb-6 max-w-sm text-center">Track purchases, monitor comps, and watch your collection grow. Scan a card or add holdings manually.</p>
+          <p className="text-sm text-gray-400 mt-2 mb-6 max-w-sm text-center">Track purchases, monitor recent sales, and watch your collection grow. Scan a card or add holdings manually.</p>
           <div className="flex gap-3 flex-wrap justify-center">
             <button onClick={() => setScanning(true)} className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:brightness-110 text-white text-sm font-bold rounded-lg flex items-center gap-2 shadow-lg shadow-purple-900/30">
               <Camera size={16} /> Scan Card

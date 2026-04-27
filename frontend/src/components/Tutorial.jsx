@@ -5,10 +5,10 @@ import { Link } from 'react-router-dom'
 const CARDS = [
   { icon: Gavel,    title: 'Live Auctions',    body: 'Ending soon. Watch countdowns, snipe scores, and place bids.',     to: '/auctions',  color: 'text-red-400' },
   { icon: Tag,      title: 'Buy It Now',       body: 'Fixed-price listings with price filters and instant purchase.',     to: '/bin',       color: 'text-green-400' },
-  { icon: Database, title: 'Sold Database',    body: 'Every sold comp, filterable by driver, parallel, grade.',           to: '/sales',     color: 'text-blue-400' },
+  { icon: Database, title: 'Sold Database',    body: 'Every recent sale, filterable by driver, parallel, grade.',           to: '/sales',     color: 'text-blue-400' },
   { icon: Users,    title: 'Driver Profiles',  body: 'Tap any driver for 90-day price charts and top sales.',             to: '/drivers',   color: 'text-purple-400' },
   { icon: Target,   title: 'Snipe Alerts',     body: 'Set price rules — get push notifications when a listing matches.',  to: '/sniper',    color: 'text-orange-400' },
-  { icon: Sparkles, title: 'Scan & Track',     body: 'Snap a card, AI identifies it, we track comps in My Cards.',        to: '/portfolio', color: 'text-pink-400' },
+  { icon: Sparkles, title: 'Scan & Track',     body: 'Snap a card, AI identifies it, we track recent sales in My Cards.',        to: '/portfolio', color: 'text-pink-400' },
 ]
 
 function detectPlatform() {

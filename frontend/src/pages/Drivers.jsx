@@ -13,6 +13,7 @@ import Breadcrumbs from '../components/Breadcrumbs'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ScoreExplain from '../components/ScoreExplain'
 import CardImage from '../components/CardImage'
+import { usePageTitle } from '../lib/pageTitle'
 
 function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
   const [photo, setPhoto] = useState('')
@@ -228,6 +229,7 @@ function AddToSniperModal({ driver, onClose, onNavigate }) {
 }
 
 export default function Drivers() {
+  usePageTitle('Drivers')
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [drivers, setDrivers] = useState([])

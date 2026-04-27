@@ -64,7 +64,7 @@ export default function EmbedPrice() {
         ) : !data ? (
           <span style={{ fontSize: 12, color: '#6b7280' }}>loading…</span>
         ) : data.median == null ? (
-          <span style={{ fontSize: 12, color: '#6b7280' }}>no comps</span>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>no recent sales</span>
         ) : (
           <>
             <span style={{ fontSize: 20, fontWeight: 900, color: '#34d399' }}>${data.median.toFixed(2)}</span>

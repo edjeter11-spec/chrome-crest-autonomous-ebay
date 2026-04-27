@@ -47,7 +47,7 @@ export default function Terms() {
             The service is provided "as is" and "as available" without warranty of any kind,
             express or implied, including but not limited to merchantability, fitness for a
             particular purpose, data accuracy, or uninterrupted availability. We make no guarantee
-            that listings, sold comps, or grades are complete or error-free.
+            that listings, recent sales, or grades are complete or error-free.
           </p>
         </section>
 

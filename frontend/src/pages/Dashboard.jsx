@@ -508,7 +508,7 @@ export default function Dashboard() {
               icon={Flame}
               label={<><span className="md:hidden">7d</span><span className="hidden md:inline">7d Sales</span></>}
               value={recent24hCount == null ? null : Number(recent24hCount || 0).toLocaleString()}
-              sub="Fresh comps this week"
+              sub="Fresh recent sales this week"
               color="emerald"
               onClick={() => navigate('/sales')}
             />
@@ -608,7 +608,7 @@ export default function Dashboard() {
         <div className="flex items-center gap-3">
           <div className="w-1 h-7 bg-red-600 rounded-full shrink-0" />
           <div>
-            <h1 className="text-2xl font-black text-white tracking-tight leading-none">Operator Dashboard</h1>
+            <h1 className="text-2xl font-black text-white tracking-tight leading-none">Home</h1>
             <p className="text-gray-500 text-xs mt-1.5 font-medium light:text-gray-600">F1 Card Vault · Live auctions, fresh sales, hot snipes</p>
           </div>
         </div>

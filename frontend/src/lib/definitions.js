@@ -5,7 +5,7 @@ export const JARGON_DEFS = {
   '/99': 'Serial-numbered to 99 copies. The rarity number indicates how many were produced (lower = scarcer).',
   '/50': 'Serial-numbered to 50 copies. Scarcer than /99, more valuable.',
   '/25': 'Serial-numbered to 25 copies. High scarcity, significant premium over base.',
-  'Snipe Score': 'AI score (1–100) indicating likelihood of a deal. Higher = more likely underpriced vs. comps.',
+  'Snipe Score': 'AI score (1–100) indicating likelihood of a deal. Higher = more likely underpriced vs. recent sales.',
   'Prism Refractor': 'Premium refractor variant with expanded holographic effect. Rarer and more valuable than standard Refractor.',
   'Aqua /199': 'Limited parallel numbered to 199 copies with aqua coloring.',
   'Gold /50': 'Gold-themed parallel numbered to 50 copies.',

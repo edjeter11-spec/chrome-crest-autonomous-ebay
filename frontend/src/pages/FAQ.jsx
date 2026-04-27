@@ -5,7 +5,7 @@ import { ArrowLeft, ChevronDown } from 'lucide-react'
 const FAQS = [
   {
     q: 'How often is data updated?',
-    a: 'Live auction and Buy-It-Now listings refresh every 5 minutes from the eBay Browse API. Sold comps from 130point refresh every 10 minutes. PSA population data updates on a weekly research cycle.',
+    a: 'Live auction and Buy-It-Now listings refresh every 5 minutes from the eBay Browse API. Recent sales from 130point refresh every 10 minutes. PSA population data updates on a weekly research cycle.',
   },
   {
     q: 'What is a "parallel"?',
@@ -17,7 +17,7 @@ const FAQS = [
   },
   {
     q: 'What does "Strong Buy" mean?',
-    a: 'STRONG BUY is a verdict flag we assign when a live listing is trading meaningfully below the 90-day median sold price, with enough recent comps to trust the number. It is a signal, not a guarantee — always do your own due diligence before bidding.',
+    a: 'STRONG BUY is a verdict flag we assign when a live listing is trading meaningfully below the 90-day median sold price, with enough recent sales to trust the number. It is a signal, not a guarantee — always do your own due diligence before bidding.',
   },
   {
     q: 'Why is this price different from eBay\'s?',
@@ -29,7 +29,7 @@ const FAQS = [
   },
   {
     q: 'Do I need an account?',
-    a: 'No account is needed to browse auctions, sold comps, or driver stats. You only need to sign in to save a portfolio, build a watchlist, set up snipes, or enable push alerts.',
+    a: 'No account is needed to browse auctions, recent sales, or driver stats. You only need to sign in to save a portfolio, build a watchlist, set up snipes, or enable push alerts.',
   },
   {
     q: 'Is this affiliated with Topps or F1?',

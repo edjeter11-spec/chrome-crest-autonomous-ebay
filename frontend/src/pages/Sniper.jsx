@@ -5,6 +5,7 @@ import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
 import { ALL_PARALLELS, AUTO_VARIANTS } from '../lib/parallels'
 import { pushSupported, isSubscribed, subscribePush } from '../lib/push'
+import { usePageTitle } from '../lib/pageTitle'
 
 function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent || '')
@@ -106,6 +107,7 @@ function timeAgo(iso) {
 }
 
 export default function Sniper() {
+  usePageTitle('Auto Bid')
   const { user } = useAuth()
   const [searchParams] = useSearchParams()
   const [rules, setRules] = useState([])

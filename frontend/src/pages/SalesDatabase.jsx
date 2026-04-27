@@ -7,6 +7,7 @@ import {
 import { VerdictFeedback } from '../components/VerdictFeedback'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { usePageTitle } from '../lib/pageTitle'
 
 const LS_ALERTS_KEY = 'chromecrest.price_alerts.v1'
 
@@ -84,6 +85,7 @@ const DRIVERS = [
 const PAGE_SIZE = 100
 
 export default function SalesDatabase() {
+  usePageTitle('Sales')
   const { user } = useAuth()
   const [sales, setSales] = useState([])
   const [total, setTotal] = useState(0)
@@ -589,7 +591,7 @@ export default function SalesDatabase() {
                 <SortHeader field="grade">Grade</SortHeader>
                 <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-left">Title</th>
                 <SortHeader field="sale_price" align="right">Price</SortHeader>
-                <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-right">FMV</th>
+                <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-right">Fair Value</th>
                 <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-center">Verdict</th>
                 <th className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 text-center">eBay</th>
               </tr>

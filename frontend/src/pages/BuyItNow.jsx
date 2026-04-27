@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Search, Tag, Bookmark, RefreshCw, ExternalLink, MessageSquare } from 'lucide-react'
+import { Search, Tag, Bookmark, RefreshCw, ExternalLink, MessageSquare, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import ThemeToggle from '../components/ThemeToggle'
@@ -9,6 +9,7 @@ import { matchesParallel, AUTO_VARIANTS } from '../lib/parallels'
 import { useVisibilityInterval, useProgressiveRender } from '../lib/hooks'
 import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 import { applySeasonFilter } from '../lib/season'
+import { usePageTitle } from '../lib/pageTitle'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -72,6 +73,7 @@ const isCardLot = (a) => {
 }
 
 export default function BuyItNow() {
+  usePageTitle('Buy It Now')
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -88,6 +90,15 @@ export default function BuyItNow() {
   const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Progressive-disclosure for the filter bar — same key as Auctions so the
+  // user's choice carries between the two listing pages.
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(() => {
+    try { return window.localStorage.getItem('cc_filters_advanced_open') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem('cc_filters_advanced_open', advancedFiltersOpen ? '1' : '0') } catch {}
+  }, [advancedFiltersOpen])
 
   const load = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
@@ -204,68 +215,111 @@ export default function BuyItNow() {
         </div>
       </div>
 
-      {/* Filter bar */}
+      {/* Primary filter bar — only the high-frequency controls. Power-user
+          filters live in the "Advanced filters" disclosure below. */}
       <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
-        <div className="relative min-w-44">
+        <div className="relative min-w-44 flex-1 sm:flex-initial">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Driver, title…"
             className="input-field w-full pl-8 pr-3 py-2 text-xs" />
         </div>
 
-        <div className="w-px h-5 bg-gray-700/60 shrink-0" />
-
-        {/* Formula type */}
-        <select value={formulaType} onChange={e => setFormulaType(e.target.value)}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
-        </select>
-
-        {/* Team */}
-        <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
-        </select>
-
+        {/* Parallel */}
         <select value={filterParallel} onChange={e => setFilterParallel(e.target.value)}
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {PARALLELS.map(p => <option key={p} value={p}>{p === 'All' ? 'All Parallels' : p === 'No Base' ? 'No Base Cards' : p}</option>)}
         </select>
 
-        {filterParallel === 'Autograph' && (
-          <select value={autoVariant} onChange={e => setAutoVariant(e.target.value)}
-            className="input-field px-3 py-2 text-xs cursor-pointer border-yellow-500/40">
-            {AUTO_VARIANTS.map(v => <option key={v} value={v}>{v === 'Any' ? 'Any Auto Type' : `Auto · ${v}`}</option>)}
-          </select>
-        )}
-
-        <select value={printRun} onChange={e => setPrintRun(e.target.value)}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {PRINT_RUNS.map(p => <option key={p} value={p}>{p === 'Any' ? 'Any Print Run' : p}</option>)}
-        </select>
-
+        {/* Sort */}
         <select value={sortBy} onChange={e => setSortBy(e.target.value)}
           className="input-field px-3 py-2 text-xs cursor-pointer">
           {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
 
-        <div className="w-px h-5 bg-gray-700/60 shrink-0" />
+        {/* Premium toggle */}
+        <button onClick={() => setFilterPremium(!filterPremium)}
+          aria-pressed={filterPremium}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+            filterPremium ? 'bg-amber-600/25 text-amber-300 border border-amber-500/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+          }`}>
+          💎 Premium ($150+)
+        </button>
 
-        {[
-          { label: '💎 Premium ($150+)', active: filterPremium, set: setFilterPremium, activeCls: 'bg-amber-600/25 text-amber-300 border border-amber-500/50' },
-          { label: '🔥 Strong Buys', active: filterStrongBuy, set: setFilterStrongBuy, activeCls: 'bg-green-600/25 text-green-400 border border-green-600/50' },
-          { label: '💬 Best Offer Only', active: filterBestOffer, set: setFilterBestOffer },
-          { label: '⭐ Rookies', active: filterRookie, set: setFilterRookie },
-          { label: '🔖 Watchlist', active: filterWatchlist, set: setFilterWatchlist },
-        ].map(({ label, active, set, activeCls }) => (
-          <button key={label} onClick={() => set(!active)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-              active ? (activeCls || 'bg-green-600/15 text-green-400 border border-green-600/30') : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
-            }`}>
-            {label}
-          </button>
-        ))}
+        {/* Strong Buys toggle */}
+        <button onClick={() => setFilterStrongBuy(!filterStrongBuy)}
+          aria-pressed={filterStrongBuy}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+            filterStrongBuy ? 'bg-green-600/25 text-green-400 border border-green-600/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+          }`}>
+          🔥 Strong Buys
+        </button>
       </div>
+
+      {/* Advanced filters disclosure — secondary filters tuck behind a single
+          toggle so the default filter row stays clean for newcomers. */}
+      <button
+        type="button"
+        onClick={() => setAdvancedFiltersOpen(v => !v)}
+        aria-expanded={advancedFiltersOpen}
+        className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-gray-300 hover:bg-gray-800 w-full text-left flex items-center justify-between"
+      >
+        <span className="font-bold text-sm flex items-center gap-2">
+          <SlidersHorizontal size={14} />
+          Advanced filters
+        </span>
+        <ChevronDown
+          size={16}
+          className={`transition-transform duration-200 ${advancedFiltersOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {advancedFiltersOpen && (
+        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
+          {/* Formula type */}
+          <select value={formulaType} onChange={e => setFormulaType(e.target.value)}
+            className="input-field px-3 py-2 text-xs cursor-pointer">
+            {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
+          </select>
+
+          {/* Team */}
+          <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)}
+            className="input-field px-3 py-2 text-xs cursor-pointer">
+            {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
+          </select>
+
+          {/* Print run */}
+          <select value={printRun} onChange={e => setPrintRun(e.target.value)}
+            className="input-field px-3 py-2 text-xs cursor-pointer">
+            {PRINT_RUNS.map(p => <option key={p} value={p}>{p === 'Any' ? 'Any Print Run' : p}</option>)}
+          </select>
+
+          {/* Auto-variant — only when Autograph parallel selected */}
+          {filterParallel === 'Autograph' && (
+            <select value={autoVariant} onChange={e => setAutoVariant(e.target.value)}
+              className="input-field px-3 py-2 text-xs cursor-pointer border-yellow-500/40">
+              {AUTO_VARIANTS.map(v => <option key={v} value={v}>{v === 'Any' ? 'Any Auto Type' : `Auto · ${v}`}</option>)}
+            </select>
+          )}
+
+          <div className="w-px h-5 bg-gray-700/60 shrink-0" />
+
+          {/* Secondary toggle pills */}
+          {[
+            { label: '💬 Best Offer Only', active: filterBestOffer, set: setFilterBestOffer },
+            { label: '⭐ First-Year Cards', active: filterRookie, set: setFilterRookie },
+            { label: '🔖 Watchlist', active: filterWatchlist, set: setFilterWatchlist },
+          ].map(({ label, active, set }) => (
+            <button key={label} onClick={() => set(!active)}
+              aria-pressed={active}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                active ? 'bg-green-600/15 text-green-400 border border-green-600/30' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Premium auto-relax nudge — when premium is on but the result set is
           tiny, surface a one-click "Show all" so users don't think the page
