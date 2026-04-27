@@ -8,7 +8,6 @@ import {
 import AuctionCard from '../components/AuctionCard'
 import BiggestSnipes from '../components/BiggestSnipes'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
-import SoldTicker from '../components/SoldTicker'
 import WelcomeModal from '../components/WelcomeModal'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
@@ -638,9 +637,6 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
-
-      {/* Just-Sold live ticker — mounted just below the header so it's the first thing users see */}
-      <SectionBoundary><SoldTicker /></SectionBoundary>
 
       {/* Biggest Snipes — promoted out of the side-by-side grid so it sits in the
           always-visible top of the dashboard. Full-width here. */}

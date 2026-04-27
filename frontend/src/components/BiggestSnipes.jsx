@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { Target, Clock } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { upscaleEbayImage } from '../lib/imageUrl'
 import CardImagePlaceholder from './CardImagePlaceholder'
+
+const API = import.meta.env.VITE_API_URL || ''
 
 function parseUtc(s) {
   if (!s) return null
@@ -101,7 +103,7 @@ function SnipeImage({ src, driverName }) {
   )
 }
 
-function AuctionRow({ a, nowTick }) {
+function AuctionRow({ a, nowTick, freshOverride }) {
   const sL = Math.max(0, Math.floor(((a.end_time ? parseUtc(a.end_time).getTime() : 0) - nowTick) / 1000))
   const h = Math.floor(sL / 3600)
   const m = Math.floor((sL % 3600) / 60)
@@ -111,8 +113,28 @@ function AuctionRow({ a, nowTick }) {
   const verdict = a.verdict
   const isGood = verdict === 'STRONG_BUY' || verdict === 'GOOD_BUY'
   const median = a.median_price || a.median_sold_price
-  const pctBelow = median && a.current_price ? Math.round((1 - a.current_price / median) * 100) : null
+  // Prefer freshly-fetched price/bids over the (possibly stale) prop.
+  const livePrice = freshOverride?.current_price ?? a.current_price
+  const liveBids = freshOverride?.bid_count ?? a.bid_count
+  const pctBelow = median && livePrice ? Math.round((1 - livePrice / median) * 100) : null
   const driverName = a.driver_name || a.driver || a.card?.driver_name
+  // Freshness label — green dot if updated <2 min ago, otherwise show "Xm ago"
+  const lastUpdatedRaw = freshOverride?.last_updated || a.last_updated
+  let freshness = null
+  if (lastUpdatedRaw) {
+    const t = new Date(String(lastUpdatedRaw).endsWith('Z') ? lastUpdatedRaw : lastUpdatedRaw + 'Z').getTime()
+    if (!Number.isNaN(t)) {
+      const ageMin = Math.max(0, Math.floor((Date.now() - t) / 60000))
+      if (ageMin < 2) {
+        freshness = <span className="text-[9px] text-emerald-400 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Live</span>
+      } else if (ageMin < 60) {
+        freshness = <span className="text-[9px] text-gray-500">Updated {ageMin}m ago</span>
+      } else {
+        const ageH = Math.floor(ageMin / 60)
+        freshness = <span className="text-[9px] text-amber-500">Updated {ageH}h ago</span>
+      }
+    }
+  }
   return (
     <div className="px-4 py-3 hover:bg-gray-800/40 transition-colors flex gap-3">
       <SnipeImage src={a.image_url} driverName={driverName} />
@@ -136,11 +158,17 @@ function AuctionRow({ a, nowTick }) {
           <div className="text-[10px] text-emerald-400 font-semibold mb-0.5">{pctBelow}% off median</div>
         )}
         <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-xl font-black text-yellow-400">${Math.round(a.current_price || 0).toLocaleString()}</span>
+          <span className="text-xl font-black text-yellow-400">${Math.round(livePrice || 0).toLocaleString()}</span>
+          {liveBids != null && liveBids > 0 && (
+            <span className="text-[10px] text-gray-400">{liveBids} bid{liveBids === 1 ? '' : 's'}</span>
+          )}
           {median ? <span className="text-[10px] text-gray-500">med ${Math.round(median).toLocaleString()}</span> : null}
         </div>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-mono text-red-400 tabular-nums font-bold">{timeStr}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono text-red-400 tabular-nums font-bold">{timeStr}</span>
+            {freshness}
+          </div>
           {a.ebay_url && (
             <a
               href={ebayAffiliateUrl(a.ebay_url)}
@@ -159,6 +187,12 @@ function AuctionRow({ a, nowTick }) {
 
 export default function BiggestSnipes({ auctions = [], loading = false }) {
   const [nowTick, setNowTick] = useState(Date.now())
+  // Map<auction.id, {current_price, bid_count, last_updated}> — fresh data
+  // fetched per-item from /api/auctions/{id}/refresh so the showcase NEVER
+  // shows the stale Browse-API snapshot. The cron is unreliable for items
+  // outside the top-200 ending-soonest window — this is the safety net.
+  const [freshMap, setFreshMap] = useState({})
+  const inFlight = useRef(new Set())
   useEffect(() => {
     const id = setInterval(() => setNowTick(Date.now()), 1000)
     return () => clearInterval(id)
@@ -193,6 +227,47 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
       .slice(0, 6)
   }, [auctions, nowTick])
 
+  // Auto-refresh: when the visible items change OR every 60s, fire
+  // /api/auctions/{id}/refresh for each visible auction so Eddie never sees
+  // a $810 card showing $56 because the Browse API cron missed it.
+  useEffect(() => {
+    const visibleIds = [...items, ...nextBig].map(a => a.id).filter(Boolean)
+    if (visibleIds.length === 0) return
+
+    let cancelled = false
+    const refreshOne = async (id) => {
+      if (inFlight.current.has(id) || cancelled) return
+      inFlight.current.add(id)
+      try {
+        const r = await fetch(`${API}/api/auctions/${id}/refresh`)
+        if (!r.ok) return
+        const d = await r.json()
+        if (cancelled) return
+        setFreshMap(prev => ({
+          ...prev,
+          [id]: {
+            current_price: d.current_price,
+            bid_count: d.bid_count,
+            last_updated: new Date().toISOString().replace('Z', ''),
+          },
+        }))
+      } catch {} finally {
+        inFlight.current.delete(id)
+      }
+    }
+
+    // Fire all visible items, staggered 200ms apart to avoid hammering
+    visibleIds.forEach((id, i) => setTimeout(() => refreshOne(id), i * 200))
+
+    // Also re-fire every 60s while mounted
+    const interval = setInterval(() => {
+      visibleIds.forEach((id, i) => setTimeout(() => refreshOne(id), i * 200))
+    }, 60_000)
+
+    return () => { cancelled = true; clearInterval(interval) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.map(a => a.id).join(','), nextBig.map(a => a.id).join(',')])
+
   return (
     <div className="space-y-4">
       <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden flex flex-col">
@@ -221,7 +296,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
               No big snipes ending soon — the action is elsewhere right now. Check back in an hour.
             </div>
           ) : (
-            items.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} />)
+            items.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} />)
           )}
         </div>
       </div>
@@ -242,7 +317,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
               Nothing big on deck in the next 24h.
             </div>
           ) : (
-            nextBig.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} />)
+            nextBig.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} />)
           )}
         </div>
       </div>
