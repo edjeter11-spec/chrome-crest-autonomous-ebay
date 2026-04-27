@@ -473,6 +473,16 @@ async def refresh_listing_status(auction_id: int, db: Session = Depends(get_db))
                 a.current_price = item.get("current_price", a.current_price)
                 a.bid_count = item.get("bid_count", a.bid_count)
                 a.buying_options = json.dumps(item.get("buying_options", []))
+                # Backfill seller info — many older rows have placeholder
+                # "ebay_seller" or empty. Only overwrite when we get a real
+                # username back, never blank out a previously-good value.
+                fresh_seller = (item.get("seller") or "").strip()
+                if fresh_seller and fresh_seller.lower() not in ("ebay_seller", "unknown", "unknown_seller"):
+                    a.seller = fresh_seller
+                fresh_fb = item.get("seller_feedback_score")
+                if isinstance(fresh_fb, int) and fresh_fb > 0:
+                    a.seller_feedback = fresh_fb
+                a.last_updated = datetime.utcnow()
                 db.commit()
         except Exception:
             # If eBay API fails, just return DB data
