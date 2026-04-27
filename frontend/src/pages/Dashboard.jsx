@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import {
   Gavel, Flame, Database, DollarSign, Zap, Activity,
   RefreshCw, Clock, TrendingUp, Users, Layers, ExternalLink,
-  AlertTriangle, ChevronRight, Shield, BellRing, Target
+  AlertTriangle, ChevronRight, ChevronDown, Shield, BellRing, Target
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import BiggestSnipes from '../components/BiggestSnipes'
@@ -158,6 +158,17 @@ export default function Dashboard() {
   }, [])
   const [lastSync, setLastSync] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Progressive-disclosure: keep the dashboard tight by default; power-user
+  // analytics (latest sales, big wins, ending strip, hot snipes, scraper
+  // telemetry) live behind a single "Show more analytics" toggle. Persisted
+  // in localStorage so the choice sticks across visits.
+  const [advancedOpen, setAdvancedOpen] = useState(() => {
+    try { return window.localStorage.getItem('cc_dashboard_advanced_open') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem('cc_dashboard_advanced_open', advancedOpen ? '1' : '0') } catch {}
+  }, [advancedOpen])
 
   // "Welcome back" delta strip — computed once on first mount
   const [welcomeDelta, setWelcomeDelta] = useState(null)
@@ -631,6 +642,38 @@ export default function Dashboard() {
       {/* Just-Sold live ticker — mounted just below the header so it's the first thing users see */}
       <SectionBoundary><SoldTicker /></SectionBoundary>
 
+      {/* Biggest Snipes — promoted out of the side-by-side grid so it sits in the
+          always-visible top of the dashboard. Full-width here. */}
+      <SectionBoundary>
+        {!auctionsLoading && biggestSnipes.length === 0 ? (
+          <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl">
+            <EmptyRow text="No high-value auctions ending in the next 6 hours" />
+          </div>
+        ) : (
+          <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
+        )}
+      </SectionBoundary>
+
+      {/* "Show more analytics" disclosure — secondary feeds (latest sales, big
+          wins, ending strip, hot snipes, scraper telemetry) live behind a
+          single toggle so the default landing is uncluttered. */}
+      <button
+        type="button"
+        onClick={() => setAdvancedOpen(v => !v)}
+        aria-expanded={advancedOpen}
+        className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-gray-300 hover:bg-gray-800 w-full text-left flex items-center justify-between"
+      >
+        <span className="font-bold text-sm">
+          {advancedOpen ? 'Hide analytics' : 'Show more analytics'}
+        </span>
+        <ChevronDown
+          size={16}
+          className={`transition-transform duration-200 ${advancedOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {advancedOpen && (
+      <>
       {/* Welcome-back delta strip */}
       {welcomeDelta && (
         <div className="bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-600/40 rounded-2xl px-4 py-2.5 flex items-center gap-3 flex-wrap">
@@ -789,10 +832,11 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* 2 + 3. Sales feed + Market movers */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Latest Sales feed — Biggest Snipes was promoted out of this grid into
+          the always-visible top section, so this is now a single full-width column. */}
+      <div>
 
-        {/* 2. What sold today */}
+        {/* What sold today */}
         <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800/60">
             <h2 className="text-sm font-black text-white flex items-center gap-2">
@@ -866,17 +910,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 3. Biggest Snipes */}
-        {!auctionsLoading && biggestSnipes.length === 0 ? (
-          <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl">
-            <EmptyRow text="No high-value auctions ending in the next 6 hours" />
-          </div>
-        ) : (
-          <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
-        )}
       </div>
 
-      {/* 4. Ending soonest strip */}
+      {/* Ending soonest strip */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-black text-white flex items-center gap-2">
@@ -961,6 +997,8 @@ export default function Dashboard() {
             )
           })}
         </div>
+      )}
+      </>
       )}
     </div>
   )
