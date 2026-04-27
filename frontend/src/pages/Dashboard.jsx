@@ -9,6 +9,7 @@ import AuctionCard from '../components/AuctionCard'
 import BiggestSnipes from '../components/BiggestSnipes'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import SoldTicker from '../components/SoldTicker'
+import WelcomeModal from '../components/WelcomeModal'
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
@@ -16,6 +17,7 @@ import { ebayAffiliateUrl, trackClick } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
 import { teamColor as resolveTeamColor } from '../lib/teamColors'
 import { teamOf } from '../lib/drivers'
+import { usePageTitle } from '../lib/pageTitle'
 
 function WelcomeBanner() {
   const { user } = useAuth()
@@ -113,6 +115,7 @@ function saleTimeLabel(sale) {
 }
 
 export default function Dashboard() {
+  usePageTitle('Home')
   const navigate = useNavigate()
 
   const [sales, setSales] = useState([])
@@ -461,6 +464,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 max-w-[1800px]">
+      <WelcomeModal />
 
       {/* WelcomeBanner: desktop-only — too noisy on mobile */}
       <div className="hidden md:block">

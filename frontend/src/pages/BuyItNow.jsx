@@ -13,7 +13,7 @@ import { applySeasonFilter } from '../lib/season'
 const API = import.meta.env.VITE_API_URL || ''
 
 const SORTS = [
-  { value: 'best_value', label: 'Best Value (snipe + comps)' },
+  { value: 'best_value', label: 'Best Value (snipe + recent sales)' },
   { value: 'price_high', label: 'Price: High → Low' },
   { value: 'price_low', label: 'Price: Low → High' },
   { value: 'best_offer', label: 'Best Offer First' },
@@ -266,6 +266,22 @@ export default function BuyItNow() {
           </button>
         ))}
       </div>
+
+      {/* Premium auto-relax nudge — when premium is on but the result set is
+          tiny, surface a one-click "Show all" so users don't think the page
+          is broken. */}
+      {!loading && filterPremium && filtered.length < 6 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 px-4 py-2 rounded-xl text-sm flex items-center gap-2 flex-wrap">
+          <span>Only {filtered.length} premium listing{filtered.length === 1 ? '' : 's'} right now.</span>
+          <button
+            type="button"
+            onClick={() => setFilterPremium(false)}
+            className="font-bold underline hover:text-amber-200"
+          >
+            Show all
+          </button>
+        </div>
+      )}
 
       {/* Grid */}
       {loading ? (

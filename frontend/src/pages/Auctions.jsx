@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { NavLink, useSearchParams } from 'react-router-dom'
-import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal, Target, Check, X, Share2 } from 'lucide-react'
+import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal, Target, Check, X, Share2, ChevronDown } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import AuctionModal from '../components/AuctionModal'
 import ThemeToggle from '../components/ThemeToggle'
@@ -11,6 +11,7 @@ import { seriesOf, teamOf, ALL_TEAMS } from '../lib/drivers'
 import { applySeasonFilter } from '../lib/season'
 import { supabase, supabaseReady } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
+import { usePageTitle } from '../lib/pageTitle'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -81,6 +82,16 @@ export default function Auctions() {
   const [copiedToast, setCopiedToast] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth() || { user: null }
+
+  // Progressive-disclosure for the filter bar — keep the common filters
+  // (search, parallel, sort, premium, strong-buys) front-and-center; tuck the
+  // power-user filters behind an "Advanced filters" toggle. Persist choice.
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(() => {
+    try { return window.localStorage.getItem('cc_filters_advanced_open') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem('cc_filters_advanced_open', advancedFiltersOpen ? '1' : '0') } catch {}
+  }, [advancedFiltersOpen])
 
   // On mount: hydrate filters from URL params if present (overrides localStorage).
   // Lets users share /auctions?search=verstappen&parallel=Gold%20%2F50 in Discord.
@@ -508,6 +519,22 @@ export default function Auctions() {
               {v}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Premium auto-relax nudge — when premium is on but the result set is
+          tiny, surface a one-click "Show all" so users don't think the page
+          is broken. */}
+      {!loading && filterPremium && filtered.length < 6 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 px-4 py-2 rounded-xl text-sm flex items-center gap-2 flex-wrap">
+          <span>Only {filtered.length} premium auction{filtered.length === 1 ? '' : 's'} ending soon.</span>
+          <button
+            type="button"
+            onClick={() => setF({ filterPremium: false })}
+            className="font-bold underline hover:text-amber-200"
+          >
+            Show all
+          </button>
         </div>
       )}
 
