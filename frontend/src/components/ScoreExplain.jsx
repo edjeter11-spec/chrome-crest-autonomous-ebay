@@ -24,17 +24,25 @@ export default function ScoreExplain({ score, type = 'snipe', auction = {}, chil
     <span ref={ref} className="inline-flex items-center gap-1 relative">
       {children}
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
-        className="text-gray-500 hover:text-gray-300"
-        aria-label="Why this score?"
+        className="inline-flex items-center justify-center w-8 h-8 -m-2 text-gray-500 hover:text-gray-300 active:text-white touch-manipulation"
+        aria-label="What does this score mean?"
+        aria-expanded={open}
       >
-        <Info size={11} />
+        <Info size={14} />
       </button>
       {open && (
-        <div className="absolute left-0 bottom-full mb-2 w-64 bg-gray-900 border border-gray-700 rounded-xl p-3 shadow-2xl z-50 text-xs">
-          <div className="font-black text-white mb-2 text-sm">
-            {type === 'snipe' ? 'Snipe Score' : 'Invest Score'}: {score}
+        <div className="absolute right-0 bottom-full mb-2 w-64 bg-gray-900 border border-gray-700 rounded-xl p-3 shadow-2xl z-50 text-xs">
+          <div className="font-black text-white mb-1 text-sm">
+            {type === 'snipe' ? 'Deal Score' : 'Invest Score'}: {score}/100
           </div>
+          {type === 'snipe' && (
+            <p className="text-gray-300 mb-2 leading-snug">
+              Higher = better value. We compare the current price to recent sales of similar cards.
+              <span className="block mt-1 text-gray-400">🔥🔥🔥 means it's well below typical price.</span>
+            </p>
+          )}
           <ul className="space-y-1.5 text-gray-300">
             {reasons.map((r, i) => (
               <li key={i} className="flex gap-1.5">

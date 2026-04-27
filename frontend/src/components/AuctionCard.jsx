@@ -16,6 +16,7 @@ import LastUpdatedLabel from './LastUpdatedLabel'
 import ScoreExplain from './ScoreExplain'
 import InfoTooltip from './InfoTooltip'
 import { JARGON_DEFS } from '../lib/definitions'
+import { dealRating } from '../lib/dealRating'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -420,18 +421,26 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             </div>
           )}
         </div>
-        {auction.snipe_score > 0 && (
-          <div className="text-right shrink-0">
-            <ScoreExplain score={Math.round(auction.snipe_score)} type="snipe" auction={auction}>
-              <span className={`text-base font-black tabular-nums leading-none ${
-                auction.snipe_score >= 80 ? 'text-red-400' :
-                auction.snipe_score >= 60 ? 'text-orange-400' :
-                auction.snipe_score >= 40 ? 'text-yellow-400' : 'text-gray-600'
-              }`}>{Math.round(auction.snipe_score)}</span>
-            </ScoreExplain>
-            <div className="text-[10px] text-gray-600 uppercase tracking-wide mt-0.5" title="0-100 score — higher = better deal">deal</div>
-          </div>
-        )}
+        {auction.snipe_score > 0 && (() => {
+          const score = Math.round(auction.snipe_score)
+          const rating = dealRating(score)
+          return (
+            <div className="text-right shrink-0">
+              <ScoreExplain score={score} type="snipe" auction={auction}>
+                <span
+                  className={`text-base leading-none ${rating.color}`}
+                  title={`Deal score: ${score}/100`}
+                  aria-label={`Deal score ${score} out of 100, ${rating.label}`}
+                >
+                  {rating.flames || <span className="text-xs font-bold">·</span>}
+                </span>
+              </ScoreExplain>
+              <div className={`text-[10px] uppercase tracking-wide mt-0.5 font-bold ${rating.color}`}>
+                {rating.label}
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Pricing option buttons */}
