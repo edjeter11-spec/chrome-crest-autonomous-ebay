@@ -10,6 +10,7 @@ import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../
 import Tutorial from './Tutorial'
 import OnboardingTour from './OnboardingTour'
 import SignedOutBanner from './SignedOutBanner'
+import FeedbackWidget from './FeedbackWidget'
 import { useAuth } from '../lib/auth'
 import { LogIn, LogOut } from 'lucide-react'
 
@@ -427,6 +428,7 @@ export default function Layout() {
             </p>
           </div>
         </main>
+        <FeedbackWidget />
 
         {/* Mobile bottom tab bar — 4 key routes, iOS/Android-style tap targets */}
         <nav

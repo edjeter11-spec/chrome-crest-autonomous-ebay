@@ -68,6 +68,7 @@ from routers import index as indices_router
 from routers import seo_pages as seo_pages_router
 from routers import affiliate_roi as affiliate_roi_router
 from routers import sold as sold_router
+from routers import feedback as feedback_router
 from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
@@ -181,6 +182,7 @@ app.include_router(indices_router.router)
 app.include_router(seo_pages_router.router)
 app.include_router(affiliate_roi_router.router)
 app.include_router(sold_router.router)
+app.include_router(feedback_router.router)
 
 
 @app.post("/api/admin/migrate-shared-watchlists")

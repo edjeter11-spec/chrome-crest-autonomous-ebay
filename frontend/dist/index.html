@@ -57,11 +57,27 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
     <link rel="alternate" type="application/rss+xml" title="F1 Card Vault Strong Buys" href="/feed.xml" />
-    <script type="module" crossorigin src="/assets/index-WND10zus.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/charts-UJG-EukK.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-DP2-zhLn.css">
+    <script type="module" crossorigin src="/assets/index-B5gxJX1Z.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/charts-B-ZW3AFx.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-6hTgPwU_.css">
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Apply theme before paint to avoid flash-of-wrong-theme.
+         Respect user's saved choice (cc_theme); else fall back to system preference. -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('cc_theme');
+          var theme;
+          if (saved === 'light' || saved === 'dark') {
+            theme = saved;
+          } else {
+            theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          if (theme === 'light') document.body.classList.add('light');
+        } catch (e) {}
+      })();
+    </script>
+    <div id="root"></div>
   </body>
 </html>

@@ -346,6 +346,20 @@ class ClickEvent(Base):
     )
 
 
+class UserFeedback(Base):
+    """In-app suggestions / bug reports submitted via the floating feedback widget.
+    Anonymous-allowed (no auth required) so we get the most signal possible."""
+    __tablename__ = "user_feedback"
+    id = Column(Integer, primary_key=True, index=True)
+    message = Column(Text, nullable=False)
+    page_url = Column(String, nullable=True)        # e.g. "/auctions?premium=1"
+    user_agent = Column(String, nullable=True)
+    user_email = Column(String, nullable=True)      # supabase email if signed in
+    ip_hash = Column(String, nullable=True, index=True)
+    resolved = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class CardSet(Base):
     """
     Lookup table for card sets across years/brands.
