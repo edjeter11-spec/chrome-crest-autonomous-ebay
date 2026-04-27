@@ -13,6 +13,20 @@ import SignedOutBanner from './SignedOutBanner'
 import { useAuth } from '../lib/auth'
 import { LogIn, LogOut } from 'lucide-react'
 
+// Pick initial theme: respect explicit user choice (cc_theme), else use system pref.
+// Older users skew light mode, so first-visit defaults follow OS preference.
+function getInitialTheme() {
+  try {
+    const saved = localStorage.getItem('cc_theme')
+    if (saved === 'light' || saved === 'dark') return saved
+    if (typeof window !== 'undefined' && window.matchMedia
+        && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      return 'light'
+    }
+  } catch {}
+  return 'dark'
+}
+
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/auctions', label: 'Live Auctions', icon: Gavel },
@@ -26,7 +40,7 @@ const NAV = [
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
   { to: '/volatility', label: 'Volatility', icon: Activity },
   { to: '/alerts', label: 'Alerts', icon: Bell },
-  { to: '/sniper', label: 'Sniper', icon: Target },
+  { to: '/sniper', label: 'Auto Bid', icon: Target },
   { to: '/affiliate-roi', label: 'Affiliate ROI', icon: TrendingUp },
 ]
 
@@ -35,7 +49,7 @@ const NAV = [
 const mobileTabsFor = (signedIn) => [
   { to: '/', label: 'Home', icon: Home, exact: true },
   { to: '/auctions', label: 'Deals', icon: Flame },
-  { to: '/sniper', label: 'Sniper', icon: Zap },
+  { to: '/sniper', label: 'Auto Bid', icon: Zap },
   signedIn
     ? { to: '/portfolio', label: 'Portfolio', icon: User }
     : { to: '/drivers', label: 'Drivers', icon: Users },
@@ -51,9 +65,7 @@ export default function Layout() {
   const [pushState, setPushState] = useState('idle') // idle | subscribed | busy | unsupported
   const [showTutorial, setShowTutorial] = useState(false)
   const [logoOk, setLogoOk] = useState(true)
-  const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem('cc_theme') || 'dark' } catch { return 'dark' }
-  })
+  const [theme, setTheme] = useState(getInitialTheme)
   useEffect(() => {
     try { localStorage.setItem('cc_theme', theme) } catch {}
     if (theme === 'light') document.body.classList.add('light')

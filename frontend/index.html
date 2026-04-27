@@ -59,6 +59,22 @@
     <link rel="alternate" type="application/rss+xml" title="F1 Card Vault Strong Buys" href="/feed.xml" />
   </head>
   <body>
+    <!-- Apply theme before paint to avoid flash-of-wrong-theme.
+         Respect user's saved choice (cc_theme); else fall back to system preference. -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('cc_theme');
+          var theme;
+          if (saved === 'light' || saved === 'dark') {
+            theme = saved;
+          } else {
+            theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          }
+          if (theme === 'light') document.body.classList.add('light');
+        } catch (e) {}
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

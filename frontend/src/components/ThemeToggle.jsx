@@ -1,12 +1,24 @@
 import { useEffect, useState } from 'react'
 import { Sun, Moon } from 'lucide-react'
 
+// Pick initial theme: respect explicit user choice (cc_theme), else use system pref.
+// Older users skew light mode, so first-visit defaults follow OS preference.
+function getInitialTheme() {
+  try {
+    const saved = localStorage.getItem('cc_theme')
+    if (saved === 'light' || saved === 'dark') return saved
+    if (typeof window !== 'undefined' && window.matchMedia
+        && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      return 'light'
+    }
+  } catch {}
+  return 'dark'
+}
+
 // Shared theme toggle used in page headers (shortcut for the one in Layout sidebar).
 // Writes to the same cc_theme key + body.light class so it stays in sync.
 export default function ThemeToggle({ className = '' }) {
-  const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem('cc_theme') || 'dark' } catch { return 'dark' }
-  })
+  const [theme, setTheme] = useState(getInitialTheme)
   useEffect(() => {
     try { localStorage.setItem('cc_theme', theme) } catch {}
     if (theme === 'light') document.body.classList.add('light')
