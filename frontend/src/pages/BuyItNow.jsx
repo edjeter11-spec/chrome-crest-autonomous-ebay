@@ -83,6 +83,7 @@ export default function BuyItNow() {
   const [filterRookie, setFilterRookie] = useState(false)
   const [filterBestOffer, setFilterBestOffer] = useState(false)
   const [filterStrongBuy, setFilterStrongBuy] = useState(false)
+  const [filterPremium, setFilterPremium] = useState(true)
   const [formulaType, setFormulaType] = useState('F1')
   const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
@@ -118,6 +119,8 @@ export default function BuyItNow() {
       if (filterRookie && !ROOKIES.has(a.card?.driver_name)) return false
       if (filterBestOffer && !(a.buying_options || []).includes('BEST_OFFER')) return false
       if (filterStrongBuy && !(a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')) return false
+      // Premium: hide low-end BIN — buy_now (or current) price must be at least $150
+      if (filterPremium && Math.max(a.buy_now_price || 0, a.current_price || 0) < 150) return false
       if (search) {
         const q = search.toLowerCase()
         return a.title?.toLowerCase().includes(q) || a.card?.driver_name?.toLowerCase().includes(q)
@@ -249,6 +252,7 @@ export default function BuyItNow() {
         <div className="w-px h-5 bg-gray-700/60 shrink-0" />
 
         {[
+          { label: '💎 Premium ($150+)', active: filterPremium, set: setFilterPremium, activeCls: 'bg-amber-600/25 text-amber-300 border border-amber-500/50' },
           { label: '🔥 Strong Buys', active: filterStrongBuy, set: setFilterStrongBuy, activeCls: 'bg-green-600/25 text-green-400 border border-green-600/50' },
           { label: '💬 Best Offer Only', active: filterBestOffer, set: setFilterBestOffer },
           { label: '⭐ Rookies', active: filterRookie, set: setFilterRookie },

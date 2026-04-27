@@ -332,23 +332,32 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
   const hasBestOffer = opts.includes('BEST_OFFER')
   const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
 
-  // Build "vs median" pill + verdict badge ("STRONG BUY" / "GOOD BUY" / "FAIR" / "PASS").
+  // Build "vs typical price" pill + verdict badge — plain-English so non-technical
+  // visitors immediately get whether this is a deal.
   let medianPill = null
   let verdict = null
   if (comp) {
     if (comp.low_confidence || (comp.n ?? 0) < 3) {
       medianPill = (
-        <span className="text-[10px] text-gray-500 uppercase tracking-wide" title={`Only ${comp.n} comps in 90d`}>
-          thin comps
+        <span className="text-[10px] text-gray-500 font-medium" title={`Only ${comp.n} recent sales — not enough to compare`}>
+          Not enough sales data yet
         </span>
       )
     } else if (comp.median_total) {
       const v = verdictFor(totalCost, comp.median_total, comp.n)
       if (v) {
-        const pct = v.pctVsMedian
+        const median = Math.round(comp.median_total)
+        const dollarsDiff = Math.abs(Math.round(totalCost - median))
+        const isBelow = totalCost < median
+        const isFair = Math.abs(v.pctVsMedian) <= 5
+        const plain = isFair
+          ? `Right at typical price (~$${median})`
+          : isBelow
+            ? `$${dollarsDiff} below typical price (~$${median})`
+            : `$${dollarsDiff} above typical price (~$${median})`
         medianPill = (
-          <span className={`text-[10px] ${v.text} font-semibold`} title={`Median total over last 90d (n=${comp.n})`}>
-            {pct > 0 ? `${pct}% below` : `${-pct}% above`} median ${Math.round(comp.median_total)} · n={comp.n}
+          <span className={`text-[10px] ${v.text} font-semibold`} title={`Based on ${comp.n} recent sales of similar cards`}>
+            {plain}
           </span>
         )
         verdict = (
@@ -398,8 +407,8 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             </div>
           )}
           {comp?.median_total && (
-            <div className="text-[10px] text-cyan-400 font-semibold mt-1">
-              Fair value: ${comp.median_total.toFixed(0)} (n={comp.n || 0})
+            <div className="text-[10px] text-cyan-400 font-semibold mt-1" title={`Median of last ${comp.n} sales`}>
+              Usually sells for ~${comp.median_total.toFixed(0)} · {comp.n || 0} recent sales
             </div>
           )}
           {hasAuction && (
@@ -420,7 +429,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
                 auction.snipe_score >= 40 ? 'text-yellow-400' : 'text-gray-600'
               }`}>{Math.round(auction.snipe_score)}</span>
             </ScoreExplain>
-            <div className="text-[10px] text-gray-600 uppercase tracking-wide mt-0.5">snipe</div>
+            <div className="text-[10px] text-gray-600 uppercase tracking-wide mt-0.5" title="0-100 score — higher = better deal">deal</div>
           </div>
         )}
       </div>

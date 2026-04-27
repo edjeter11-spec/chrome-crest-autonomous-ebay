@@ -68,12 +68,12 @@ export default function Auctions() {
     search: '', sortBy: 'ending', filterParallel: 'No Base', printRun: 'Any',
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
     filterRookie: false, formulaType: 'F1', teamFilter: 'All',
-    filterStrongBuy: false, autoVariant: 'Any',
+    filterStrongBuy: false, autoVariant: 'Any', filterPremium: true,
   })
   const setF = (patch) => setFilters(prev => ({ ...prev, ...patch }))
   const { search, sortBy, filterParallel, printRun, listingType,
           filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter,
-          filterStrongBuy, autoVariant } = filters
+          filterStrongBuy, autoVariant, filterPremium } = filters
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [showSaveRule, setShowSaveRule] = useState(false)
@@ -99,6 +99,7 @@ export default function Auctions() {
       if (searchParams.get('listing')) fromUrl.listingType = searchParams.get('listing')
       if (searchParams.get('watchlist')) fromUrl.filterWatchlist = searchParams.get('watchlist') === '1'
       if (searchParams.get('autoVariant')) fromUrl.autoVariant = searchParams.get('autoVariant')
+      if (searchParams.get('premium')) fromUrl.filterPremium = searchParams.get('premium') === '1'
       if (Object.keys(fromUrl).length) setFilters(prev => ({ ...prev, ...fromUrl }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,6 +120,7 @@ export default function Auctions() {
     if (filters.printRun && filters.printRun !== 'Any') params.set('printRun', filters.printRun)
     if (filters.listingType && filters.listingType !== 'All') params.set('listing', filters.listingType)
     if (filters.autoVariant && filters.autoVariant !== 'Any') params.set('autoVariant', filters.autoVariant)
+    if (filters.filterPremium) params.set('premium', '1')
     setSearchParams(params, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters])
@@ -132,7 +134,7 @@ export default function Auctions() {
     (formulaType && formulaType !== 'F1' && formulaType !== 'All') ||
     (teamFilter && teamFilter !== 'All') ||
     (autoVariant && autoVariant !== 'Any') ||
-    filterSnipe || filterWatchlist || filterRookie || filterStrongBuy ||
+    filterSnipe || filterWatchlist || filterRookie || filterStrongBuy || filterPremium ||
     (search && search.trim().length > 0)
   )
 
@@ -256,6 +258,8 @@ export default function Auctions() {
       if (filterWatchlist && a.status !== 'watchlist') return false
       if (filterRookie && !ROOKIES.has(a.card?.driver_name)) return false
       if (filterStrongBuy && !(a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')) return false
+      // Premium: hide low-end auctions — current bid must be at least $100
+      if (filterPremium && (a.current_price || 0) < 100) return false
       if (search) {
         const q = search.toLowerCase()
         return a.title?.toLowerCase().includes(q) || a.card?.driver_name?.toLowerCase().includes(q)
@@ -449,6 +453,7 @@ export default function Auctions() {
 
         {/* Toggle pills */}
         {[
+          { label: '💎 Premium ($100+ bid)', active: filterPremium, key: 'filterPremium', activeCls: 'bg-amber-600/25 text-amber-300 border border-amber-500/50' },
           { label: '🔥 Strong Buys', active: filterStrongBuy, key: 'filterStrongBuy', activeCls: 'bg-green-600/20 text-green-400 border border-green-600/40' },
           { label: '⭐ Rookies', active: filterRookie, key: 'filterRookie' },
           { label: '⚡ Snipe Only', active: filterSnipe, key: 'filterSnipe' },
