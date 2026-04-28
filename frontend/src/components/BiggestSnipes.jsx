@@ -217,15 +217,31 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
       .slice(0, 6)
   }, [auctions, nowTick])
 
+  // "Next Big Auctions" is meant to show what's coming — be more permissive
+  // than `items` which gates on isBigSnipe heuristics. After today's phantom
+  // cleanup the strict filter was returning zero rows. Now: ending 6h–48h,
+  // price >= $30, no base/checker, not already in `items`.
   const nextBig = useMemo(() => {
+    const inItems = new Set(items.map(a => a.id))
     return (auctions || [])
       .filter(a => {
-        if (!isBigSnipe(a, 24 * 3600)) return false
-        return (a.current_price || 0) >= 50
+        const secs = secsLeft(a)
+        if (secs <= 6 * 3600 || secs > 48 * 3600) return false  // skip if also in items, or too far out
+        const parallel = a.card?.parallel || a.parallel || ''
+        if (BORING_PARALLELS.has(parallel)) return false
+        const price = a.current_price || 0
+        if (price < 30) return false
+        if (inItems.has(a.id)) return false
+        return true
       })
-      .sort((a, b) => secsLeft(a) - secsLeft(b))
+      .sort((a, b) => {
+        // Higher price first, then ending soonest
+        const p = (b.current_price || 0) - (a.current_price || 0)
+        if (Math.abs(p) > 20) return p
+        return secsLeft(a) - secsLeft(b)
+      })
       .slice(0, 6)
-  }, [auctions, nowTick])
+  }, [auctions, items, nowTick])
 
   // Auto-refresh: only refresh items that are ALREADY stale (>15 min old) and
   // throttle to once per 10 min. Originally fired every 60s for all 12 visible

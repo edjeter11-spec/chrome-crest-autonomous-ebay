@@ -180,28 +180,34 @@ export default function Dashboard() {
     try { window.localStorage.setItem('cc_last_visit', now) } catch {}
     if (!lastVisit) return  // first visit — skip the strip
 
+    // Defer 1.5s — these are non-critical "nice to have" fetches that were
+    // competing with the main auctions list on first paint and slowing the
+    // initial render. The user sees the dashboard immediately, the welcome-
+    // back strip + scraper-health appear shortly after.
     const since = lastVisit
-    Promise.all([
-      fetch(`${API}/api/sales?since=${encodeURIComponent(since)}&limit=500`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`${API}/api/alerts`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`${API}/api/watchlist/changes?since=${encodeURIComponent(since)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-    ]).then(([salesRes, alertsRes, watchRes]) => {
-      // Falls back to client-side filtering if the `since` param isn't honored
-      const sinceMs = new Date(since).getTime()
-      const salesAll = salesRes?.sales || []
-      const newSales = salesAll.filter(s => s.scraped_at && new Date(s.scraped_at).getTime() >= sinceMs).length
-      const alertsAll = alertsRes?.alerts || alertsRes || []
-      const newAlerts = alertsAll.filter(a => a.created_at && new Date(a.created_at).getTime() >= sinceMs).length
-      const movedWatch = watchRes?.items?.length || 0
-      if (newSales + newAlerts + movedWatch > 0) {
-        setWelcomeDelta({ since, newSales, newAlerts, movedWatch })
-      }
-    })
+    const deferTimer = setTimeout(() => {
+      Promise.all([
+        fetch(`${API}/api/sales?since=${encodeURIComponent(since)}&limit=500`).then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch(`${API}/api/alerts`).then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch(`${API}/api/watchlist/changes?since=${encodeURIComponent(since)}`).then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+      ]).then(([salesRes, alertsRes, watchRes]) => {
+        const sinceMs = new Date(since).getTime()
+        const salesAll = salesRes?.sales || []
+        const newSales = salesAll.filter(s => s.scraped_at && new Date(s.scraped_at).getTime() >= sinceMs).length
+        const alertsAll = alertsRes?.alerts || alertsRes || []
+        const newAlerts = alertsAll.filter(a => a.created_at && new Date(a.created_at).getTime() >= sinceMs).length
+        const movedWatch = watchRes?.items?.length || 0
+        if (newSales + newAlerts + movedWatch > 0) {
+          setWelcomeDelta({ since, newSales, newAlerts, movedWatch })
+        }
+      })
 
-    fetch(`${API}/api/admin/scraper-health`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setScraperHealth(d))
-      .catch(() => {})
+      fetch(`${API}/api/admin/scraper-health`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => setScraperHealth(d))
+        .catch(() => {})
+    }, 1500)
+    return () => clearTimeout(deferTimer)
   }, [])
 
   const loadAll = useCallback((showRefresh = false) => {
@@ -220,19 +226,32 @@ export default function Dashboard() {
       return []
     }
 
+    // Single 500-row sales fetch — derives sales feed, ticker, big wins, AND
+    // 7d count from one query. Was previously 3 separate /api/sales calls
+    // (500 + 150 + 500 + 10) all hitting the same heavy DB query on every
+    // dashboard mount; consolidated to cut server load + first-paint latency.
     swrFetch(
       `${API}/api/sales?limit=500&year=2025`,
       d => {
         try {
           const all = applySeasonFilter(asArray(d, 'sales')) || []
           const notable = (all || []).filter(isNotable)
-          const feed = notable.length >= 5 ? notable : (all || [])
+          // Sales feed (15 most recent / notable)
+          const feed = notable.length >= 5 ? notable : all
           setSales((feed || []).slice(0, 15))
+          // Scrolling ticker (10 notable)
+          setTicker((notable.length >= 3 ? notable : all).slice(0, 10))
+          // Big wins (>= $100)
+          setBigWins(all.filter(s => (s?.sale_price ?? 0) >= 100).slice(0, 10))
+          // Last-7-day count (eBay sale_date is midnight-UTC so 24h is unreliable)
+          const cutoff = Date.now() - 7 * 24 * 3600 * 1000
+          setRecent24hCount(all.filter(s => s?.sale_date && new Date(s.sale_date).getTime() >= cutoff).length)
         } catch (err) {
-          console.error('[Dashboard] sales feed handler', err)
-          setSales([])
+          console.error('[Dashboard] consolidated sales handler', err)
+          setSales([]); setTicker([]); setBigWins([]); setRecent24hCount(0)
         } finally {
           setSalesLoading(false)
+          setBigWinsLoading(false)
         }
       }
     )
@@ -283,61 +302,14 @@ export default function Dashboard() {
       setSnipesLoading(false)
     })
 
-    swrFetch(
-      `${API}/api/sales?limit=150&year=2025`,
-      d => {
-        try {
-          const all = applySeasonFilter(asArray(d, 'sales')) || []
-          const notable = (all || []).filter(isNotable)
-          const src = notable.length >= 3 ? notable : (all || [])
-          setTicker((src || []).slice(0, 10))
-        } catch (err) {
-          console.error('[Dashboard] ticker handler', err)
-          setTicker([])
-        }
-      }
-    )
-
-    // Big wins — sales >= $100 only, for "Just Sold — Big Wins" ticker
-    swrFetch(
-      `${API}/api/sales?limit=10&year=2025`,
-      d => {
-        try {
-          const all = applySeasonFilter(asArray(d, 'sales')) || []
-          const wins = (all || []).filter(s => (s?.sale_price ?? 0) >= 100)
-          setBigWins((wins || []).slice(0, 10))
-        } catch (err) {
-          console.error('[Dashboard] bigWins handler', err)
-          setBigWins([])
-        } finally {
-          setBigWinsLoading(false)
-        }
-      }
-    )
+    // Sales-derived state (ticker, bigWins, recent24hCount) is set inside
+    // the consolidated /api/sales?limit=500 handler above. No separate fetches.
 
     swrFetch(
       `${API}/api/alerts`,
       d => {
         try { setAlertsData(asArray(d, 'alerts')) }
         catch (err) { console.error('[Dashboard] alerts handler', err); setAlertsData([]) }
-      }
-    )
-
-    // eBay sale_date is date-only (midnight UTC), so a literal "last 24h"
-    // window drops every sale from "yesterday" and commonly returns 0. Count
-    // the trailing 7 days instead and relabel the tile.
-    swrFetch(
-      `${API}/api/sales?limit=500&year=2025`,
-      d => {
-        try {
-          const all = applySeasonFilter(asArray(d, 'sales')) || []
-          const cutoff = Date.now() - 7 * 24 * 3600 * 1000
-          const count = (all || []).filter(s => s?.sale_date && new Date(s.sale_date).getTime() >= cutoff).length
-          setRecent24hCount(count)
-        } catch (err) {
-          console.error('[Dashboard] 7d count handler', err)
-          setRecent24hCount(0)
-        }
       }
     )
 
