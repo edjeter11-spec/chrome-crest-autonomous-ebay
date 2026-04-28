@@ -268,6 +268,7 @@ async def search_f1_cards(
         "fieldgroups": "MATCHING_ITEMS,EXTENDED",
     }
 
+    global _last_browse_error
     async with httpx.AsyncClient() as client:
         try:
             resp = await _request_with_backoff(
@@ -290,25 +291,22 @@ async def search_f1_cards(
                 logger.info(f"eBay returned {len(items)} items for query: {query}")
                 return items
 
-            global _last_browse_error
             _last_browse_error = f"{resp.status_code}: {resp.text[:300]}"
             logger.error(f"eBay Browse API error: {_last_browse_error}")
             return []
         except httpx.HTTPStatusError as e:
-            # Backoff helper exhausted retries on 429/5xx. Use a short 10-min
-            # cooldown instead of locking out until daily reset — most 429s
-            # from this API are per-second throttling, not daily quota
-            # exhaustion. If we ARE truly out of daily quota, the cooldown
-            # will keep re-firing (bounded) instead of dead-stopping ingest
-            # for hours when the issue might clear in seconds.
-            logger.error(
-                f"eBay Browse API 429/5xx exhausted retries on '{query}' "
-                f"(status={e.response.status_code}) — 10min cooldown"
-            )
+            try:
+                body = e.response.text[:300] if e.response is not None else ""
+                code = e.response.status_code if e.response is not None else "?"
+            except Exception:
+                body, code = "", "?"
+            _last_browse_error = f"{code} (exhausted): {body}"
+            logger.error(f"eBay Browse API exhausted retries on '{query}' — {_last_browse_error}")
             _mark_rate_limited(seconds=600)
             return []
-        except Exception as e:
-            logger.error(f"eBay search error: {e}")
+        except Exception as ee:
+            _last_browse_error = f"exception: {type(ee).__name__}: {str(ee)[:200]}"
+            logger.error(f"eBay search unexpected error: {_last_browse_error}")
             return []
 
 
