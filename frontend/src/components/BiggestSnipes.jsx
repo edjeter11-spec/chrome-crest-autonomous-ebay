@@ -117,7 +117,9 @@ function AuctionRow({ a, nowTick, freshOverride }) {
   const livePrice = freshOverride?.current_price ?? a.current_price
   const liveBids = freshOverride?.bid_count ?? a.bid_count
   const pctBelow = median && livePrice ? Math.round((1 - livePrice / median) * 100) : null
-  const driverName = a.driver_name || a.driver || a.card?.driver_name
+  // Prefer the title-derived driver — covers F1 Legends (card_id NULL) and
+  // legacy mislabeled rows where the joined card disagrees with the title.
+  const driverName = a.title_driver || a.driver_name || a.driver || a.card?.driver_name
   // Freshness label — green dot if updated <2 min ago, otherwise show "Xm ago"
   const lastUpdatedRaw = freshOverride?.last_updated || a.last_updated
   let freshness = null
@@ -141,7 +143,7 @@ function AuctionRow({ a, nowTick, freshOverride }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           <div className="text-xs font-bold text-white truncate">
-            {a.driver_name || a.driver || '—'}
+            {driverName || '—'}
             {a.parallel && a.parallel !== 'Base' && (
               <span className="text-gray-300"> · {a.parallel}</span>
             )}

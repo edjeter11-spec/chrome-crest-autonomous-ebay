@@ -241,8 +241,20 @@ export default function Dashboard() {
           setSales((feed || []).slice(0, 15))
           // Scrolling ticker (10 notable)
           setTicker((notable.length >= 3 ? notable : all).slice(0, 10))
-          // Big wins (>= $100)
-          setBigWins(all.filter(s => (s?.sale_price ?? 0) >= 100).slice(0, 10))
+          // Big wins (>= $100) — cap to max 2 per driver so one hot driver
+          // doesn't monopolize the strip (was: 10 straight Kimi rows).
+          const winsByDriver = new Map()
+          const wins = []
+          for (const s of all) {
+            if ((s?.sale_price ?? 0) < 100) continue
+            const drv = s?.driver_name || s?.driver || '—'
+            const seen = winsByDriver.get(drv) || 0
+            if (seen >= 2) continue
+            winsByDriver.set(drv, seen + 1)
+            wins.push(s)
+            if (wins.length >= 10) break
+          }
+          setBigWins(wins)
           // Last-7-day count (eBay sale_date is midnight-UTC so 24h is unreliable)
           const cutoff = Date.now() - 7 * 24 * 3600 * 1000
           setRecent24hCount(all.filter(s => s?.sale_date && new Date(s.sale_date).getTime() >= cutoff).length)
@@ -265,19 +277,19 @@ export default function Dashboard() {
       }
     )
 
-    // Progressive fetch: small/fast 100-row first paint, then full 500-row
-    // refill 1.5s later. The 500-row /with-verdicts query is the slowest one
-    // on the dashboard — splitting it cuts perceived load by ~70% on slow
-    // backends (still gets the full data, just not on the critical path).
+    // Progressive fetch + ALL active listings (auction + BIN). The dashboard
+    // was filtering buying=auction, leaving only ~11 rows after today's
+    // phantom cleanup — 'Next Big Auctions' had no data in its 6-48h window.
+    // Including BIN gives BiggestSnipes a much richer pool to filter from.
     swrFetch(
-      `${API}/api/auctions/with-verdicts?buying=auction&limit=100`,
+      `${API}/api/auctions/with-verdicts?limit=200`,
       d => {
         try { setAuctions(applySeasonFilter(asArray(d, 'auctions')) || []) }
         catch (err) { console.error('[Dashboard] auctions handler', err); setAuctions([]) }
         finally { setAuctionsLoading(false) }
         setTimeout(() => {
           swrFetch(
-            `${API}/api/auctions/with-verdicts?buying=auction&limit=500`,
+            `${API}/api/auctions/with-verdicts?limit=500`,
             d2 => {
               try { setAuctions(applySeasonFilter(asArray(d2, 'auctions')) || []) }
               catch {}

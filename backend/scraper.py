@@ -475,12 +475,15 @@ async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
                 ).first()
             if not card:
                 card = db.query(Card).filter(Card.driver_name == driver).first()
+        # PREVIOUSLY: when no driver match, code fell back to ANY card with the
+        # same parallel, then to the first card in DB. That's how the Gerhard
+        # Berger Aqua /199 card got assigned to Max Verstappen's card_id —
+        # extract_driver returned None, and Verstappen's matching parallel row
+        # was first hit. Now: if we can't identify the driver, leave card_id
+        # NULL. The auction still imports (title is the source of truth for
+        # display) but it doesn't lie about who's pictured.
         if not card:
-            card = db.query(Card).filter(Card.parallel == parallel).first()
-        if not card:
-            card = db.query(Card).first()
-        if not card:
-            continue
+            card = None  # explicit — no random fallback
 
         end_time = listing.get("end_time")
         buying_opts_list = listing.get("buying_options", []) or []
@@ -529,7 +532,7 @@ async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
             updated += 1
         else:
             a = Auction(
-                card_id=card.id,
+                card_id=card.id if card else None,
                 ebay_listing_id=ebay_id,
                 title=title[:255],
                 current_price=current_price,
@@ -551,8 +554,17 @@ async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
                 grade_num=flags["grade_num"],
                 psa_cert=flags["psa_cert"],
             )
-            a.snipe_score = calculate_snipe_score(a, card, db)
-            a.snipe_eligible = compute_snipe_eligible(a, card, db)
+            # Snipe score requires a card for comp-based calc; skip safely if no card
+            if card is not None:
+                try:
+                    a.snipe_score = calculate_snipe_score(a, card, db)
+                    a.snipe_eligible = compute_snipe_eligible(a, card, db)
+                except Exception:
+                    a.snipe_score = 0
+                    a.snipe_eligible = False
+            else:
+                a.snipe_score = 0
+                a.snipe_eligible = False
             db.add(a)
             added += 1
 

@@ -34,11 +34,22 @@ def auction_to_dict(a: Auction) -> dict:
     seller_val = a.seller
     if seller_val in ("ebay_seller", "", None):
         seller_val = None
+    # Title-derived driver — covers two cases the FE relies on:
+    #   1. card_id is NULL (e.g. F1 Legends inserts not in our seed table)
+    #   2. card_id points to the WRONG card from a pre-fix scraper run
+    # Always derive from the title; UI prefers card.driver_name when it agrees,
+    # otherwise falls back to this title-derived name.
+    try:
+        from ebay_api import extract_driver_from_title as _xd
+        title_driver = _xd(a.title or "") or None
+    except Exception:
+        title_driver = None
     return {
         "id": a.id,
         "card_id": a.card_id,
         "ebay_listing_id": a.ebay_listing_id,
         "title": a.title,
+        "title_driver": title_driver,
         "current_price": a.current_price,
         "buy_now_price": a.buy_now_price,
         "bid_count": a.bid_count,

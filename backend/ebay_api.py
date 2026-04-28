@@ -539,10 +539,18 @@ async def get_item_details(item_id: str) -> Optional[dict]:
 
 
 def extract_driver_from_title(title: str) -> Optional[str]:
-    """Try to extract driver name from card title."""
+    """Try to extract driver name from card title.
+
+    Includes the active 2024-2025 grid PLUS F1 Legends (a Topps Chrome insert
+    set) — cards like 'Gerhard Berger Aqua Refractor /199' were getting
+    silently mislabeled as Verstappen because the legend wasn't in the list,
+    extract returned None, then scraper.py fell back to the first matching
+    card_id by parallel.
+    """
     title_lower = title.lower()
 
     drivers = [
+        # Active 2024-2025 grid
         "Max Verstappen", "Lewis Hamilton", "Charles Leclerc", "Lando Norris",
         "Fernando Alonso", "Oscar Piastri", "Carlos Sainz", "George Russell",
         "Sergio Perez", "Lance Stroll", "Valtteri Bottas", "Esteban Ocon",
@@ -550,13 +558,25 @@ def extract_driver_from_title(title: str) -> Optional[str]:
         "Nico Hulkenberg", "Kevin Magnussen", "Zhou Guanyu", "Alexander Albon",
         "Logan Sargeant", "Nyck de Vries", "Franco Colapinto", "Oliver Bearman",
         "Jack Doohan", "Andrea Kimi Antonelli", "Isack Hadjar",
-        "Gabriel Bortoleto", "Liam Lawson", "Nico Hulkenberg",
+        "Gabriel Bortoleto", "Liam Lawson",
+        # F1 Legends insert set (Topps Chrome F1)
+        "Ayrton Senna", "Michael Schumacher", "Alain Prost", "Niki Lauda",
+        "Nigel Mansell", "Jackie Stewart", "Emerson Fittipaldi", "James Hunt",
+        "Mario Andretti", "Nelson Piquet", "Damon Hill", "Mika Hakkinen",
+        "Gerhard Berger", "Riccardo Patrese", "David Coulthard", "Mark Webber",
+        "Felipe Massa", "Jenson Button", "Nico Rosberg", "Daniel Ricciardo",
+        "Stirling Moss", "Jim Clark", "Jackie Ickx", "Juan Manuel Fangio",
+        "Graham Hill", "Ronnie Peterson", "Gilles Villeneuve",
+        "Jacques Villeneuve", "Keke Rosberg", "Jody Scheckter", "Alan Jones",
+        "Mario Andretti", "Phil Hill",
     ]
 
     for driver in drivers:
-        # Check full name or last name
         last = driver.split()[-1]
-        if driver.lower() in title_lower or last.lower() in title_lower:
+        # Use word boundaries on the last name to avoid substring traps like
+        # "hill" matching inside "anthill" — Python re for surgical match.
+        import re as _re
+        if driver.lower() in title_lower or _re.search(rf"\b{_re.escape(last.lower())}\b", title_lower):
             return driver
 
     return None
