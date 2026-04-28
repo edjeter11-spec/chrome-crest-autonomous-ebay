@@ -1461,6 +1461,123 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
         return {"ok": False, "error": str(e)[:300]}
 
 
+@app.api_route("/api/ebay/refresh-stale-premium", methods=["GET", "POST"])
+async def ebay_refresh_stale_premium(request: Request, db: Session = Depends(get_db)):
+    """
+    Tail refresher — catches premium auctions that fall outside the top-200
+    ending-soonest window the hourly cron covers. The 7am audit found 14
+    auctions >= $50 that hadn't been refreshed in 2-153 hours (the $56 vs $810
+    bug class). This endpoint targets exactly that gap.
+
+    Selects active auctions with current_price >= $50 AND last_updated > 2h ago
+    AND end_time still in the future. Limits to 80 per run (~half of typical
+    Browse API quota headroom). Marks status='ended' if eBay reports the
+    listing closed.
+    """
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    try:
+        from ebay_api import get_item_details as _get_item_details
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(hours=2)
+        # Order by last_updated ASC so the MOST stale rows refresh first —
+        # the rows the user complains about land at the top of the queue.
+        stale = db.query(Auction).filter(
+            Auction.status == "active",
+            Auction.is_real_ebay == True,
+            Auction.ebay_listing_id.isnot(None),
+            Auction.end_time.isnot(None),
+            Auction.end_time > datetime.utcnow(),
+            Auction.current_price >= 50.0,
+            Auction.last_updated < cutoff,
+        ).order_by(Auction.last_updated.asc()).limit(80).all()
+
+        updated = 0
+        ended = 0
+        errors = 0
+        for _a in stale:
+            try:
+                _item = await _get_item_details(_a.ebay_listing_id)
+                if _item is None:
+                    # eBay returned 404 / closed — mark as ended so it stops
+                    # appearing on the dashboard.
+                    _a.status = "ended"
+                    _a.last_updated = datetime.utcnow()
+                    ended += 1
+                    continue
+                _a.current_price = _item.get("current_price", _a.current_price)
+                _a.bid_count = _item.get("bid_count", _a.bid_count)
+                _a.buying_options = json.dumps(_item.get("buying_options", []))
+                fresh_seller = (_item.get("seller") or "").strip()
+                if fresh_seller and fresh_seller.lower() not in ("ebay_seller", "unknown", "unknown_seller"):
+                    _a.seller = fresh_seller
+                fresh_fb = _item.get("seller_feedback_score")
+                if isinstance(fresh_fb, int) and fresh_fb > 0:
+                    _a.seller_feedback = fresh_fb
+                _a.last_updated = datetime.utcnow()
+                updated += 1
+            except Exception as e:
+                errors += 1
+                logger.warning(f"refresh-stale-premium item {_a.id}: {e}")
+        db.commit()
+        return {
+            "ok": True,
+            "candidates": len(stale),
+            "updated": updated,
+            "ended": ended,
+            "errors": errors,
+            "message": f"Refreshed {updated} stale premium auctions, marked {ended} ended",
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"refresh-stale-premium failed: {e}")
+        return {"ok": False, "error": str(e)[:300]}
+
+
+@app.post("/api/admin/migrate-feedback")
+def migrate_feedback_table(_admin=Depends(require_admin)):
+    """Create user_feedback table on Postgres if missing.
+
+    Base.metadata.create_all() should handle this on cold start, but Vercel
+    serverless instances don't reliably re-init across deploys, so this is
+    the manual escape hatch.
+    """
+    from sqlalchemy import text
+    try:
+        from database import Base, engine as _engine
+        # Idempotent — does nothing if table already exists.
+        Base.metadata.create_all(bind=_engine)
+        # Belt-and-suspenders: explicit DDL in case create_all is silently
+        # skipping for some Postgres reflection reason.
+        with _engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS user_feedback (
+                    id SERIAL PRIMARY KEY,
+                    message TEXT NOT NULL,
+                    page_url VARCHAR(500),
+                    user_agent VARCHAR(400),
+                    user_email VARCHAR(200),
+                    ip_hash VARCHAR(32),
+                    resolved BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_feedback_resolved ON user_feedback (resolved)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_feedback_created_at ON user_feedback (created_at)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_feedback_ip_hash ON user_feedback (ip_hash)"))
+        return {"ok": True, "message": "user_feedback table ensured"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:400]}
+
+
 @app.api_route("/api/ebay/refresh", methods=["GET", "POST"])
 async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
     """

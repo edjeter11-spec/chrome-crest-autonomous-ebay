@@ -87,6 +87,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/ebay/refresh-stale-premium",
+      "schedule": "23 */4 * * *"
+    },
+    {
       "path": "/api/ebay/refresh",
       "schedule": "*/15 * * * *"
     },
