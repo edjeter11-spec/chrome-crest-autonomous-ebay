@@ -107,6 +107,7 @@ def _apply_filters(q, driver, parallel, grade, min_price, max_price,
 
 @router.get("")
 def list_sales(
+    response: Response,
     driver: Optional[str] = None,
     parallel: Optional[str] = None,
     grade: Optional[str] = None,
@@ -125,15 +126,15 @@ def list_sales(
 ):
     # Default: 2025-only, exclude SCP synthetic benchmark rows (they're price-guide
     # entries, not real sales — and emit 3 rows per card which floods the feed).
-    # Pass ?year= or ?exclude_source= explicitly to override.
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, min_price, max_price,
                        date_from, date_to, is_auction, include_duplicates,
                        year=year, exclude_source=exclude_source, source=source)
-    total = q.count()
     sales = q.order_by(desc(SoldCard.sale_date)).offset(offset).limit(limit).all()
+    # Vercel CDN cache: 30s fresh, 2min stale-while-revalidate
+    response.headers["Cache-Control"] = "public, s-maxage=30, stale-while-revalidate=120"
     return {
-        "total": total,
+        "total": None,  # was an expensive COUNT(*) — frontend doesn't use it
         "include_duplicates": include_duplicates,
         "sales": [_sold_to_dict(s) for s in sales],
     }
@@ -141,6 +142,7 @@ def list_sales(
 
 @router.get("/stats")
 def sales_stats(
+    response: Response,
     driver: Optional[str] = None,
     parallel: Optional[str] = None,
     grade: Optional[str] = None,
@@ -149,6 +151,7 @@ def sales_stats(
     include_duplicates: bool = False,
     db: Session = Depends(get_db),
 ):
+    response.headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300"
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, None, None,
                        date_from, date_to, None, include_duplicates)
