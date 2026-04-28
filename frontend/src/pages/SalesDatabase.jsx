@@ -372,8 +372,9 @@ export default function SalesDatabase() {
           <Download size={12} /> <span className="hidden sm:inline">Export </span>CSV
         </button>
         <button onClick={() => load(true)}
-          className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
-          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          aria-label="Refresh"
+          className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors flex items-center justify-center">
+          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
         </button>
       </div>
 
@@ -554,22 +555,25 @@ export default function SalesDatabase() {
                 <button
                   onClick={(e) => { e.stopPropagation(); openAlert(s) }}
                   title={user ? 'Set price alert' : 'Sign in to set price alert'}
-                  className="ml-auto inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 hover:bg-amber-600/30 text-gray-400 hover:text-amber-300 transition-colors"
+                  aria-label={user ? 'Set price alert' : 'Sign in to set price alert'}
+                  className="ml-auto inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-800 hover:bg-amber-600/30 text-gray-400 hover:text-amber-300 transition-colors"
                 >
-                  <Bell size={11} />
+                  <Bell size={13} />
                 </button>
                 <button
                   onClick={(e) => shareSale(e, s)}
                   title="Share sale"
-                  className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200"
+                  aria-label="Share sale"
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200"
                 >
-                  <Share2 size={11} />
+                  <Share2 size={13} />
                 </button>
                 {(() => { const u = soldEbayUrl(s); return u ? (
                   <a href={ebayAffiliateUrl(u)} target="_blank" rel="sponsored noopener"
-                    className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-800 text-gray-400"
+                    aria-label="View on eBay"
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-800 text-gray-400"
                     title={/sch\/i\.html/.test(u) ? 'Search sold listings on eBay' : 'View listing on eBay'}>
-                    <ExternalLink size={11} />
+                    <ExternalLink size={13} />
                   </a>
                 ) : null })()}
               </div>
@@ -769,7 +773,7 @@ export default function SalesDatabase() {
       )}
 
       {alertToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4 py-2.5 rounded-xl bg-gray-900 border border-amber-600/40 text-amber-200 text-xs font-semibold shadow-2xl max-w-[90vw] text-center">
+        <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4 py-2.5 rounded-xl bg-gray-900 border border-amber-600/40 text-amber-200 text-xs font-semibold shadow-2xl max-w-[90vw] text-center">
           {alertToast}
         </div>
       )}

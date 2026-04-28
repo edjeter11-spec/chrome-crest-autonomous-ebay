@@ -229,10 +229,10 @@ export default function Layout() {
         {mobile ? (
           <button
             onClick={() => setMobileOpen(false)}
-            className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"
+            className="p-2.5 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Close menu"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
         ) : (
           <button
@@ -366,10 +366,10 @@ export default function Layout() {
         >
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-2 rounded-lg hover:bg-gray-800 text-gray-300 transition-colors"
+            className="p-2.5 rounded-lg hover:bg-gray-800 text-gray-300 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="Open menu"
           >
-            <Menu size={20} />
+            <Menu size={22} />
           </button>
           <div className="flex items-center gap-2">
             {logoOk ? (
@@ -480,7 +480,7 @@ function TopRightMenu({ user, signOut, onHelp }) {
       <div className="fixed top-3 right-3 md:top-4 md:right-4 z-40">
         <button
           onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
-          className="w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
+          className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
           aria-label="Account menu"
           aria-haspopup="true"
           aria-expanded={open}
@@ -518,7 +518,7 @@ function TopRightMenu({ user, signOut, onHelp }) {
       >Sign in</Link>
       <button
         onClick={onHelp}
-        className="w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
+        className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
         aria-label="Help"
         title="Show tutorial"
       >

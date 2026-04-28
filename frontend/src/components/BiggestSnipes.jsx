@@ -174,7 +174,7 @@ function AuctionRow({ a, nowTick, freshOverride }) {
               href={ebayAffiliateUrl(a.ebay_url)}
               target="_blank"
               rel="sponsored noopener"
-              className="text-[10px] font-black px-2.5 py-1 rounded bg-red-600 hover:bg-red-500 text-white transition-colors"
+              className="text-[11px] font-black px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
             >
               Buy on eBay →
             </a>

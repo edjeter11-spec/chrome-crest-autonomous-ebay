@@ -269,8 +269,8 @@ export default function AuctionModal({ auction, onClose, onWatchlistChange }) {
               <Clock size={11} className="inline mr-1" />{timeText}
             </span>
           </div>
-          <button onClick={onClose} className="p-1.5 text-gray-500 hover:text-white transition-colors rounded-lg hover:bg-gray-800">
-            <X size={16} />
+          <button onClick={onClose} aria-label="Close" className="p-2.5 -m-1 text-gray-500 hover:text-white transition-colors rounded-lg hover:bg-gray-800">
+            <X size={18} />
           </button>
         </div>
 
@@ -285,7 +285,7 @@ export default function AuctionModal({ auction, onClose, onWatchlistChange }) {
 
           {/* Title + card info */}
           <div>
-            <p className="text-sm text-gray-300 leading-relaxed">{auction.title}</p>
+            <p className="text-sm text-gray-300 leading-relaxed break-words">{auction.title}</p>
             {(auction.card?.parallel || auction.card?.grade) && (
               <div className="flex gap-2 mt-2 flex-wrap">
                 {auction.card.parallel && (

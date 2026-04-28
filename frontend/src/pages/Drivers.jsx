@@ -504,7 +504,7 @@ export default function Drivers() {
                 </div>
                 <button
                   onClick={() => setSniperModal(true)}
-                  className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-black rounded-lg flex items-center gap-1.5 transition-colors"
+                  className="min-h-[44px] px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-black rounded-lg flex items-center gap-1.5 transition-colors"
                 >
                   <Target size={14} />
                   Add to Sniper

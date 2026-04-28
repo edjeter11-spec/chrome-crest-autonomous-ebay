@@ -217,7 +217,7 @@ export default function GradedTracker() {
 
       {/* Filter bar */}
       <div className="panel p-3 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[160px]">
+        <div className="relative w-full sm:flex-1 sm:w-auto sm:min-w-[160px]">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input
             value={filters.search}
@@ -227,7 +227,7 @@ export default function GradedTracker() {
           />
         </div>
         <select value={filters.grade} onChange={e => { setFilters(f => ({ ...f, grade: e.target.value })); setPage(0) }}
-          className="input-field text-xs py-2 px-2">
+          className="input-field text-xs py-2 px-2 min-w-0 flex-1 sm:flex-initial">
           <option value="">All Grades</option>
           <option value="PSA 10">PSA 10</option>
           <option value="PSA 9">PSA 9</option>
@@ -236,7 +236,7 @@ export default function GradedTracker() {
           <option value="BGS 9">BGS 9</option>
         </select>
         <select value={filters.parallel} onChange={e => { setFilters(f => ({ ...f, parallel: e.target.value })); setPage(0) }}
-          className="input-field text-xs py-2 px-2">
+          className="input-field text-xs py-2 px-2 min-w-0 flex-1 sm:flex-initial">
           <option value="">All Parallels</option>
           <option value="Refractor">Refractor</option>
           <option value="Gold /50">Gold /50</option>
@@ -245,7 +245,7 @@ export default function GradedTracker() {
           <option value="Autograph">Autograph</option>
         </select>
         <select value={filters.source} onChange={e => { setFilters(f => ({ ...f, source: e.target.value })); setPage(0) }}
-          className="input-field text-xs py-2 px-2">
+          className="input-field text-xs py-2 px-2 min-w-0 flex-1 sm:flex-initial">
           <option value="">All Sources</option>
           <option value="eBay">eBay</option>
           <option value="Goldin">Goldin</option>
@@ -304,16 +304,16 @@ export default function GradedTracker() {
           <div className="space-y-1.5">
             {activeAuctions.map(a => (
               <a key={a.id} href={ebayAffiliateUrl(a.ebay_url)} target="_blank" rel="sponsored noopener"
-                className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-900/60 transition-colors">
+                className="flex items-center gap-2 md:gap-3 p-2 rounded-xl hover:bg-gray-900/60 transition-colors">
                 <CardImage src={a.image_url} alt="" driverName={a.driver_name || a.card?.driver_name} className="w-10 h-10 rounded-lg shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-white truncate">{a.title}</div>
                   <div className="text-[10px] text-gray-500 flex items-center gap-2 mt-0.5">
-                    <Clock size={9} /> <Countdown endTime={a.end_time} />
+                    <Clock size={9} className="shrink-0" /> <Countdown endTime={a.end_time} />
                   </div>
                 </div>
-                <div className="text-sm font-black text-green-400 shrink-0">${a.current_price?.toFixed(2)}</div>
-                <ExternalLink size={11} className="text-gray-600 shrink-0" />
+                <div className="text-sm font-black text-green-400 shrink-0 tabular-nums">${a.current_price?.toFixed(2)}</div>
+                <ExternalLink size={11} className="text-gray-600 shrink-0 hidden sm:block" />
               </a>
             ))}
           </div>
@@ -344,18 +344,19 @@ export default function GradedTracker() {
           <div className="space-y-1">
             {sales.map(s => (
               <a key={s.id} href={s.ebay_url ? ebayAffiliateUrl(s.ebay_url) : '#'} target="_blank" rel="sponsored noopener"
-                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-900/60 transition-colors">
+                className="flex items-center gap-2 md:gap-3 p-2 rounded-lg hover:bg-gray-900/60 transition-colors">
                 <CardImage src={s.image_url} alt="" driverName={s.driver_name} className="w-8 h-8 rounded shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-white truncate">{s.driver_name || s.title?.slice(0, 60)}</div>
-                  <div className="text-[10px] text-gray-500 flex items-center gap-1.5 mt-0.5">
-                    <span className="truncate">{s.parallel}</span>
+                  <div className="text-[10px] text-gray-500 flex items-center gap-1.5 mt-0.5 min-w-0">
+                    <span className="truncate min-w-0">{s.parallel}</span>
                     <GradeBadge grade={s.grade} driver={s.driver_name} parallel={s.parallel} clickable={true} />
+                    <span className="md:hidden text-gray-600 truncate">{s.sale_date?.slice(0, 10)}</span>
                   </div>
                 </div>
-                <div className="text-sm font-black text-green-400 shrink-0 w-20 text-right">${s.sale_price?.toFixed(2)}</div>
-                <div className="text-[10px] text-gray-500 shrink-0 w-20 text-right">{s.sale_date?.slice(0, 10)}</div>
-                <SourceBadge source={s.source} />
+                <div className="text-sm font-black text-green-400 shrink-0 text-right tabular-nums">${s.sale_price?.toFixed(2)}</div>
+                <div className="hidden md:block text-[10px] text-gray-500 shrink-0 w-20 text-right">{s.sale_date?.slice(0, 10)}</div>
+                <span className="hidden sm:inline-block"><SourceBadge source={s.source} /></span>
               </a>
             ))}
           </div>

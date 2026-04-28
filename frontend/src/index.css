@@ -170,6 +170,17 @@
            placeholder:text-gray-600 transition-colors;
   }
 
+  /* iOS Safari auto-zooms when an <input>/<select>/<textarea> is focused with
+     a font-size below 16px. Force 16px on small viewports across every form
+     control (including .input-field with text-xs/text-sm) so the page
+     doesn't yank-zoom when older users tap a filter dropdown. Desktop is
+     unaffected. */
+  @media (max-width: 640px) {
+    input, select, textarea, .input-field {
+      font-size: 16px !important;
+    }
+  }
+
   /* Score bar */
   .score-bar {
     @apply h-1.5 rounded-full overflow-hidden bg-gray-800;

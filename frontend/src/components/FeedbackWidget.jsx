@@ -66,13 +66,15 @@ export default function FeedbackWidget() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-[60]">
+    <div
+      className="fixed right-4 z-[60] bottom-[calc(64px+env(safe-area-inset-bottom,0px)+12px)] md:bottom-4"
+    >
       {!open && (
         <button
           onClick={() => setOpen(true)}
           aria-label="Suggest an improvement or report a problem"
           title="Suggest / report"
-          className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-gray-900/90 hover:bg-gray-800 text-gray-200 border border-gray-700 shadow-lg backdrop-blur text-xs font-bold transition-colors"
+          className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 py-2 rounded-full bg-gray-900/90 hover:bg-gray-800 text-gray-200 border border-gray-700 shadow-lg backdrop-blur text-xs font-bold transition-colors"
         >
           <MessageSquarePlus size={14} />
           <span className="hidden sm:inline">Suggest</span>
@@ -81,7 +83,7 @@ export default function FeedbackWidget() {
 
       {open && (
         <div
-          className="w-[300px] sm:w-[340px] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-4 animate-in"
+          className="w-[calc(100vw-2rem)] max-w-[340px] sm:w-[340px] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-4 animate-in"
           role="dialog"
           aria-label="Send feedback"
         >
@@ -112,7 +114,7 @@ export default function FeedbackWidget() {
                 placeholder="What would make this better?"
                 rows={4}
                 maxLength={2000}
-                className="w-full bg-gray-950 border border-gray-700 rounded-lg p-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-red-500 resize-none"
+                className="w-full bg-gray-950 border border-gray-700 rounded-lg p-2 text-base sm:text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-red-500 resize-none"
               />
               {error && (
                 <div className="text-[11px] text-red-400 mt-1.5">{error}</div>

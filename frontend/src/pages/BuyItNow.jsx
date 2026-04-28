@@ -187,9 +187,9 @@ export default function BuyItNow() {
       </div>
 
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3 flex-wrap">
         <div className="w-1 h-7 bg-green-600 rounded-full shrink-0" />
-        <h1 className="text-2xl font-black text-white tracking-tight">Buy It Now</h1>
+        <h1 className="text-xl md:text-2xl font-black text-white tracking-tight">Buy It Now</h1>
         {!loading && (
           <>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-xl bg-gray-800 text-gray-300 border border-gray-700/50">
@@ -209,8 +209,8 @@ export default function BuyItNow() {
         )}
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
-          <button onClick={() => load(true)} className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
-            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+          <button onClick={() => load(true)} aria-label="Refresh" className="min-h-[40px] min-w-[40px] p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors flex items-center justify-center">
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
