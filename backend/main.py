@@ -1564,13 +1564,13 @@ def migrate_feedback_table(request: Request):
             return {"ok": False, "error": "unauthorized"}
     from sqlalchemy import text
     try:
-        from database import Base, engine as _engine
-        # Idempotent — does nothing if table already exists.
-        Base.metadata.create_all(bind=_engine)
-        # Belt-and-suspenders: explicit DDL in case create_all is silently
-        # skipping for some Postgres reflection reason.
-        with _engine.begin() as conn:
-            conn.execute(text("""
+        from database import engine as _engine
+        # Pure idempotent DDL — skips Base.metadata.create_all because that
+        # tries to recreate ALL tables and trips on pre-existing indexes
+        # elsewhere (e.g. ix_click_events_clicked_at).
+        results = []
+        statements = [
+            ("user_feedback table", """
                 CREATE TABLE IF NOT EXISTS user_feedback (
                     id SERIAL PRIMARY KEY,
                     message TEXT NOT NULL,
@@ -1581,11 +1581,19 @@ def migrate_feedback_table(request: Request):
                     resolved BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_feedback_resolved ON user_feedback (resolved)"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_feedback_created_at ON user_feedback (created_at)"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_user_feedback_ip_hash ON user_feedback (ip_hash)"))
-        return {"ok": True, "message": "user_feedback table ensured"}
+            """),
+            ("ix_resolved", "CREATE INDEX IF NOT EXISTS ix_user_feedback_resolved ON user_feedback (resolved)"),
+            ("ix_created_at", "CREATE INDEX IF NOT EXISTS ix_user_feedback_created_at ON user_feedback (created_at)"),
+            ("ix_ip_hash", "CREATE INDEX IF NOT EXISTS ix_user_feedback_ip_hash ON user_feedback (ip_hash)"),
+        ]
+        for label, sql in statements:
+            try:
+                with _engine.begin() as conn:
+                    conn.execute(text(sql))
+                results.append({"step": label, "ok": True})
+            except Exception as ie:
+                results.append({"step": label, "ok": False, "error": str(ie)[:200]})
+        return {"ok": True, "message": "user_feedback table ensured", "steps": results}
     except Exception as e:
         return {"ok": False, "error": str(e)[:400]}
 
