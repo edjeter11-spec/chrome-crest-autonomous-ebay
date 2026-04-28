@@ -227,16 +227,25 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
       .slice(0, 6)
   }, [auctions, nowTick])
 
-  // Auto-refresh: when the visible items change OR every 60s, fire
-  // /api/auctions/{id}/refresh for each visible auction so Eddie never sees
-  // a $810 card showing $56 because the Browse API cron missed it.
+  // Auto-refresh: only refresh items that are ALREADY stale (>15 min old) and
+  // throttle to once per 10 min. Originally fired every 60s for all 12 visible
+  // items = 720 calls/hour per active dashboard viewer = blew through eBay's
+  // 5000/day quota and locked out the entire ingest pipeline. Lesson learned.
   useEffect(() => {
     const visibleIds = [...items, ...nextBig].map(a => a.id).filter(Boolean)
     if (visibleIds.length === 0) return
 
+    const STALE_MS = 15 * 60 * 1000   // only refresh if >15min stale
+    const TICK_MS = 10 * 60 * 1000    // re-check every 10min
     let cancelled = false
-    const refreshOne = async (id) => {
+
+    const refreshOne = async (id, lastUpdatedRaw) => {
       if (inFlight.current.has(id) || cancelled) return
+      // Skip if already fresh enough
+      if (lastUpdatedRaw) {
+        const t = new Date(String(lastUpdatedRaw).endsWith('Z') ? lastUpdatedRaw : lastUpdatedRaw + 'Z').getTime()
+        if (!Number.isNaN(t) && (Date.now() - t) < STALE_MS) return
+      }
       inFlight.current.add(id)
       try {
         const r = await fetch(`${API}/api/auctions/${id}/refresh`)
@@ -256,13 +265,13 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
       }
     }
 
-    // Fire all visible items, staggered 200ms apart to avoid hammering
-    visibleIds.forEach((id, i) => setTimeout(() => refreshOne(id), i * 200))
-
-    // Also re-fire every 60s while mounted
-    const interval = setInterval(() => {
-      visibleIds.forEach((id, i) => setTimeout(() => refreshOne(id), i * 200))
-    }, 60_000)
+    const fireRound = () => {
+      [...items, ...nextBig].forEach((a, i) => {
+        if (a.id) setTimeout(() => refreshOne(a.id, a.last_updated), i * 300)
+      })
+    }
+    fireRound()
+    const interval = setInterval(fireRound, TICK_MS)
 
     return () => { cancelled = true; clearInterval(interval) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
