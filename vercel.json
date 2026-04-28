@@ -95,6 +95,10 @@
       "schedule": "3 7 * * *"
     },
     {
+      "path": "/api/audit/morning-check",
+      "schedule": "33 7 * * *"
+    },
+    {
       "path": "/api/ebay/refresh",
       "schedule": "*/15 * * * *"
     },

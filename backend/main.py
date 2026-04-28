@@ -1469,6 +1469,112 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
         return {"ok": False, "error": str(e)[:300]}
 
 
+@app.api_route("/api/audit/morning-check", methods=["GET", "POST"])
+async def audit_morning_check(request: Request, db: Session = Depends(get_db)):
+    """
+    Daily morning check. Fires after the eBay quota resets at 07:05 UTC.
+    Posts a combined report into the feedback inbox so Eddie sees it as
+    soon as he opens the admin panel.
+
+    Three sections:
+      1. INGEST: triggers a fresh sync, reports added/updated/fetched
+      2. FRESHNESS: snapshot of audit metrics (top-300 active auctions)
+      3. OVERNIGHT: last-24h feedback submissions count (excluding our
+         own auto-audit posts)
+
+    Auth: ADMIN_TOKEN or vercel-cron UA.
+    """
+    import os as _os
+    from datetime import timedelta
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    now = datetime.utcnow()
+    lines = [f"MORNING DIGEST ({now.strftime('%Y-%m-%d %H:%M')}Z)", ""]
+
+    # 1. Ingest health — run a fresh sync and report stats
+    lines.append("INGEST")
+    try:
+        from scraper import sync_real_ebay_listings
+        import ebay_api as _ea
+        _ea._cooldown_loaded_at = None  # force fresh DB read
+        _ea._last_browse_error = None
+        stats = await sync_real_ebay_listings(db, return_full_stats=True)
+        rl = _ea._is_rate_limited()
+        cd = _ea._rate_limited_until.isoformat()[:16] if _ea._rate_limited_until else None
+        lines.append(f"  fetched={stats.get('fetched', 0)} added={stats.get('added', 0)} updated={stats.get('updated', 0)}")
+        if rl:
+            lines.append(f"  WARN: rate-limited until {cd}")
+        if _ea._last_browse_error:
+            lines.append(f"  ERR: {_ea._last_browse_error[:120]}")
+    except Exception as e:
+        lines.append(f"  FAILED: {str(e)[:120]}")
+
+    # 2. Freshness snapshot
+    lines.append("")
+    lines.append("FRESHNESS (top 300 active)")
+    try:
+        rows = db.query(Auction).filter(
+            Auction.status == "active",
+            Auction.is_real_ebay == True,
+            Auction.end_time.isnot(None),
+            Auction.end_time > now,
+        ).order_by(Auction.end_time.asc()).limit(300).all()
+        fresh_30m = sum(1 for a in rows if a.last_updated and (now - a.last_updated).total_seconds() < 1800)
+        fresh_2h = sum(1 for a in rows if a.last_updated and 1800 <= (now - a.last_updated).total_seconds() < 7200)
+        stale_24h_plus = sum(1 for a in rows if a.last_updated and (now - a.last_updated).total_seconds() >= 86400)
+        stale_premium = sum(1 for a in rows
+                            if a.last_updated
+                            and (now - a.last_updated).total_seconds() >= 7200
+                            and (a.current_price or 0) >= 50)
+        n = len(rows)
+        lines.append(f"  sample={n}  <30m={fresh_30m}  <2h={fresh_2h}  >=24h={stale_24h_plus}")
+        lines.append(f"  stale_premium($50+, >2h)={stale_premium}")
+    except Exception as e:
+        lines.append(f"  FAILED: {str(e)[:120]}")
+
+    # 3. Overnight feedback (last 24h, excluding our own auto-posts)
+    lines.append("")
+    lines.append("OVERNIGHT FEEDBACK (24h)")
+    try:
+        from database import UserFeedback
+        cutoff = now - timedelta(hours=24)
+        recent = db.query(UserFeedback).filter(
+            UserFeedback.created_at >= cutoff,
+            UserFeedback.resolved == False,  # noqa: E712
+        ).order_by(UserFeedback.created_at.desc()).all()
+        # Exclude our own audit posts so the digest doesn't echo itself
+        user_subs = [r for r in recent if not (r.message or "").startswith(("AUTO-AUDIT", "MORNING DIGEST"))]
+        lines.append(f"  total_unresolved_24h={len(recent)}  user_submissions={len(user_subs)}")
+        for s in user_subs[:5]:
+            preview = (s.message or "").replace("\n", " ")[:100]
+            ago_min = int((now - s.created_at).total_seconds() / 60)
+            lines.append(f"  #{s.id} ({ago_min}m ago) {preview}")
+        if len(user_subs) > 5:
+            lines.append(f"  ...{len(user_subs) - 5} more")
+    except Exception as e:
+        lines.append(f"  FAILED: {str(e)[:120]}")
+
+    msg = "\n".join(lines)[:1950]
+
+    # Persist as a UserFeedback row tagged with /morning-digest page_url
+    try:
+        from database import UserFeedback
+        db.add(UserFeedback(message=msg, page_url="/morning-digest", created_at=now))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": str(e)[:300], "report": msg}
+
+    return {"ok": True, "report_preview": msg[:500]}
+
+
 @app.api_route("/api/audit/stale-prices", methods=["GET", "POST"])
 def audit_stale_prices(request: Request, db: Session = Depends(get_db)):
     """
