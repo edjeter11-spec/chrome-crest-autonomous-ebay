@@ -1724,10 +1724,20 @@ async def debug_sync(request: Request, db: Session = Depends(get_db)):
             return {"ok": False, "error": "unauthorized"}
     try:
         from scraper import sync_real_ebay_listings
+        import ebay_api as _ea
+        # Force-clear cache so we read DB cooldown state fresh
+        _ea._cooldown_loaded_at = None
+        _ea._last_browse_error = None
         stats = await sync_real_ebay_listings(db, return_full_stats=True)
-        return {"ok": True, **stats}
+        return {
+            "ok": True,
+            **stats,
+            "rate_limited_now": _ea._is_rate_limited(),
+            "cooldown_until": _ea._rate_limited_until.isoformat() if _ea._rate_limited_until else None,
+            "last_browse_error": _ea._last_browse_error,
+        }
     except Exception as e:
-        return {"ok": False, "error": str(e)[:300]}
+        return {"ok": False, "error": str(e)[:400]}
 
 
 @app.api_route("/api/admin/clear-ebay-cooldown", methods=["GET", "POST"])

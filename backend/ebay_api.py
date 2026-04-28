@@ -139,6 +139,7 @@ async def get_oauth_token() -> Optional[str]:
 _rate_limited_until: Optional[datetime] = None
 _cooldown_loaded_at: Optional[datetime] = None  # last DB read; re-read after 60s
 COOLDOWN_CACHE_TTL_SECS = 60
+_last_browse_error: Optional[str] = None  # last non-200 response body for debugging
 
 
 def _track_api_call():
@@ -289,15 +290,22 @@ async def search_f1_cards(
                 logger.info(f"eBay returned {len(items)} items for query: {query}")
                 return items
 
-            logger.error(f"eBay Browse API error: {resp.status_code} {resp.text[:200]}")
+            global _last_browse_error
+            _last_browse_error = f"{resp.status_code}: {resp.text[:300]}"
+            logger.error(f"eBay Browse API error: {_last_browse_error}")
             return []
         except httpx.HTTPStatusError as e:
-            # Backoff helper exhausted retries on 429/5xx — enter daily cooldown
+            # Backoff helper exhausted retries on 429/5xx. Use a short 10-min
+            # cooldown instead of locking out until daily reset — most 429s
+            # from this API are per-second throttling, not daily quota
+            # exhaustion. If we ARE truly out of daily quota, the cooldown
+            # will keep re-firing (bounded) instead of dead-stopping ingest
+            # for hours when the issue might clear in seconds.
             logger.error(
                 f"eBay Browse API 429/5xx exhausted retries on '{query}' "
-                f"(status={e.response.status_code}) — entering cooldown until next daily reset"
+                f"(status={e.response.status_code}) — 10min cooldown"
             )
-            _mark_rate_limited_until_reset()
+            _mark_rate_limited(seconds=600)
             return []
         except Exception as e:
             logger.error(f"eBay search error: {e}")
