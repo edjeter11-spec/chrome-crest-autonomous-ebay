@@ -1542,14 +1542,26 @@ async def ebay_refresh_stale_premium(request: Request, db: Session = Depends(get
         return {"ok": False, "error": str(e)[:300]}
 
 
-@app.post("/api/admin/migrate-feedback")
-def migrate_feedback_table(_admin=Depends(require_admin)):
+@app.api_route("/api/admin/migrate-feedback", methods=["GET", "POST"])
+def migrate_feedback_table(request: Request):
     """Create user_feedback table on Postgres if missing.
 
     Base.metadata.create_all() should handle this on cold start, but Vercel
     serverless instances don't reliably re-init across deploys, so this is
     the manual escape hatch.
+
+    Auth: ADMIN_TOKEN via header/query, OR vercel-cron UA. The operation is
+    idempotent (CREATE TABLE IF NOT EXISTS) so the loose auth is safe.
     """
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
     from sqlalchemy import text
     try:
         from database import Base, engine as _engine
