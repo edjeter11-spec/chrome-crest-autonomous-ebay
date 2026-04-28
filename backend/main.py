@@ -1443,18 +1443,26 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
         ).order_by(Auction.end_time.asc()).limit(50).all()
 
         updated = 0
+        ended = 0
         for _a in top_auctions:
             try:
                 _item = await _get_item_details(_a.ebay_listing_id)
-                if _item:
-                    _a.current_price = _item.get("current_price", _a.current_price)
-                    _a.bid_count = _item.get("bid_count", _a.bid_count)
+                if _item is None:
+                    # Phantom-active row — eBay says listing is closed.
+                    # Mark ended so the next iteration of this cron picks up
+                    # an actually-live auction instead of re-checking the corpse.
+                    _a.status = "ended"
                     _a.last_updated = datetime.utcnow()
-                    updated += 1
+                    ended += 1
+                    continue
+                _a.current_price = _item.get("current_price", _a.current_price)
+                _a.bid_count = _item.get("bid_count", _a.bid_count)
+                _a.last_updated = datetime.utcnow()
+                updated += 1
             except Exception:
                 pass
         db.commit()
-        return {"ok": True, "updated": updated, "message": f"Refreshed top {updated} ending-soonest auctions"}
+        return {"ok": True, "updated": updated, "ended": ended, "message": f"Refreshed {updated} top auctions, marked {ended} ended"}
     except Exception as e:
         db.rollback()
         logger.error(f"Top-page refresh failed: {e}")
