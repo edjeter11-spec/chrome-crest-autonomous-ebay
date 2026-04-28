@@ -93,6 +93,12 @@ export default function SalesDatabase() {
   const [accuracyStats, setAccuracyStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(() => {
+    try { return localStorage.getItem('cc_sales_advanced_open') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('cc_sales_advanced_open', advancedOpen ? '1' : '0') } catch {}
+  }, [advancedOpen])
 
   // Price alert modal
   const [alertSale, setAlertSale] = useState(null)
@@ -401,48 +407,57 @@ export default function SalesDatabase() {
         </div>
       )}
 
-      {/* Filter bar */}
-      <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-3 md:px-4 py-3 flex items-center gap-2 md:gap-3 flex-wrap">
-        <div className="relative w-full sm:min-w-48 sm:w-auto sm:flex-1 md:flex-none">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search title or driver…"
-            className="input-field w-full pl-8 pr-3 py-2 text-xs" />
+      {/* Filter bar — common filters always visible, power filters in disclosure */}
+      <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-3 md:px-4 py-3 space-y-2">
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+          <div className="relative w-full sm:min-w-48 sm:w-auto sm:flex-1 md:flex-none">
+            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search title or driver…"
+              className="input-field w-full pl-8 pr-3 py-2 text-xs" />
+          </div>
+
+          <select value={driver} onChange={e => { setDriver(e.target.value); setPage(0) }}
+            className="input-field px-3 py-2 text-xs cursor-pointer">
+            {DRIVERS.map(d => <option key={d} value={d}>{d === 'All' ? 'All Drivers' : d}</option>)}
+          </select>
+
+          <select value={parallel} onChange={e => { setParallel(e.target.value); setPage(0) }}
+            className="input-field px-3 py-2 text-xs cursor-pointer">
+            {PARALLELS.map(p => <option key={p} value={p}>{p === 'All' ? 'All Parallels' : p}</option>)}
+          </select>
+
+          <button onClick={() => setAdvancedOpen(v => !v)}
+            aria-expanded={advancedOpen}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold border border-gray-700/60">
+            Advanced
+            <ChevronDown size={12} className={`transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          <button onClick={resetFilters}
+            className="ml-auto text-xs text-cyan-400 hover:underline font-medium">
+            Clear
+          </button>
         </div>
 
-        <select value={driver} onChange={e => { setDriver(e.target.value); setPage(0) }}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {DRIVERS.map(d => <option key={d} value={d}>{d === 'All' ? 'All Drivers' : d}</option>)}
-        </select>
+        {advancedOpen && (
+          <div className="pt-2 border-t border-gray-800/60 flex items-center gap-2 md:gap-3 flex-wrap">
+            <select value={grade} onChange={e => { setGrade(e.target.value); setPage(0) }}
+              className="input-field px-3 py-2 text-xs cursor-pointer">
+              {GRADES.map(g => <option key={g} value={g}>{g === 'All' ? 'Any Grade' : g}</option>)}
+            </select>
 
-        <select value={parallel} onChange={e => { setParallel(e.target.value); setPage(0) }}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {PARALLELS.map(p => <option key={p} value={p}>{p === 'All' ? 'All Parallels' : p}</option>)}
-        </select>
+            <input type="number" value={minPrice} onChange={e => { setMinPrice(e.target.value); setPage(0) }}
+              placeholder="$ min" className="input-field w-20 px-3 py-2 text-xs" />
+            <input type="number" value={maxPrice} onChange={e => { setMaxPrice(e.target.value); setPage(0) }}
+              placeholder="$ max" className="input-field w-20 px-3 py-2 text-xs" />
 
-        <select value={grade} onChange={e => { setGrade(e.target.value); setPage(0) }}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
-          {GRADES.map(g => <option key={g} value={g}>{g === 'All' ? 'Any Grade' : g}</option>)}
-        </select>
-
-        <div className="w-px h-5 bg-gray-700/60 shrink-0" />
-
-        <input type="number" value={minPrice} onChange={e => { setMinPrice(e.target.value); setPage(0) }}
-          placeholder="$ min" className="input-field w-24 px-3 py-2 text-xs" />
-        <input type="number" value={maxPrice} onChange={e => { setMaxPrice(e.target.value); setPage(0) }}
-          placeholder="$ max" className="input-field w-24 px-3 py-2 text-xs" />
-
-        <div className="w-px h-5 bg-gray-700/60 shrink-0" />
-
-        <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(0) }}
-          className="input-field px-3 py-2 text-xs" />
-        <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(0) }}
-          className="input-field px-3 py-2 text-xs" />
-
-        <button onClick={resetFilters}
-          className="ml-auto text-xs text-cyan-400 hover:underline font-medium">
-          Clear
-        </button>
+            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(0) }}
+              className="input-field px-3 py-2 text-xs" />
+            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(0) }}
+              className="input-field px-3 py-2 text-xs" />
+          </div>
+        )}
       </div>
 
       {/* Quality filters — default ON so feed shows notable 2025 F1 */}

@@ -1157,10 +1157,10 @@ function DealOfTheDay({ auctions }) {
       rel="noopener sponsored"
       onClick={onCtaClick}
       onAuxClick={onCtaClick}
-      className="block bg-gradient-to-br from-red-900 via-red-950 to-gray-900 rounded-2xl border border-red-600/50 shadow-xl shadow-red-950/40 overflow-hidden hover:brightness-110 transition"
+      className="block mx-3 md:mx-0 bg-gradient-to-br from-red-900 via-red-950 to-gray-900 rounded-2xl border border-red-600/50 shadow-xl shadow-red-950/40 overflow-hidden hover:brightness-110 transition"
     >
       <div className="flex flex-col md:flex-row items-stretch">
-        <div className="md:w-64 h-48 md:h-auto bg-black/40 flex items-center justify-center shrink-0 relative">
+        <div className="md:w-64 h-40 md:h-auto bg-black/40 flex items-center justify-center shrink-0 relative">
           {driver && (
             <img
               src={`${API}/api/drivers/photo?name=${encodeURIComponent(driver)}`}
@@ -1175,9 +1175,9 @@ function DealOfTheDay({ auctions }) {
             <div className="text-red-300 text-xs font-bold">No image</div>
           )}
         </div>
-        <div className="flex-1 p-5 md:p-6 flex flex-col justify-between">
+        <div className="flex-1 p-4 md:p-6 flex flex-col justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <div className="flex items-center gap-1.5 mb-2 flex-wrap">
               <span className="bg-yellow-400 text-red-900 text-[10px] font-black uppercase px-2 py-0.5 rounded-full tracking-wider">
                 {badgeLabel}
               </span>
@@ -1186,41 +1186,64 @@ function DealOfTheDay({ auctions }) {
                   {String(deal.verdict).replace('_', ' ')}
                 </span>
               )}
-              {deal.snipe_score ? (
-                <span className="text-[10px] text-red-100 font-mono">Score {Math.round(deal.snipe_score)}</span>
-              ) : null}
             </div>
-            <h2 className="text-xl md:text-3xl font-black text-white leading-tight mb-1 line-clamp-2">
+            <h2 className="text-lg md:text-3xl font-black text-white leading-tight mb-1 line-clamp-2">
               {title}
             </h2>
-            <div className="text-sm text-red-100 mb-2 font-semibold">
+            <div className="text-xs md:text-sm text-red-100 mb-1 md:mb-2 font-semibold">
               {deal.parallel || '—'}{deal.grade && deal.grade !== 'Raw' ? ` · ${deal.grade}` : ''}
             </div>
-            <div className="text-xs text-yellow-200 font-bold mb-3">
+            <div className="text-[11px] md:text-xs text-yellow-200 font-bold">
               {formatLine}
             </div>
           </div>
-          <div className="flex flex-wrap items-end gap-4 md:gap-6">
+
+          {/* Mobile-only: tighter price row — price + countdown only,
+              median collapses into a parenthetical */}
+          <div className="flex md:hidden items-end justify-between gap-3">
+            <div>
+              <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">
+                {isAuctionDeal ? 'Current bid' : 'Buy now'}
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-3xl font-black text-white tabular-nums">${price.toFixed(0)}</span>
+                {medianComp != null && (
+                  <span className="text-[10px] text-red-200">vs ${medianComp.toFixed(0)} med</span>
+                )}
+              </div>
+              {isAuctionDeal && (
+                <div className="text-base font-black text-yellow-300 tabular-nums mt-0.5">{countdown}</div>
+              )}
+            </div>
+          </div>
+          <div className="md:hidden">
+            <div className="bg-white text-red-700 font-black text-sm px-4 py-3 rounded-xl shadow-lg flex items-center justify-center gap-2">
+              {ctaLabel} <ExternalLink size={14} />
+            </div>
+          </div>
+
+          {/* Desktop: original spacious layout */}
+          <div className="hidden md:flex flex-wrap items-end gap-6">
             <div>
               <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">
                 {isAuctionDeal ? 'Current bid' : 'Buy it now'}
               </div>
-              <div className="text-4xl md:text-5xl font-black text-white tabular-nums">${price.toFixed(0)}</div>
+              <div className="text-5xl font-black text-white tabular-nums">${price.toFixed(0)}</div>
             </div>
             {medianComp != null && (
               <div>
                 <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Median comp</div>
-                <div className="text-2xl md:text-3xl font-black text-red-100 tabular-nums">${medianComp.toFixed(0)}</div>
+                <div className="text-3xl font-black text-red-100 tabular-nums">${medianComp.toFixed(0)}</div>
               </div>
             )}
             {isAuctionDeal && (
               <div>
                 <div className="text-[10px] text-red-200 uppercase font-bold tracking-wider">Time left</div>
-                <div className="text-2xl md:text-3xl font-black text-yellow-300 tabular-nums">{countdown}</div>
+                <div className="text-3xl font-black text-yellow-300 tabular-nums">{countdown}</div>
               </div>
             )}
             <div className="ml-auto">
-              <div className="bg-white text-red-700 font-black text-sm md:text-base px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 hover:bg-yellow-50">
+              <div className="bg-white text-red-700 font-black text-base px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 hover:bg-yellow-50">
                 {ctaLabel} <ExternalLink size={14} />
               </div>
             </div>

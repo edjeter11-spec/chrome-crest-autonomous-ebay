@@ -260,7 +260,44 @@ export default function GradedTracker() {
           <Award size={14} className="text-yellow-400" />
           Driver Leaderboard
         </h2>
-        <div className="overflow-x-auto">
+        {/* Mobile: card-per-row stack */}
+        <div className="md:hidden space-y-2">
+          {filteredRows.length === 0 ? (
+            <p className="text-center py-8 text-gray-600 text-xs">No graded sales yet.</p>
+          ) : filteredRows.map(r => (
+            <button
+              key={r.driver}
+              onClick={() => setDrawerDriver(r.driver)}
+              className="w-full text-left bg-gradient-to-br from-gray-900 to-gray-950 border border-gray-800 rounded-2xl p-3 active:bg-gray-800/40 transition-colors"
+            >
+              <div className="flex items-baseline justify-between gap-2 mb-2">
+                <div className="font-black text-white text-sm truncate">{r.driver}</div>
+                <div className="text-[10px] text-gray-500 shrink-0">{r.total_graded} graded</div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-yellow-600/10 border border-yellow-600/30 rounded-lg py-1.5">
+                  <div className="text-[10px] text-yellow-400 font-bold uppercase tracking-wide">PSA 10</div>
+                  <div className="text-base font-black text-yellow-300">{r.psa_10}</div>
+                </div>
+                <div className="bg-green-600/10 border border-green-600/30 rounded-lg py-1.5">
+                  <div className="text-[10px] text-green-400 font-bold uppercase tracking-wide">Highest</div>
+                  <div className="text-base font-black text-green-300">${r.max_price.toLocaleString()}</div>
+                </div>
+                <div className="bg-gray-800/60 border border-gray-700 rounded-lg py-1.5">
+                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Gem %</div>
+                  <div className="text-base font-black text-white">{r.gem_rate_pct}%</div>
+                </div>
+              </div>
+              {r.avg_psa_10 != null && (
+                <div className="text-[10px] text-gray-500 mt-2 text-center">
+                  Avg PSA 10: <span className="text-white font-bold">${r.avg_psa_10.toLocaleString()}</span>
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+        {/* Desktop: existing table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="text-gray-500 border-b border-gray-800">

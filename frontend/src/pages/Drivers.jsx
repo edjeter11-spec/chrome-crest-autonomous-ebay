@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon, Target, X, Share2, Check } from 'lucide-react'
+import { Trophy, TrendingUp, Zap, Star, Search, Award, ExternalLink, LineChart as LineChartIcon, Target, X, Share2, Check, ChevronLeft } from 'lucide-react'
 import { swrFetch } from '../lib/cache'
 import { usePersistedState } from '../lib/hooks'
 import { ebayAffiliateUrl } from '../lib/ebay'
@@ -338,12 +338,29 @@ export default function Drivers() {
     return true
   })
 
-  // Auto-select first in filtered list when series changes
+  // Auto-select first in filtered list when series changes — DESKTOP ONLY.
+  // On mobile (where the detail is a slide-up drawer), don't auto-open the
+  // drawer — user expects to tap a driver to view details, and tapping Back
+  // would bounce them right back into the drawer if we auto-selected.
   useEffect(() => {
+    const isDesktop = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(min-width: 768px)').matches
+    if (!isDesktop) return
     if (filtered.length && (!selected || !filtered.find(d => d.driver_name === selected.driver_name))) {
       setSelected(filtered[0])
     }
   }, [series, drivers])
+
+  // Body-scroll lock while the mobile drawer is open
+  useEffect(() => {
+    if (!selected) return
+    const isDesktop = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(min-width: 768px)').matches
+    if (isDesktop) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [selected])
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -443,17 +460,33 @@ export default function Drivers() {
           </div>
         </div>
 
-        {/* Driver detail */}
+        {/* Driver detail — on mobile, slides up as a fullscreen drawer when a driver is selected.
+            On desktop, sits inline as flex-1 next to the list. */}
         {selected ? (
           (() => {
             const selTeamColor = selected.team_color || resolveTeamColor(selected.team)
             return (
+          <>
+            {/* Mobile drawer backdrop — tap to dismiss */}
+            <div
+              className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+              onClick={() => setSelected(null)}
+              aria-hidden="true"
+            />
           <div
-            className="flex-1 panel p-3 md:p-6 min-w-0 relative overflow-hidden"
+            className="fixed inset-x-0 bottom-0 top-12 z-50 overflow-y-auto bg-gray-950 rounded-t-3xl border-t border-gray-700 p-3 md:static md:flex-1 md:min-w-0 md:overflow-hidden md:bg-gray-900 md:rounded-2xl md:rounded-t-2xl md:border md:border-gray-800 md:border-t md:p-6"
             style={selTeamColor
               ? { borderTop: `3px solid ${selTeamColor}`, background: `linear-gradient(180deg, ${selTeamColor}10 0%, transparent 140px)` }
               : undefined}
           >
+            {/* Mobile-only Back button — sticky so it's visible while scrolling */}
+            <button
+              onClick={() => setSelected(null)}
+              className="md:hidden sticky top-0 z-10 -mx-3 -mt-3 mb-3 w-[calc(100%+1.5rem)] flex items-center gap-2 px-4 py-3 bg-gray-950/95 backdrop-blur border-b border-gray-800 text-white text-sm font-bold"
+              aria-label="Back to driver list"
+            >
+              <ChevronLeft size={18} /> Back to drivers
+            </button>
             <div className="flex items-start gap-3 md:gap-5 mb-4 md:mb-6 flex-wrap">
               <div
                 className="w-14 h-14 md:w-20 md:h-20 rounded-2xl overflow-hidden shrink-0 shadow-xl border-2"
@@ -676,10 +709,11 @@ export default function Drivers() {
               </div>
             )}
           </div>
+          </>
             )
           })()
         ) : (
-          <div className="flex-1 panel flex items-center justify-center py-24 text-gray-600">
+          <div className="hidden md:flex flex-1 panel items-center justify-center py-24 text-gray-600">
             <p className="text-sm">Select a driver</p>
           </div>
         )}
