@@ -1759,7 +1759,7 @@ def clear_ebay_cooldown(request: Request):
             db.commit()
         # Also clear in-process cache so the running instance picks it up.
         _ea._rate_limited_until = None
-        _ea._cooldown_loaded = True
+        _ea._cooldown_loaded_at = datetime.utcnow()
         db.close()
         return {"ok": True, "had_cooldown": had_cooldown, "previous_value": prev,
                 "message": "Cooldown cleared. eBay calls will resume on next request."}

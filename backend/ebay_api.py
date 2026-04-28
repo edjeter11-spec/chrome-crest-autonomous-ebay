@@ -137,7 +137,8 @@ async def get_oauth_token() -> Optional[str]:
 # In-process cache of cooldown timestamp. Persisted to DB on write so cold starts
 # see it; read from DB on first check per process.
 _rate_limited_until: Optional[datetime] = None
-_cooldown_loaded = False
+_cooldown_loaded_at: Optional[datetime] = None  # last DB read; re-read after 60s
+COOLDOWN_CACHE_TTL_SECS = 60
 
 
 def _track_api_call():
@@ -171,9 +172,12 @@ def _track_api_call():
 
 
 def _load_cooldown_from_db():
-    """Read persisted cooldown from system_state table. Safe to call repeatedly."""
-    global _rate_limited_until, _cooldown_loaded
-    if _cooldown_loaded:
+    """Read persisted cooldown from system_state table. Cached for 60s so we don't
+    hammer the DB, but the cache expires so admin /clear-ebay-cooldown propagates
+    across all Vercel instances within ~1 minute (was: never)."""
+    global _rate_limited_until, _cooldown_loaded_at
+    now = datetime.utcnow()
+    if _cooldown_loaded_at and (now - _cooldown_loaded_at).total_seconds() < COOLDOWN_CACHE_TTL_SECS:
         return
     try:
         from database import SessionLocal, SystemState
@@ -183,11 +187,14 @@ def _load_cooldown_from_db():
             try:
                 _rate_limited_until = datetime.fromisoformat(row.value)
             except Exception:
-                pass
+                _rate_limited_until = None
+        else:
+            # Row deleted (e.g. by /api/admin/clear-ebay-cooldown) — reset cache.
+            _rate_limited_until = None
         db.close()
     except Exception:
         pass
-    _cooldown_loaded = True
+    _cooldown_loaded_at = now
 
 
 def _is_rate_limited() -> bool:
@@ -215,9 +222,9 @@ def _mark_rate_limited_until_reset():
 
 def _mark_rate_limited(seconds: int = 600):
     """Suppress further eBay calls for `seconds` after a 429. Persists across cold starts."""
-    global _rate_limited_until, _cooldown_loaded
+    global _rate_limited_until, _cooldown_loaded_at
     _rate_limited_until = datetime.utcnow() + timedelta(seconds=seconds)
-    _cooldown_loaded = True
+    _cooldown_loaded_at = datetime.utcnow()
     try:
         from database import SessionLocal, SystemState
         db = SessionLocal()
