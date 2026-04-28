@@ -66,6 +66,7 @@ const DriverGuide = lazy(() => import('./pages/DriverGuide'))
 const RaceWeekend = lazy(() => import('./pages/RaceWeekend'))
 const ParallelLanding = lazy(() => import('./pages/ParallelLanding'))
 const AffiliateROI = lazy(() => import('./pages/AffiliateROI'))
+const AdminFeedback = lazy(() => import('./pages/AdminFeedback'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -110,6 +111,7 @@ export default function App() {
           <Route path="race-weekend" element={<Suspense fallback={<PageFallback />}><RaceWeekend /></Suspense>} />
           <Route path="parallels/:parallel" element={<Suspense fallback={<PageFallback />}><ParallelLanding /></Suspense>} />
           <Route path="affiliate-roi" element={<Suspense fallback={<PageFallback />}><AffiliateROI /></Suspense>} />
+          <Route path="admin/feedback" element={<Suspense fallback={<PageFallback />}><AdminFeedback /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>
