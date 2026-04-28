@@ -2,9 +2,11 @@
 import os
 import hashlib
 import logging
+from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db, ClickEvent
@@ -54,6 +56,62 @@ def _client_ip(request: Request) -> Optional[str]:
     if real:
         return real.strip()
     return request.client.host if request.client else None
+
+
+def _require_admin(x_admin_token: Optional[str] = Header(None)):
+    expected = os.getenv("ADMIN_TOKEN", "")
+    if not expected or x_admin_token != expected:
+        raise HTTPException(status_code=401, detail="admin only")
+
+
+@router.get("/stats")
+def click_stats(db: Session = Depends(get_db), _admin=Depends(_require_admin)):
+    """Admin-only affiliate click summary. Counts + by-day for the last 30 days
+    + top auctions by click volume + unique IP hashes (rough audience size)."""
+    now = datetime.utcnow()
+    cutoff_30 = now - timedelta(days=30)
+    cutoff_7 = now - timedelta(days=7)
+    cutoff_24h = now - timedelta(hours=24)
+
+    total_all = db.query(func.count(ClickEvent.id)).scalar() or 0
+    total_30d = db.query(func.count(ClickEvent.id)).filter(ClickEvent.clicked_at >= cutoff_30).scalar() or 0
+    total_7d = db.query(func.count(ClickEvent.id)).filter(ClickEvent.clicked_at >= cutoff_7).scalar() or 0
+    total_24h = db.query(func.count(ClickEvent.id)).filter(ClickEvent.clicked_at >= cutoff_24h).scalar() or 0
+    unique_ip_30d = db.query(func.count(func.distinct(ClickEvent.ip_hash))).filter(
+        ClickEvent.clicked_at >= cutoff_30,
+        ClickEvent.ip_hash.isnot(None),
+    ).scalar() or 0
+
+    # Per-day for last 30 days
+    by_day_rows = db.query(
+        func.date(ClickEvent.clicked_at).label("day"),
+        func.count(ClickEvent.id).label("n"),
+    ).filter(ClickEvent.clicked_at >= cutoff_30).group_by("day").order_by("day").all()
+    by_day = [{"day": str(r.day), "clicks": r.n} for r in by_day_rows]
+
+    # Top 10 auctions clicked in last 30 days
+    top_rows = db.query(
+        ClickEvent.auction_id,
+        func.count(ClickEvent.id).label("clicks"),
+    ).filter(
+        ClickEvent.clicked_at >= cutoff_30,
+        ClickEvent.auction_id.isnot(None),
+    ).group_by(ClickEvent.auction_id).order_by(func.count(ClickEvent.id).desc()).limit(10).all()
+    top_auctions = [{"auction_id": r.auction_id, "clicks": r.clicks} for r in top_rows]
+
+    return {
+        "ok": True,
+        "totals": {
+            "all_time": total_all,
+            "last_30d": total_30d,
+            "last_7d": total_7d,
+            "last_24h": total_24h,
+            "unique_visitors_30d": unique_ip_30d,
+        },
+        "daily": by_day,
+        "top_auctions_30d": top_auctions,
+        "as_of": now.isoformat(),
+    }
 
 
 @router.post("", status_code=204)
