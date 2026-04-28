@@ -91,6 +91,10 @@
       "schedule": "23 */4 * * *"
     },
     {
+      "path": "/api/audit/stale-prices",
+      "schedule": "3 7 * * *"
+    },
+    {
       "path": "/api/ebay/refresh",
       "schedule": "*/15 * * * *"
     },

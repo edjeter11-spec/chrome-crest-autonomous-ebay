@@ -1461,6 +1461,166 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
         return {"ok": False, "error": str(e)[:300]}
 
 
+@app.api_route("/api/audit/stale-prices", methods=["GET", "POST"])
+def audit_stale_prices(request: Request, db: Session = Depends(get_db)):
+    """
+    Server-side daily 7am audit. Replaces the session-only CronCreate version.
+    Walks active auctions, breaks down freshness, flags stale-premium ($50+,
+    >2h since refresh), posts a tight digest into the feedback inbox so Eddie
+    sees it next time he opens the inbox. Auth: ADMIN_TOKEN or vercel-cron UA.
+    """
+    import os as _os
+    from datetime import timedelta
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    now = datetime.utcnow()
+    rows = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.is_real_ebay == True,
+        Auction.end_time.isnot(None),
+        Auction.end_time > now,
+    ).order_by(Auction.end_time.asc()).limit(300).all()
+
+    fresh = {"<30m": 0, "<2h": 0, "<6h": 0, "<24h": 0, ">=24h": 0, "unknown": 0}
+    stale_premium: list[dict] = []
+    for a in rows:
+        lu = a.last_updated
+        price = float(a.current_price or 0)
+        if not lu:
+            fresh["unknown"] += 1
+            continue
+        age_h = (now - lu).total_seconds() / 3600.0
+        if age_h < 0.5: fresh["<30m"] += 1
+        elif age_h < 2: fresh["<2h"] += 1
+        elif age_h < 6: fresh["<6h"] += 1
+        elif age_h < 24: fresh["<24h"] += 1
+        else: fresh[">=24h"] += 1
+        if age_h > 2 and price >= 50:
+            stale_premium.append({
+                "age_h": round(age_h, 1),
+                "price": round(price),
+                "title": (a.title or "")[:55],
+            })
+    stale_premium.sort(key=lambda r: -r["age_h"])
+
+    n = len(rows)
+    pct_24h = (fresh[">=24h"] * 100 // n) if n else 0
+    lines = [
+        f"AUTO-AUDIT 7AM ({now.date().isoformat()})",
+        f"Sample: {n} active auctions",
+        f"Freshness: <30m={fresh['<30m']} <2h={fresh['<2h']} <6h={fresh['<6h']} <24h={fresh['<24h']} >=24h={fresh['>=24h']}",
+        f"Stale (>=24h): {pct_24h}%",
+        "",
+        f"Stale premium ($50+, >2h): {len(stale_premium)}",
+    ]
+    for r in stale_premium[:10]:
+        lines.append(f"  {r['age_h']:>5.1f}h | ${r['price']} | {r['title']}")
+    msg = "\n".join(lines)[:2000]
+
+    # Persist to feedback inbox so Eddie sees it next time he reviews.
+    try:
+        from database import UserFeedback
+        db.add(UserFeedback(message=msg, page_url="/auto-audit-7am", created_at=now))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": str(e)[:300], "report": msg}
+
+    return {
+        "ok": True,
+        "sample_size": n,
+        "freshness": fresh,
+        "stale_premium_count": len(stale_premium),
+        "report_preview": msg[:500],
+    }
+
+
+@app.api_route("/api/admin/backfill-sellers", methods=["GET", "POST"])
+async def backfill_sellers(request: Request, db: Session = Depends(get_db)):
+    """
+    One-shot batch: refresh seller name + feedback for active auctions where
+    seller is empty or the 'ebay_seller' placeholder. Hit repeatedly until
+    `remaining` returns 0. Same auth pattern as refresh endpoints.
+    """
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    from sqlalchemy import or_
+    from ebay_api import get_item_details as _get_item_details
+
+    rows = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.is_real_ebay == True,
+        Auction.ebay_listing_id.isnot(None),
+        or_(
+            Auction.seller.is_(None),
+            Auction.seller == "",
+            Auction.seller == "ebay_seller",
+            Auction.seller == "unknown",
+            Auction.seller == "unknown_seller",
+        ),
+    ).order_by(Auction.end_time.asc()).limit(80).all()
+
+    fixed = 0
+    ended = 0
+    errors = 0
+    for a in rows:
+        try:
+            item = await _get_item_details(a.ebay_listing_id)
+            if item is None:
+                a.status = "ended"
+                a.last_updated = datetime.utcnow()
+                ended += 1
+                continue
+            seller = (item.get("seller") or "").strip()
+            if seller and seller.lower() not in ("ebay_seller", "unknown", "unknown_seller"):
+                a.seller = seller
+                fb = item.get("seller_feedback_score")
+                if isinstance(fb, int) and fb > 0:
+                    a.seller_feedback = fb
+                a.last_updated = datetime.utcnow()
+                fixed += 1
+        except Exception as e:
+            errors += 1
+            logger.warning(f"backfill-sellers item {a.id}: {e}")
+    db.commit()
+
+    # Estimate remaining
+    remaining = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.is_real_ebay == True,
+        or_(
+            Auction.seller.is_(None),
+            Auction.seller == "",
+            Auction.seller == "ebay_seller",
+        ),
+    ).count()
+
+    return {
+        "ok": True,
+        "candidates_this_run": len(rows),
+        "fixed": fixed,
+        "ended": ended,
+        "errors": errors,
+        "remaining": remaining,
+        "message": f"Hit again — {remaining} rows still missing seller info" if remaining > 0 else "All done.",
+    }
+
+
 @app.api_route("/api/ebay/refresh-stale-premium", methods=["GET", "POST"])
 async def ebay_refresh_stale_premium(request: Request, db: Session = Depends(get_db)):
     """
