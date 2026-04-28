@@ -1710,6 +1710,43 @@ async def ebay_refresh_stale_premium(request: Request, db: Session = Depends(get
         return {"ok": False, "error": str(e)[:300]}
 
 
+@app.api_route("/api/admin/clear-ebay-cooldown", methods=["GET", "POST"])
+def clear_ebay_cooldown(request: Request):
+    """
+    Manually clear the eBay rate-limit cooldown. The Browse API auto-locks for
+    24h on a 429, which can lock the whole ingest pipeline for a full day.
+    Use sparingly — the cooldown exists for a reason. Auth: ADMIN_TOKEN or
+    vercel-cron UA.
+    """
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+    try:
+        from database import SessionLocal, SystemState
+        import ebay_api as _ea
+        db = SessionLocal()
+        row = db.query(SystemState).filter(SystemState.key == "ebay_rate_limited_until").first()
+        had_cooldown = bool(row and row.value)
+        prev = row.value if row else None
+        if row:
+            db.delete(row)
+            db.commit()
+        # Also clear in-process cache so the running instance picks it up.
+        _ea._rate_limited_until = None
+        _ea._cooldown_loaded = True
+        db.close()
+        return {"ok": True, "had_cooldown": had_cooldown, "previous_value": prev,
+                "message": "Cooldown cleared. eBay calls will resume on next request."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
 @app.api_route("/api/admin/migrate-feedback", methods=["GET", "POST"])
 def migrate_feedback_table(request: Request):
     """Create user_feedback table on Postgres if missing.
