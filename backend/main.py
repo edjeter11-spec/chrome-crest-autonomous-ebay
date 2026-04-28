@@ -1710,6 +1710,26 @@ async def ebay_refresh_stale_premium(request: Request, db: Session = Depends(get
         return {"ok": False, "error": str(e)[:300]}
 
 
+@app.api_route("/api/admin/debug-sync", methods=["GET", "POST"])
+async def debug_sync(request: Request, db: Session = Depends(get_db)):
+    """Run sync_real_ebay_listings with full instrumentation. Same auth pattern."""
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+    try:
+        from scraper import sync_real_ebay_listings
+        stats = await sync_real_ebay_listings(db, return_full_stats=True)
+        return {"ok": True, **stats}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:300]}
+
+
 @app.api_route("/api/admin/clear-ebay-cooldown", methods=["GET", "POST"])
 def clear_ebay_cooldown(request: Request):
     """

@@ -434,8 +434,9 @@ def _is_2025_f1_title(title: str) -> bool:
     return not any(b in t for b in bad)
 
 
-async def sync_real_ebay_listings(db: Session) -> int:
-    """Fetch live eBay listings and upsert into database. Returns count of new listings added."""
+async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
+    """Fetch live eBay listings and upsert into database. Returns count of new listings added.
+    Pass return_full_stats=True to get a dict with added + updated + fetched counts."""
     # Purge all non-2025 or ended auctions first
     stale = db.query(Auction).filter(Auction.status == "active").all()
     purged = 0
@@ -588,7 +589,9 @@ async def sync_real_ebay_listings(db: Session) -> int:
             ))
 
     db.commit()
-    logger.info(f"eBay sync: +{added} new, {updated} updated")
+    logger.info(f"eBay sync: +{added} new, {updated} updated, {len(listings)} fetched")
+    if return_full_stats:
+        return {"added": added, "updated": updated, "fetched": len(listings), "purged": purged}
     return added
 
 
