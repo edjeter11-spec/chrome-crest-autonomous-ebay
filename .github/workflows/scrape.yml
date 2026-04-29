@@ -2,9 +2,12 @@ name: Scrape eBay (Playwright)
 
 on:
   schedule:
-    # Every hour — cuts auction staleness from 3h → 1h. Stays under any quota
-    # because the scraper uses Playwright on the public site (not Browse API).
-    - cron: '0 * * * *'
+    # Every 6 hours (was hourly). Cost-tier change: at hourly the Playwright
+    # scraper alone burns ~720 runs × ~10min = 120hrs/month, blowing the GH
+    # Free 500-min/mo private-repo cap by 14×. At every-6h it's ~5hrs/month,
+    # well under free tier. eBay auctions have multi-day lifespans so 6h
+    # cadence is plenty for tracking purposes.
+    - cron: '13 */6 * * *'
   workflow_dispatch:  # manual trigger from the Actions tab
 
 jobs:

@@ -2,8 +2,9 @@ name: Data Scrape (Tier-A sources + blocked retries)
 
 on:
   schedule:
-    # Every 6 hours
-    - cron: '15 */6 * * *'
+    # Daily 04:15 UTC (was every 6h). Cost-tier cut: 4 runs/day × ~60min
+    # was burning ~120hrs/mo. Daily run is ~30hrs/mo, fits GH Free.
+    - cron: '15 4 * * *'
   workflow_dispatch:
 
 jobs:

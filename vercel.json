@@ -76,11 +76,15 @@
   "crons": [
     {
       "path": "/api/cron/sync",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/ebay/refresh",
+      "schedule": "30 * * * *"
     },
     {
       "path": "/api/sniper/check",
-      "schedule": "0 * * * *"
+      "schedule": "15 */4 * * *"
     },
     {
       "path": "/api/ebay/refresh-top-page",
@@ -91,24 +95,20 @@
       "schedule": "23 */8 * * *"
     },
     {
+      "path": "/api/cron/scrape-free",
+      "schedule": "45 */2 * * *"
+    },
+    {
+      "path": "/api/cleanup/card-lots",
+      "schedule": "5 5 * * *"
+    },
+    {
       "path": "/api/audit/stale-prices",
       "schedule": "3 7 * * *"
     },
     {
       "path": "/api/audit/morning-check",
       "schedule": "33 7 * * *"
-    },
-    {
-      "path": "/api/ebay/refresh",
-      "schedule": "*/30 * * * *"
-    },
-    {
-      "path": "/api/cron/scrape-free",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/cleanup/card-lots",
-      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/psa/snapshot",

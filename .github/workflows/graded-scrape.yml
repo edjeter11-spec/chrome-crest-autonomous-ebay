@@ -2,8 +2,9 @@ name: Graded Scrape (Goldin + PWCC + MySlabs)
 
 on:
   schedule:
-    # Every 12 hours
-    - cron: '0 */12 * * *'
+    # Twice weekly (Mon + Thu 02:00 UTC). Auction-house sales don't move
+    # daily — twice/week is ample, fits well inside GH Free tier.
+    - cron: '0 2 * * 1,4'
   workflow_dispatch:
 
 jobs:
