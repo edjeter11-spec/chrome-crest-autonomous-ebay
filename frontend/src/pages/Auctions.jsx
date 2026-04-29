@@ -66,11 +66,14 @@ export default function Auctions() {
   const [auctions, setAuctions] = useState([])
   const [loading, setLoading] = useState(true)
   // Persisted filter state (localStorage-backed — fail-gracefully)
-  const [filters, setFilters] = usePersistedState('cc_filters_auctions_v3', {
+  // v4: Premium default OFF (was ON) — current inventory has very few
+  // $100+ rows so the page rendered empty for most visitors. Users can
+  // opt in via the 💎 Premium pill if they want power-user filtering.
+  const [filters, setFilters] = usePersistedState('cc_filters_auctions_v4', {
     search: '', sortBy: 'ending', filterParallel: 'No Base', printRun: 'Any',
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
     filterRookie: false, formulaType: 'F1', teamFilter: 'All',
-    filterStrongBuy: false, autoVariant: 'Any', filterPremium: true,
+    filterStrongBuy: false, autoVariant: 'Any', filterPremium: false,
   })
   const setF = (patch) => setFilters(prev => ({ ...prev, ...patch }))
   const { search, sortBy, filterParallel, printRun, listingType,

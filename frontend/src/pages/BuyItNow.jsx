@@ -85,7 +85,10 @@ export default function BuyItNow() {
   const [filterRookie, setFilterRookie] = useState(false)
   const [filterBestOffer, setFilterBestOffer] = useState(false)
   const [filterStrongBuy, setFilterStrongBuy] = useState(false)
-  const [filterPremium, setFilterPremium] = useState(true)
+  // Premium default OFF (was ON, $150+) — only 4 rows >=$150 in current
+  // inventory and all were Base parallel; combined with No-Base default
+  // the page rendered empty for everyone.
+  const [filterPremium, setFilterPremium] = useState(false)
   const [formulaType, setFormulaType] = useState('F1')
   const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
