@@ -1816,6 +1816,78 @@ async def ebay_refresh_stale_premium(request: Request, db: Session = Depends(get
         return {"ok": False, "error": str(e)[:300]}
 
 
+@app.api_route("/api/admin/finding-active-ingest", methods=["GET", "POST"])
+async def finding_active_ingest(request: Request, db: Session = Depends(get_db)):
+    """
+    Synchronous Finding API ingest for ACTIVE listings — bypasses the Browse
+    API daily quota by using the legacy findItemsAdvanced endpoint
+    (separate quota, less prone to exhaustion).
+
+    Runs a small driver x parallel matrix inline so Vercel's 10s function
+    timeout doesn't kill it. Hit repeatedly to expand coverage.
+
+    Auth: ADMIN_TOKEN or vercel-cron UA.
+    """
+    import os as _os
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    try:
+        from ebay_finding_api import fetch_active_for_query
+        from sold_ingest import _upsert_active_item
+    except Exception as e:
+        return {"ok": False, "error": f"import failed: {e}"}
+
+    queries = request.query_params.get("queries")
+    if queries:
+        query_list = [q.strip() for q in queries.split(",") if q.strip()]
+    else:
+        # Default: top 4 drivers each with the broadest 2025 search.
+        # Each query returns up to 100 listings of any buying type.
+        query_list = [
+            "2025 Topps Chrome F1 Verstappen",
+            "2025 Topps Chrome F1 Hamilton",
+            "2025 Topps Chrome F1 Norris",
+            "2025 Topps Chrome F1 Leclerc",
+            "2025 Topps Chrome Formula 1 auto",
+            "2025 Topps Chrome F1 refractor",
+        ]
+
+    added = 0
+    updated = 0
+    errors: list[str] = []
+    for q in query_list:
+        try:
+            items = await fetch_active_for_query(q, pages=1)
+            for item in items:
+                r = await _upsert_active_item(item, db)
+                if r == "added":
+                    added += 1
+                elif r == "updated":
+                    updated += 1
+        except Exception as e:
+            errors.append(f"{q}: {str(e)[:120]}")
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": f"commit: {str(e)[:200]}"}
+
+    return {
+        "ok": True,
+        "queries_run": len(query_list),
+        "added": added,
+        "updated": updated,
+        "errors": errors[:5],
+    }
+
+
 @app.api_route("/api/admin/debug-sync", methods=["GET", "POST"])
 async def debug_sync(request: Request, db: Session = Depends(get_db)):
     """Run sync_real_ebay_listings with full instrumentation. Same auth pattern."""
