@@ -522,9 +522,9 @@ async def get_item_details(item_id: str) -> Optional[dict]:
                     else:
                         logger.error(
                             f"eBay item details 429/503 exhausted retries on {item_id} "
-                            f"— entering cooldown until next daily reset"
+                            f"— 10min cooldown (was: until next daily reset)"
                         )
-                        _mark_rate_limited_until_reset()
+                        _mark_rate_limited(seconds=600)
                         return None
 
                 else:
