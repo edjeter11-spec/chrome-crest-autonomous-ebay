@@ -456,17 +456,42 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
             added = upsert_auction(conn, rows)
             total_added += added
             log.info(f"  → {added} {mode} rows upserted")
-        time.sleep(2)
+        # 12s between queries — fires eBay's per-IP rate detector at the old
+        # 2s pace which triggered "Pardon Our Interruption" bot-challenge
+        # pages on every active-listing query.
+        time.sleep(12)
     return total_seen, total_added
 
 
 def scrape_search_page(page, url: str):
-    """Return list of dicts: title, price, url, image, sale_date_text."""
+    """Return list of dicts: title, price, url, image, sale_date_text.
+
+    Bot-challenge handling: when eBay serves "Pardon Our Interruption", we
+    were waiting 8s and then re-checking the selector. That doesn't work —
+    the challenge is a separate page, not a delay. Now: detect challenge,
+    sleep 30s (cools eBay's per-IP rate counter), navigate to eBay home to
+    establish a 'normal' session, then retry the original URL once.
+    """
     page.goto(url, wait_until="domcontentloaded", timeout=45000)
     title = page.title() or ""
     if "Pardon" in title or "interruption" in title.lower():
-        log.warning(f"Bot challenge: {title}")
-        page.wait_for_timeout(8000)
+        log.warning(f"Bot challenge: {title} — cooling 30s then retrying")
+        page.wait_for_timeout(30000)
+        try:
+            page.goto("https://www.ebay.com/", wait_until="domcontentloaded", timeout=20000)
+            page.wait_for_timeout(3000)
+        except Exception:
+            pass
+        # Retry the original URL
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            title = page.title() or ""
+            if "Pardon" in title or "interruption" in title.lower():
+                log.warning(f"Bot challenge persisted after retry — skipping {url[:80]}")
+                return []
+        except Exception as e:
+            log.warning(f"Retry navigation failed: {e}")
+            return []
     try:
         page.wait_for_selector(
             "li.s-item, .s-item__wrapper, .srp-results, .su-card-container, .s-card",
