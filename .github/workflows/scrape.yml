@@ -23,10 +23,26 @@ jobs:
           python-version: '3.11'
           cache: pip
 
-      - name: Install dependencies
+      # Cache the ~150MB Chromium browser binary — saves ~90s per run vs.
+      # downloading fresh. Key on Python version since Playwright pins
+      # browser to its Python wheel version.
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-chromium-py3.11-v1
+
+      - name: Install Python deps
+        run: pip install playwright tf-playwright-stealth psycopg2-binary
+
+      - name: Install Playwright (system deps + browser if uncached)
         run: |
-          pip install playwright tf-playwright-stealth psycopg2-binary
-          playwright install chromium --with-deps
+          if [ -d ~/.cache/ms-playwright/chromium-* ]; then
+            playwright install-deps chromium
+          else
+            playwright install chromium --with-deps
+          fi
 
       - name: Run scraper
         env:
