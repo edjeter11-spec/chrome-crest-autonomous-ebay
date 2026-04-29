@@ -84,11 +84,11 @@
     },
     {
       "path": "/api/ebay/refresh-top-page",
-      "schedule": "0 * * * *"
+      "schedule": "0 */4 * * *"
     },
     {
       "path": "/api/ebay/refresh-stale-premium",
-      "schedule": "23 */4 * * *"
+      "schedule": "23 */8 * * *"
     },
     {
       "path": "/api/audit/stale-prices",
@@ -100,7 +100,7 @@
     },
     {
       "path": "/api/ebay/refresh",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/scrape-free",

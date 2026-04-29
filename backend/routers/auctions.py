@@ -462,31 +462,38 @@ async def get_seller_info(auction_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{auction_id}/refresh")
-async def refresh_listing_status(auction_id: int, db: Session = Depends(get_db)):
+async def refresh_listing_status(
+    auction_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     """
-    Fetch fresh listing status from eBay to detect real-time changes
-    (auction ended, price updated, bid count changed).
-
-    Called by frontend when user notices a listing is stale or approaching expiry.
-    Returns updated auction data + expiry status.
+    Fetch fresh listing status from eBay. Browse API quota saver:
+      1. If the auction was last_updated < 5 min ago, return DB row WITHOUT
+         hitting eBay (BiggestSnipes' auto-refresh fires every 10min for ~12
+         visible cards; without this gate every dashboard view burns 12+
+         Browse API calls).
+      2. CDN cache the response 60s with stale-while-revalidate=300 so even
+         multiple users viewing the same dashboard share one upstream call.
     """
+    from datetime import timedelta
     a = db.query(Auction).filter(Auction.id == auction_id).first()
     if not a:
         raise HTTPException(404, "Auction not found")
 
-    # Optionally refresh from eBay API if it's a real listing
-    if a.is_real_ebay and a.ebay_listing_id:
+    # Quota guard: skip eBay if the row is fresh enough.
+    fresh_skip = False
+    if a.last_updated and (datetime.utcnow() - a.last_updated) < timedelta(minutes=5):
+        fresh_skip = True
+
+    if not fresh_skip and a.is_real_ebay and a.ebay_listing_id:
         try:
             from ebay_api import get_item_details
             item = await get_item_details(a.ebay_listing_id)
             if item:
-                # Update auction fields from fresh eBay data
                 a.current_price = item.get("current_price", a.current_price)
                 a.bid_count = item.get("bid_count", a.bid_count)
                 a.buying_options = json.dumps(item.get("buying_options", []))
-                # Backfill seller info — many older rows have placeholder
-                # "ebay_seller" or empty. Only overwrite when we get a real
-                # username back, never blank out a previously-good value.
                 fresh_seller = (item.get("seller") or "").strip()
                 if fresh_seller and fresh_seller.lower() not in ("ebay_seller", "unknown", "unknown_seller"):
                     a.seller = fresh_seller
@@ -496,8 +503,11 @@ async def refresh_listing_status(auction_id: int, db: Session = Depends(get_db))
                 a.last_updated = datetime.utcnow()
                 db.commit()
         except Exception:
-            # If eBay API fails, just return DB data
             pass
+
+    # Vercel CDN cache: 60s fresh, 5min stale-while-revalidate. Repeated hits
+    # within the same minute share one origin response.
+    response.headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300"
 
     data = auction_to_dict(a)
     now = datetime.utcnow()
