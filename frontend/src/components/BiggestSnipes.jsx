@@ -206,8 +206,11 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
 
   const items = useMemo(() => {
     const FRESH_MS = 2 * 60 * 60 * 1000
+    // 12h window (was 6h) — current eBay F1 market has very few auctions
+    // ending in <6h (only ~1 at any time). 12h captures ~3-5 typically and
+    // keeps a real sense of urgency without rendering empty.
     return (auctions || [])
-      .filter(a => isBigSnipe(a, 6 * 3600))
+      .filter(a => isBigSnipe(a, 12 * 3600))
       .filter(a => {
         if (!a.last_updated) return true
         const updated = new Date(a.last_updated + 'Z').getTime()
@@ -233,10 +236,11 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
   // soonest so the high-value ones still float to the top.
   const nextBig = useMemo(() => {
     const inItems = new Set(items.map(a => a.id))
+    // BiggestSnipes' items now uses 12h, so NextBig kicks in at 12h-72h
     return (auctions || [])
       .filter(a => {
         const secs = secsLeft(a)
-        if (secs <= 6 * 3600 || secs > 48 * 3600) return false
+        if (secs <= 12 * 3600 || secs > 72 * 3600) return false
         const parallel = a.card?.parallel || a.parallel || ''
         if (BORING_PARALLELS.has(parallel)) return false
         const price = a.current_price || 0

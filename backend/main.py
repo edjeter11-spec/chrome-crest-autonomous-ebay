@@ -1500,36 +1500,55 @@ async def audit_auto_fix(request: Request, db: Session = Depends(get_db)):
     actions: list[str] = []
     errors: list[str] = []
 
-    # 1. Refresh stale-premium auctions
+    # 1. Refresh stale auctions — TWO passes, prioritize $50+ first.
     try:
         from ebay_api import get_item_details as _get_item_details
+        from sqlalchemy import or_
         cutoff = now - timedelta(hours=2)
-        stale = db.query(Auction).filter(
+
+        async def _refresh_batch(query, label):
+            r, e = 0, 0
+            for a in query.all():
+                try:
+                    item = await _get_item_details(a.ebay_listing_id)
+                    if item is None:
+                        a.status = "ended"
+                        a.last_updated = now
+                        e += 1
+                        continue
+                    a.current_price = item.get("current_price", a.current_price)
+                    a.bid_count = item.get("bid_count", a.bid_count)
+                    a.last_updated = now
+                    r += 1
+                except Exception:
+                    pass
+            return r, e
+
+        # Pass A: stale PREMIUM ($50+) — these matter most
+        prem_q = db.query(Auction).filter(
             Auction.status == "active",
             Auction.is_real_ebay == True,
             Auction.ebay_listing_id.isnot(None),
             Auction.end_time.isnot(None),
             Auction.end_time > now,
             Auction.last_updated < cutoff,
-        ).order_by(Auction.last_updated.asc()).limit(60).all()
-        refreshed = 0
-        ended = 0
-        for a in stale:
-            try:
-                item = await _get_item_details(a.ebay_listing_id)
-                if item is None:
-                    a.status = "ended"
-                    a.last_updated = now
-                    ended += 1
-                    continue
-                a.current_price = item.get("current_price", a.current_price)
-                a.bid_count = item.get("bid_count", a.bid_count)
-                a.last_updated = now
-                refreshed += 1
-            except Exception:
-                pass
+            Auction.current_price >= 50.0,
+        ).order_by(Auction.last_updated.asc()).limit(40)
+        pa_ref, pa_end = await _refresh_batch(prem_q, "premium")
+
+        # Pass B: stale anything else (catches the long-tail cheap cards)
+        any_q = db.query(Auction).filter(
+            Auction.status == "active",
+            Auction.is_real_ebay == True,
+            Auction.ebay_listing_id.isnot(None),
+            Auction.end_time.isnot(None),
+            Auction.end_time > now,
+            Auction.last_updated < cutoff,
+        ).order_by(Auction.last_updated.asc()).limit(40)
+        pb_ref, pb_end = await _refresh_batch(any_q, "any")
+
         db.commit()
-        actions.append(f"Refreshed {refreshed} stale auctions, marked {ended} ended")
+        actions.append(f"Refreshed premium={pa_ref} (ended {pa_end}), other={pb_ref} (ended {pb_end})")
     except Exception as e:
         errors.append(f"refresh_stale: {str(e)[:120]}")
 
