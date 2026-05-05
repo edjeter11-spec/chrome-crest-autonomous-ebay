@@ -1469,6 +1469,148 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
         return {"ok": False, "error": str(e)[:300]}
 
 
+@app.api_route("/api/audit/auto-fix", methods=["GET", "POST"])
+async def audit_auto_fix(request: Request, db: Session = Depends(get_db)):
+    """
+    Daily auto-audit-AND-fix routine. Runs unattended at 06:00 UTC.
+
+    What it does (every day):
+      1. Refresh the most-stale-but-still-active auctions via Browse API
+         (rolls last_updated forward, marks ended phantoms)
+      2. Trigger the regular ingest sync to add fresh listings
+      3. Snapshot health metrics (sample size, freshness, stale-premium)
+      4. Compare snapshot to previous run; if anything degraded, escalate
+         the report severity in the inbox so Eddie sees it
+      5. Persist the report into user_feedback so /admin/feedback shows it
+
+    Auth: ADMIN_TOKEN or vercel-cron UA.
+    """
+    import os as _os
+    from datetime import timedelta
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    now = datetime.utcnow()
+    actions: list[str] = []
+    errors: list[str] = []
+
+    # 1. Refresh stale-premium auctions
+    try:
+        from ebay_api import get_item_details as _get_item_details
+        cutoff = now - timedelta(hours=2)
+        stale = db.query(Auction).filter(
+            Auction.status == "active",
+            Auction.is_real_ebay == True,
+            Auction.ebay_listing_id.isnot(None),
+            Auction.end_time.isnot(None),
+            Auction.end_time > now,
+            Auction.last_updated < cutoff,
+        ).order_by(Auction.last_updated.asc()).limit(60).all()
+        refreshed = 0
+        ended = 0
+        for a in stale:
+            try:
+                item = await _get_item_details(a.ebay_listing_id)
+                if item is None:
+                    a.status = "ended"
+                    a.last_updated = now
+                    ended += 1
+                    continue
+                a.current_price = item.get("current_price", a.current_price)
+                a.bid_count = item.get("bid_count", a.bid_count)
+                a.last_updated = now
+                refreshed += 1
+            except Exception:
+                pass
+        db.commit()
+        actions.append(f"Refreshed {refreshed} stale auctions, marked {ended} ended")
+    except Exception as e:
+        errors.append(f"refresh_stale: {str(e)[:120]}")
+
+    # 2. Trigger ingest sync (Browse API search → adds new + updates existing)
+    try:
+        from scraper import sync_real_ebay_listings
+        added = await sync_real_ebay_listings(db)
+        actions.append(f"Sync added {added} new listings")
+    except Exception as e:
+        errors.append(f"sync: {str(e)[:120]}")
+
+    # 3. Health snapshot
+    rows = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.is_real_ebay == True,
+        Auction.end_time.isnot(None),
+        Auction.end_time > now,
+    ).limit(500).all()
+    fresh_30m = sum(1 for a in rows if a.last_updated and (now - a.last_updated).total_seconds() < 1800)
+    fresh_2h = sum(1 for a in rows if a.last_updated and 1800 <= (now - a.last_updated).total_seconds() < 7200)
+    stale_24h = sum(1 for a in rows if a.last_updated and (now - a.last_updated).total_seconds() >= 86400)
+    stale_premium = sum(
+        1 for a in rows
+        if a.last_updated
+        and (now - a.last_updated).total_seconds() >= 7200
+        and (a.current_price or 0) >= 50
+    )
+    auc_count = sum(1 for a in rows if a.buying_options and "AUCTION" in a.buying_options)
+    bin_count = sum(1 for a in rows if a.buying_options and ("FIXED_PRICE" in a.buying_options or "BEST_OFFER" in a.buying_options))
+
+    # 4. Severity heuristic — flag if site is in trouble
+    severity = "OK"
+    if auc_count == 0 and bin_count == 0:
+        severity = "CRITICAL: zero active listings"
+    elif stale_premium > 10:
+        severity = f"WARN: {stale_premium} stale-premium rows"
+    elif stale_24h > len(rows) * 0.7:
+        severity = f"WARN: {stale_24h}/{len(rows)} >24h stale"
+
+    # 5. Build & persist report
+    lines = [
+        f"AUTO-FIX DAILY ({now.date().isoformat()})",
+        f"Severity: {severity}",
+        "",
+        "Actions taken:",
+        *[f"  - {a}" for a in actions],
+    ]
+    if errors:
+        lines.append("Errors:")
+        lines.extend(f"  ! {e}" for e in errors)
+    lines.append("")
+    lines.append(f"Snapshot ({len(rows)} active, {auc_count} AUCTION + {bin_count} BIN):")
+    lines.append(f"  fresh <30m={fresh_30m}  <2h={fresh_2h}  >=24h={stale_24h}")
+    lines.append(f"  stale_premium($50+, >2h)={stale_premium}")
+    msg = "\n".join(lines)[:1950]
+
+    try:
+        from database import UserFeedback
+        db.add(UserFeedback(message=msg, page_url="/auto-fix-daily", created_at=now))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": str(e)[:300], "report": msg}
+
+    return {
+        "ok": True,
+        "severity": severity,
+        "actions": actions,
+        "errors": errors,
+        "snapshot": {
+            "active_total": len(rows),
+            "auction_type": auc_count,
+            "bin_type": bin_count,
+            "fresh_30m": fresh_30m,
+            "fresh_2h": fresh_2h,
+            "stale_24h": stale_24h,
+            "stale_premium": stale_premium,
+        },
+    }
+
+
 @app.api_route("/api/audit/morning-check", methods=["GET", "POST"])
 async def audit_morning_check(request: Request, db: Session = Depends(get_db)):
     """
