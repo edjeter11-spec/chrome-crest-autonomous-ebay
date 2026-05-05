@@ -207,14 +207,40 @@ def extract_ebay_item_id(url: str):
 # --- DB ---
 
 def get_conn():
-    return psycopg2.connect(DB_URL)
+    """Connect with TCP keepalives so Neon doesn't drop the SSL connection
+    while the Playwright scraper sits idle between page loads. Was crashing
+    every multi-minute run with 'SSL connection has been closed unexpectedly'."""
+    return psycopg2.connect(
+        DB_URL,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5,
+        connect_timeout=10,
+    )
+
+
+def _ensure_conn(conn):
+    """Re-open the connection if it's been closed by the server. Returns a
+    live connection (may be the original)."""
+    try:
+        if conn.closed:
+            return get_conn()
+        # Cheap health check
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        return conn
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return get_conn()
 
 
 def upsert_sold(conn, rows):
     if not rows:
-        return 0
-    # Try the new schema (with shipping_cost). Fall back to the legacy schema
-    # so a partially-migrated DB still works.
+        return 0, conn
     sql = """
         INSERT INTO sold_cards (
             ebay_item_id, title, driver_name, parallel, grade, condition,
@@ -230,14 +256,34 @@ def upsert_sold(conn, rows):
     """
     now = datetime.utcnow()
     stamped = [r + ("eBay", now) for r in rows]
+    # Heal connection if it dropped while we were scraping
+    conn = _ensure_conn(conn)
     try:
         with conn.cursor() as cur:
             execute_values(cur, sql, stamped)
         conn.commit()
-        return len(rows)
+        return len(rows), conn
+    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        # SSL drop / connection closed — reconnect and retry once
+        log.warning(f"DB connection lost ({str(e)[:80]}); reconnecting + retrying")
+        try: conn.close()
+        except Exception: pass
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                execute_values(cur, sql, stamped)
+            conn.commit()
+            return len(rows), conn
+        except Exception as e2:
+            log.error(f"Retry after reconnect also failed: {str(e2)[:120]}")
+            try: conn.rollback()
+            except Exception: pass
+            return 0, conn
     except Exception as e:
-        # Schema drift fallback
-        conn.rollback()
+        try:
+            conn.rollback()
+        except Exception:
+            conn = get_conn()
         log.warning(f"Full-schema insert failed ({str(e)[:80]}); retrying without shipping_cost")
         legacy_sql = """
             INSERT INTO sold_cards (
@@ -255,7 +301,7 @@ def upsert_sold(conn, rows):
         with conn.cursor() as cur:
             execute_values(cur, legacy_sql, legacy)
         conn.commit()
-        return len(rows)
+        return len(rows), conn
 
 
 # --- Scraper ---
@@ -339,10 +385,25 @@ def upsert_auction(conn, rows):
             last_updated = NOW(),
             status = 'active'
     """
-    with conn.cursor() as cur:
-        execute_values(cur, sql, rows)
-    conn.commit()
-    return len(rows)
+    conn = _ensure_conn(conn)
+    try:
+        with conn.cursor() as cur:
+            execute_values(cur, sql, rows)
+        conn.commit()
+        return len(rows)
+    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        log.warning(f"DB connection lost on auctions upsert ({str(e)[:80]}); reconnecting + retrying")
+        try: conn.close()
+        except Exception: pass
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                execute_values(cur, sql, rows)
+            conn.commit()
+            return len(rows)
+        except Exception as e2:
+            log.error(f"Auctions retry after reconnect also failed: {str(e2)[:120]}")
+            return 0
 
 
 def get_default_card_id(conn) -> int:
@@ -731,7 +792,7 @@ def main():
                 ))
 
             if rows:
-                added = upsert_sold(conn, rows)
+                added, conn = upsert_sold(conn, rows)
                 total_added += added
                 log.info(f"  → {added} sold rows upserted (skipped {skipped_not_sold} non-sold)")
             elif skipped_not_sold:
