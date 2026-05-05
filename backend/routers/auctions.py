@@ -330,14 +330,25 @@ async def refresh_stale_listings(request: Request, db: Session = Depends(get_db)
 
 @router.get("/snipe/targets")
 def snipe_targets(db: Session = Depends(get_db)):
-    now = datetime.utcnow()
     from datetime import timedelta
-    targets = db.query(Auction).filter(
+    now = datetime.utcnow()
+    # Try snipe_eligible first (best signal). If <5 results, fall back to top
+    # active auctions by snipe_score — prevents dashboard showing "0 snipes"
+    # when the scorer hasn't run or flagged few rows.
+    eligible = db.query(Auction).filter(
         Auction.status == "active",
         Auction.snipe_eligible == True,
         Auction.end_time > now,
     ).order_by(Auction.snipe_score.desc()).limit(20).all()
-    return {"targets": [auction_to_dict(a) for a in targets]}
+    if len(eligible) >= 5:
+        return {"targets": [auction_to_dict(a) for a in eligible]}
+    # Fallback: top active auctions ending within 48h, any score.
+    fallback = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.end_time > now,
+        Auction.end_time <= now + timedelta(hours=48),
+    ).order_by(Auction.snipe_score.desc().nullslast(), Auction.end_time.asc()).limit(20).all()
+    return {"targets": [auction_to_dict(a) for a in fallback]}
 
 
 @router.get("/watchlist/all")

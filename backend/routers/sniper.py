@@ -554,64 +554,58 @@ def import_rules(
 
 @router.get("/fresh-snipes/{limit}")
 def get_fresh_snipes(limit: int = 6, db: Session = Depends(get_db)):
-    """Public: return top N "snipe-worthy" auctions with fresh eBay lookups.
+    """Public: return top N snipe-worthy auctions from DB (no eBay API calls).
 
-    Pulls active auctions that are either ending within 12h OR already flagged
-    snipe_eligible by the scorer. Drops base / clearly-boring parallels and very
-    low value non-rare listings. Loosened vs the prior 6h+rare-parallel gate so
-    the Dashboard counter keeps up when price drops or end_time updates lag.
+    Previously made a live eBay Browse API call per-candidate (50+ calls),
+    which always timed out the 5s dashboard fetch. Now uses DB data only —
+    sub-100ms response, no quota burn.
     """
-    import asyncio
-    from ebay_api import get_item_details
+    from sqlalchemy.orm import joinedload
 
     BORING_PARALLELS = {"Base", "B&W Ray Wave", "B&W Lazer", "Floor It", "Four & More"}
-    RARE_PRINT_RE = r"/(5|10|15|20|25|50|75|99|150|199|250|299)\b"
+    RARE_PRINT_RE = re.compile(r"/(5|10|15|20|25|50|75|99|150|199|250|299)\b")
+    AUTO_RE = re.compile(r"\bauto(graph)?\b|\bsigned\b", re.IGNORECASE)
 
     now = datetime.utcnow()
-    window = now + timedelta(hours=12)
-    auctions = db.query(Auction).filter(
-        Auction.status == "active",
-        Auction.end_time > now,
-    ).filter(
-        # Either ending soon-ish OR already flagged eligible by the scorer.
-        (Auction.end_time <= window) | (Auction.snipe_eligible == True)
-    ).all()
+    window = now + timedelta(hours=24)
+
+    rows = (
+        db.query(Auction)
+        .options(joinedload(Auction.card))
+        .filter(
+            Auction.status == "active",
+            Auction.end_time > now,
+            (Auction.end_time <= window) | (Auction.snipe_eligible == True),
+        )
+        .order_by(Auction.end_time.asc())
+        .limit(300)
+        .all()
+    )
 
     candidates = []
-    for a in auctions:
-        # Skip boring parallels
-        parallel = a.card.parallel if a.card else ""
+    for a in rows:
+        parallel = (a.card.parallel if a.card else "") or ""
+        title = (a.title or "").lower()
+        price = a.current_price or 0
+
         if parallel in BORING_PARALLELS:
             continue
-
-        price = a.current_price or 0
-        title = (a.title or "").lower()
-
-        # Skip very-low-value unless rare print run or autograph
-        if price < 10 and not re.search(RARE_PRINT_RE, title) and "auto" not in title:
+        # Empty parallel = Base/unknown. Only keep if auto or rare print run.
+        if not parallel and not AUTO_RE.search(title) and not RARE_PRINT_RE.search(title):
             continue
-
-        # Attempt fresh fetch to get real-time bid info
-        if a.ebay_listing_id:
-            try:
-                fresh = asyncio.run(get_item_details(a.ebay_listing_id))
-                if fresh:
-                    a.current_price = fresh.get("current_price", price)
-                    a.shipping_cost = fresh.get("shipping_cost", a.shipping_cost or 0)
-                    a.end_time = fresh.get("end_time", a.end_time)
-            except Exception as e:
-                log.debug(f"fresh fetch {a.ebay_listing_id}: {e}")
+        if price < 5 and not RARE_PRINT_RE.search(title) and not AUTO_RE.search(title):
+            continue
 
         candidates.append(a)
 
-    # Sort by verdict > score > time remaining
-    def score_key(a):
-        v = a.verdict or ""
-        rank = 2 if v == "STRONG_BUY" else (1 if v == "GOOD_BUY" else 0)
-        secs_left = max(0, (a.end_time - datetime.utcnow()).total_seconds()) if a.end_time else 0
-        return (-rank, -(a.snipe_score or 0), secs_left)
+    # Sort: snipe_eligible first, then by score desc, then ending soonest.
+    candidates.sort(key=lambda a: (
+        0 if a.snipe_eligible else 1,
+        -(a.snipe_score or 0),
+        (a.end_time - now).total_seconds() if a.end_time else 999999,
+    ))
 
-    sorted_auctions = sorted(candidates, key=score_key)[:limit]
+    top = candidates[:limit]
 
     return {
         "status": "ok",
@@ -623,12 +617,16 @@ def get_fresh_snipes(limit: int = 6, db: Session = Depends(get_db)):
                 "current_price": a.current_price,
                 "shipping_cost": a.shipping_cost,
                 "end_time": a.end_time.isoformat() if a.end_time else None,
+                "buying_options": json.loads(a.buying_options) if a.buying_options else [],
                 "driver_name": a.card.driver_name if a.card else None,
                 "parallel": a.card.parallel if a.card else None,
-                "verdict": a.verdict,
                 "snipe_score": a.snipe_score,
-                "median_price": a.median_price,
+                "snipe_eligible": a.snipe_eligible,
+                "ebay_url": a.ebay_url,
+                "image_url": a.image_url,
+                "bid_count": a.bid_count,
+                "last_updated": a.last_updated.isoformat() if a.last_updated else None,
             }
-            for a in sorted_auctions
+            for a in top
         ],
     }

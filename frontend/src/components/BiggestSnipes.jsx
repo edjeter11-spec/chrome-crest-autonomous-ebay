@@ -46,15 +46,16 @@ function isBigSnipe(a, maxSecs) {
   if (BORING_PARALLELS.has(parallel)) return false
   if (/\bb\s*&\s*w\b|black\s*&\s*white|floor it|four & more/.test(title)) return false
 
-  // Old: price >= 100 OR autograph OR rare print run OR STRONG_BUY only.
-  // Reality check: most current ending-soon F1 auctions are $1-10. Let any
-  // non-base auction with at least $5 OR a single bid count as snipe-worthy
-  // — the filter exists to drop sealed boxes / lots / pure-base, not to
-  // gatekeep so hard the section renders empty.
+  // Always pass: high-value, auto, rare print run, or strong verdict.
   if (price >= 100) return true
   if (/\bauto(graph)?\b|\bsigned\b/.test(title)) return true
   if (RARE_PRINT_RUN_RE.test(title)) return true
   if (a.verdict === 'STRONG_BUY') return true
+
+  // Empty/null parallel = Base card not tagged. Don't show unless caught above.
+  if (!parallel) return false
+
+  // Non-base parallel with at least $5 or a bid — show it.
   if (price >= 5 || (a.bid_count || 0) > 0) return true
 
   return false
@@ -205,17 +206,11 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
   }, [])
 
   const items = useMemo(() => {
-    const FRESH_MS = 2 * 60 * 60 * 1000
-    // 12h window (was 6h) — current eBay F1 market has very few auctions
-    // ending in <6h (only ~1 at any time). 12h captures ~3-5 typically and
-    // keeps a real sense of urgency without rendering empty.
+    // 12h window — current eBay F1 market has very few auctions ending in <6h.
+    // FRESH_MS removed: was 2h, filtered out most BIN listings and caused empty
+    // sections. Phantom rows were purged; valid listings should always show.
     return (auctions || [])
       .filter(a => isBigSnipe(a, 12 * 3600))
-      .filter(a => {
-        if (!a.last_updated) return true
-        const updated = new Date(a.last_updated + 'Z').getTime()
-        return !updated || (Date.now() - updated) < FRESH_MS
-      })
       .sort((a, b) => {
         const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
         if (vr !== 0) return vr
@@ -315,7 +310,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
             🎯 Biggest Snipes
           </h2>
           <div className="text-[10px] text-gray-500 mt-1 font-medium">
-            Ending ≤6h · rare parallels + real money only
+            Ending ≤12h · non-base parallels + real money only
           </div>
         </div>
         <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">
