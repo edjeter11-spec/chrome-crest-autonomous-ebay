@@ -243,7 +243,11 @@ def list_with_verdicts(
         out.append(d)
 
     if response is not None:
-        response.headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300"
+        # 5min fresh + 30min stale-while-revalidate. Cold-start of this
+        # endpoint is ~15s; long cache means visitors after the first only
+        # hit the warm CDN copy. The /api/cron/keepalive cron pre-warms
+        # before the cache window expires so visitors never see cold.
+        response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     return {
         "total": total,
         "auctions": out,

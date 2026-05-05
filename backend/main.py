@@ -1469,6 +1469,42 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
         return {"ok": False, "error": str(e)[:300]}
 
 
+@app.api_route("/api/cron/keepalive", methods=["GET", "POST"])
+async def cron_keepalive(request: Request):
+    """
+    Pre-warm the slow endpoints so users never hit a cold function.
+    Runs every few minutes via Vercel cron. Hits the heavy queries
+    inside their CDN cache window so the next user request is served
+    from cache instantly (~150ms) instead of cold (~15s).
+    """
+    import os as _os, httpx as _httpx
+    admin_token = _os.getenv("ADMIN_TOKEN", "")
+    qtoken = request.query_params.get("token", "")
+    header_token = request.headers.get("x-admin-token", "")
+    ua = request.headers.get("user-agent", "").lower()
+    is_cron = "vercel-cron" in ua
+    if not is_cron:
+        if not admin_token or (qtoken != admin_token and header_token != admin_token):
+            return {"ok": False, "error": "unauthorized"}
+
+    base = "https://f1cardvault.com"
+    targets = [
+        "/api/auctions/with-verdicts?limit=500",
+        "/api/auctions/with-verdicts?limit=100",
+        "/api/sales?limit=500&year=2025",
+        "/api/sales/stats",
+    ]
+    results = []
+    async with _httpx.AsyncClient(timeout=30.0) as client:
+        for path in targets:
+            try:
+                r = await client.get(f"{base}{path}", headers={"User-Agent": "vercel-cron-keepalive/1.0"})
+                results.append({"path": path, "status": r.status_code, "ms": int(r.elapsed.total_seconds() * 1000)})
+            except Exception as e:
+                results.append({"path": path, "error": str(e)[:120]})
+    return {"ok": True, "warmed": len(results), "results": results}
+
+
 @app.api_route("/api/audit/auto-fix", methods=["GET", "POST"])
 async def audit_auto_fix(request: Request, db: Session = Depends(get_db)):
     """

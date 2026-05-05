@@ -115,6 +115,10 @@
       "schedule": "12 6 * * *"
     },
     {
+      "path": "/api/cron/keepalive",
+      "schedule": "*/4 * * * *"
+    },
+    {
       "path": "/api/psa/snapshot",
       "schedule": "0 6 * * 0"
     },
