@@ -206,11 +206,10 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
   }, [])
 
   const items = useMemo(() => {
-    // 12h window — current eBay F1 market has very few auctions ending in <6h.
-    // FRESH_MS removed: was 2h, filtered out most BIN listings and caused empty
-    // sections. Phantom rows were purged; valid listings should always show.
+    // 24h window — widens pool; only 1-2 non-base F1 auctions end in <12h at
+    // any given time, causing the section to render empty with the tighter gate.
     return (auctions || [])
-      .filter(a => isBigSnipe(a, 12 * 3600))
+      .filter(a => isBigSnipe(a, 24 * 3600))
       .sort((a, b) => {
         const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
         if (vr !== 0) return vr
@@ -231,13 +230,16 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
   // soonest so the high-value ones still float to the top.
   const nextBig = useMemo(() => {
     const inItems = new Set(items.map(a => a.id))
-    // BiggestSnipes' items now uses 12h, so NextBig kicks in at 12h-72h
+    // Window: 24h-7d. Biggest Snipes uses <24h; Next Big picks up 24h-7d.
+    // Wide window needed — thin F1 market means few non-base auctions in any
+    // narrow window. Also filter empty parallel (= untagged base cards).
     return (auctions || [])
       .filter(a => {
         const secs = secsLeft(a)
-        if (secs <= 12 * 3600 || secs > 72 * 3600) return false
+        if (secs <= 24 * 3600 || secs > 7 * 24 * 3600) return false
         const parallel = a.card?.parallel || a.parallel || ''
         if (BORING_PARALLELS.has(parallel)) return false
+        if (!parallel && !/\bauto(graph)?\b|\bsigned\b/i.test(a.title || '') && !/\/\d{1,3}\b/.test(a.title || '')) return false
         const price = a.current_price || 0
         if (price < 5) return false
         if (inItems.has(a.id)) return false
@@ -341,7 +343,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
             ⏰ Next Big Auctions
           </h2>
           <div className="text-[10px] text-gray-500 mt-1 font-medium">
-            ending next 24h · $50+
+            ending 24h–7d · non-base parallels · $5+
           </div>
         </div>
         <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">

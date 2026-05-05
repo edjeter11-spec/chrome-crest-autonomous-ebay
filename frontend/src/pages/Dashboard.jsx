@@ -426,11 +426,22 @@ export default function Dashboard() {
   }, [snipes])
 
   // --- Derived lists ---
+  const BORING_STRIP = new Set(['Base', 'B&W Ray Wave', 'B&W Lazer', 'Floor It', 'Four & More'])
   const endingStrip = useMemo(() => {
     return (Array.isArray(auctions) ? auctions : [])
-      .filter(a => { const s = secsLeft(a); return a && isAuction(a) && s > 0 && s < 7200 })
+      .filter(a => {
+        const s = secsLeft(a)
+        if (!a || s <= 0 || s > 86400) return false // 24h window
+        if (!isLiveAuctionRow(a)) return false
+        // Filter boring base parallels — don't show base cards in ending strip
+        const parallel = a.card?.parallel || a.parallel || ''
+        if (BORING_STRIP.has(parallel)) return false
+        if (!parallel && !/\bauto(graph)?\b|\bsigned\b/i.test(a.title || '') && !/\/\d{1,3}\b/.test(a.title || '')) return false
+        return true
+      })
       .sort((a, b) => secsLeft(a) - secsLeft(b))
       .slice(0, 8)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auctions])
 
   const hotSnipes = useMemo(() => (Array.isArray(snipes) ? snipes : []).slice(0, 6), [snipes])
@@ -635,21 +646,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Biggest Snipes — promoted out of the side-by-side grid so it sits in the
-          always-visible top of the dashboard. Full-width here. */}
-      <SectionBoundary>
-        {!auctionsLoading && biggestSnipes.length === 0 ? (
-          <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl">
-            <EmptyRow text="No high-value auctions ending in the next 6 hours" />
-          </div>
-        ) : (
-          <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
-        )}
-      </SectionBoundary>
-
       {/* "Show more analytics" disclosure — secondary feeds (latest sales, big
-          wins, ending strip, hot snipes, scraper telemetry) live behind a
-          single toggle so the default landing is uncluttered. */}
+          wins, biggest snipes, ending strip, hot snipes, scraper telemetry)
+          live behind a single toggle so the default landing is uncluttered. */}
       <button
         type="button"
         onClick={() => setAdvancedOpen(v => !v)}
@@ -667,6 +666,11 @@ export default function Dashboard() {
 
       {advancedOpen && (
       <>
+      {/* Biggest Snipes + Next Big Auctions */}
+      <SectionBoundary>
+        <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
+      </SectionBoundary>
+
       {/* Welcome-back delta strip */}
       {welcomeDelta && (
         <div className="bg-gradient-to-r from-indigo-900/40 to-purple-900/30 border border-indigo-600/40 rounded-2xl px-4 py-2.5 flex items-center gap-3 flex-wrap">
@@ -910,7 +914,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-black text-white flex items-center gap-2">
             <Clock size={14} className="text-red-400" />
-            Ending Soonest (&lt; 2h)
+            Ending Soonest (&lt; 24h)
             {!auctionsLoading && <span className="text-[10px] text-gray-500 font-mono">({endingStrip.length})</span>}
           </h2>
           <button
