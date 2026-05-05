@@ -31,18 +31,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: pw-chromium-py3.11-v1
+          # v3 — bumped because the conditional 'if dir exists' check matched
+          # the old 'chromium-*' dir even after Playwright switched to
+          # 'chromium_headless_shell-*' for headless. Result: install-deps ran
+          # but browser binary was missing → BrowserType.launch crashed every
+          # scheduled run for a week. Now we always run `playwright install`
+          # which uses cache when valid and downloads fresh when not.
+          key: pw-chromium-py3.11-v3
 
       - name: Install Python deps
         run: pip install playwright tf-playwright-stealth psycopg2-binary
 
-      - name: Install Playwright (system deps + browser if uncached)
-        run: |
-          if [ -d ~/.cache/ms-playwright/chromium-* ]; then
-            playwright install-deps chromium
-          else
-            playwright install chromium --with-deps
-          fi
+      - name: Install Playwright browser + system deps
+        run: playwright install chromium --with-deps
 
       - name: Run scraper
         env:
