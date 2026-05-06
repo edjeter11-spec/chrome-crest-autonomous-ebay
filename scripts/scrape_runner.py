@@ -463,10 +463,16 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
     for query in queries:
         url = build_url(query, mode)
         log.info(f"Scraping [{mode}] {query!r}")
+        # Pull live page from state — earlier passes may have crashed and
+        # been recreated. Without this, a dead page from the sold loop
+        # silently kills every auction/BIN navigation.
+        page = _PAGE_STATE["page"]
         try:
             items = scrape_search_page(page, url)
         except Exception as e:
             log.warning(f"Page failed: {e}")
+            if _is_dead_page_error(e):
+                _recreate_page(f"{mode} loop: {e}")
             items = []
         total_seen += len(items)
         rows = []
@@ -524,6 +530,62 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
     return total_seen, total_added
 
 
+# Holds the live (page, ctx, browser) triple. We mutate this when the page
+# crashes mid-run so callers always get a fresh page without threading new
+# objects through every helper. Set in main() right after browser launch.
+_PAGE_STATE = {"page": None, "ctx": None, "browser": None, "playwright": None}
+
+
+def _recreate_page(reason: str = ""):
+    """Tear down the current context+page and build a fresh one on the same
+    browser. Called when Playwright reports the page has crashed — without
+    this, every subsequent goto fails for the rest of the run."""
+    state = _PAGE_STATE
+    log.warning(f"Recreating page (reason: {reason or 'unknown'})")
+    try:
+        if state.get("ctx"):
+            state["ctx"].close()
+    except Exception as e:
+        log.warning(f"  old ctx close failed: {e}")
+    try:
+        ctx = state["browser"].new_context(
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1440, "height": 900},
+            locale="en-US",
+            timezone_id="America/New_York",
+            extra_http_headers={
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "sec-ch-ua": '"Chromium";v="127", "Not)A;Brand";v="99"',
+            },
+        )
+        page = ctx.new_page()
+        if HAS_STEALTH:
+            try:
+                stealth_sync(page)
+            except Exception:
+                pass
+        try:
+            page.goto("https://www.ebay.com/", wait_until="domcontentloaded", timeout=20000)
+            page.wait_for_timeout(2000)
+        except Exception:
+            pass
+        state["ctx"] = ctx
+        state["page"] = page
+        return page
+    except Exception as e:
+        log.error(f"  page recreate failed: {e}")
+        return state.get("page")
+
+
+def _is_dead_page_error(err: Exception) -> bool:
+    msg = str(err).lower()
+    return "page crashed" in msg or "target closed" in msg or "page closed" in msg or "browser has been closed" in msg
+
+
 def scrape_search_page(page, url: str):
     """Return list of dicts: title, price, url, image, sale_date_text.
 
@@ -532,8 +594,24 @@ def scrape_search_page(page, url: str):
     the challenge is a separate page, not a delay. Now: detect challenge,
     sleep 30s (cools eBay's per-IP rate counter), navigate to eBay home to
     establish a 'normal' session, then retry the original URL once.
+
+    Crash recovery: if Playwright reports the page is dead (Page crashed /
+    Target closed), we tear down the context, build a new one on the same
+    browser, and retry the URL once. Without this, a single crash during
+    the sold pass kills every subsequent auction/BIN navigation.
     """
-    page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    except Exception as nav_err:
+        if _is_dead_page_error(nav_err):
+            page = _recreate_page(f"goto: {nav_err}")
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            except Exception as e2:
+                log.warning(f"Post-recreate goto failed: {e2}")
+                return []
+        else:
+            raise
     title = page.title() or ""
     if "Pardon" in title or "interruption" in title.lower():
         log.warning(f"Bot challenge: {title} — cooling 30s then retrying")
@@ -722,6 +800,12 @@ def main():
             },
         )
         page = ctx.new_page()
+        # Register live objects so _recreate_page can rebuild the context if
+        # the page crashes mid-run.
+        _PAGE_STATE["browser"] = browser
+        _PAGE_STATE["ctx"] = ctx
+        _PAGE_STATE["page"] = page
+        _PAGE_STATE["playwright"] = p
         if HAS_STEALTH:
             try:
                 stealth_sync(page)
@@ -744,10 +828,15 @@ def main():
         for query, min_price in sold_queries:
             url = build_url(query, "sold", min_price=min_price)
             log.info(f"Scraping [sold] {query!r} (min=${min_price})")
+            # Always pull from state — _recreate_page may have replaced the page
+            # since the previous iteration.
+            page = _PAGE_STATE["page"]
             try:
                 items = scrape_search_page(page, url)
             except Exception as e:
                 log.warning(f"Page failed: {e}")
+                if _is_dead_page_error(e):
+                    _recreate_page(f"sold loop: {e}")
                 items = []
             total_seen += len(items)
 
@@ -802,15 +891,20 @@ def main():
         # ---- Active auctions (write to auctions table, not sold_cards) ----
         default_card_id = get_default_card_id(conn)
         log.info(f"=== Active auction scan (default card_id={default_card_id}) ===")
+        # Force a clean page before the auction pass — sold pass may have
+        # crashed and been recreated, but even if not we don't want any
+        # cookie/state buildup contaminating the next phase.
+        _recreate_page("pre-auction reset")
         auc_seen, auc_added = scrape_active_listings(
-            page, conn, QUERIES, "auction", default_card_id
+            _PAGE_STATE["page"], conn, QUERIES, "auction", default_card_id
         )
         log.info(f"Auction pass: {auc_seen} seen, {auc_added} upserted")
 
         # ---- Buy-It-Now (write to auctions table with FIXED_PRICE buying_options) ----
         log.info("=== BIN scan ===")
+        _recreate_page("pre-BIN reset")
         bin_seen, bin_added = scrape_active_listings(
-            page, conn, QUERIES[:5], "bin", default_card_id  # fewer queries to stay under 25min
+            _PAGE_STATE["page"], conn, QUERIES[:5], "bin", default_card_id
         )
         log.info(f"BIN pass: {bin_seen} seen, {bin_added} upserted")
 
