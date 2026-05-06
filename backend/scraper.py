@@ -455,15 +455,23 @@ async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
     # per query. The ending-soon pass fetches 200 sorted strictly by end time,
     # ensuring imminent listings (ending in <2h) are never missed between runs.
     try:
-        from ebay_api import fetch_ending_soon_listings
+        from ebay_api import fetch_ending_soon_listings, fetch_all_live_auctions
         ending_soon = await fetch_ending_soon_listings()
         seen_ids = {l["ebay_item_id"] for l in listings if l.get("ebay_item_id")}
         for l in ending_soon:
             if l.get("ebay_item_id") and l["ebay_item_id"] not in seen_ids:
                 listings.append(l)
                 seen_ids.add(l["ebay_item_id"])
+        # Deep AUCTION-only pass — paginates 5×200=1000 results, server-side
+        # filtered to itemEndDate within next 7 days. Catches every live F1
+        # auction even if it's buried beyond the relevance top-200.
+        live_auctions = await fetch_all_live_auctions(max_pages=5)
+        for l in live_auctions:
+            if l.get("ebay_item_id") and l["ebay_item_id"] not in seen_ids:
+                listings.append(l)
+                seen_ids.add(l["ebay_item_id"])
     except Exception as _es_err:
-        logger.warning(f"fetch_ending_soon_listings failed (non-fatal): {_es_err}")
+        logger.warning(f"ending-soon / live-auctions fetch failed (non-fatal): {_es_err}")
 
     added = 0
     updated = 0
