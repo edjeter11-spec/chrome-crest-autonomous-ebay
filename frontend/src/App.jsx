@@ -2,10 +2,14 @@ import { lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
-import Auctions from './pages/Auctions'
-import BuyItNow from './pages/BuyItNow'
-import Login from './pages/Login'
 import { AuthProvider, useAuth } from './lib/auth'
+
+// Auctions/BuyItNow/Login are not the landing route — lazy-load to drop
+// ~30-40KB from the main bundle. Dashboard stays eager since it IS the
+// default route and we don't want a Suspense flash on first paint.
+const Auctions = lazy(() => import('./pages/Auctions'))
+const BuyItNow = lazy(() => import('./pages/BuyItNow'))
+const Login = lazy(() => import('./pages/Login'))
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null, info: null } }

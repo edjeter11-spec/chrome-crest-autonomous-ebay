@@ -336,11 +336,18 @@ def rookie_premium(days: int = 90, db: Session = Depends(get_db)):
 
 
 @router.get("/momentum")
-def driver_momentum(driver: Optional[str] = None, db: Session = Depends(get_db)):
+def driver_momentum(
+    driver: Optional[str] = None,
+    response: Response = None,
+    db: Session = Depends(get_db),
+):
     """
     Price trend: median last-7d vs prior-14d.
     Returns per-driver rows (or a single row if driver= given).
     """
+    if response is not None:
+        # 7-day window aggregates — 5min fresh / 30min stale is plenty.
+        response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     now = datetime.utcnow()
     recent_cut = now - timedelta(days=7)
     prior_cut = now - timedelta(days=21)
@@ -445,11 +452,15 @@ def sales_heatmap(
     days: int = 30,
     top_drivers: int = 15,
     top_parallels: int = 8,
+    response: Response = None,
     db: Session = Depends(get_db),
 ):
     """
     Driver x Parallel 30-day sale count grid for the Dashboard heatmap.
     """
+    if response is not None:
+        # 30-day rolling aggregate — 10min fresh / 1hr stale fits.
+        response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=3600"
     cutoff = datetime.utcnow() - timedelta(days=days)
     base = db.query(SoldCard).filter(
         SoldCard.sale_date >= cutoff,
@@ -519,6 +530,7 @@ def sales_volatility_heatmap(
     top_drivers: int = 15,
     top_parallels: int = 8,
     min_count: int = 4,
+    response: Response = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -529,6 +541,9 @@ def sales_volatility_heatmap(
     Timing tip: AVOID when volatility is huge and momentum negative — wait for
     the market to settle; BUY when volatility is low and momentum is positive.
     """
+    if response is not None:
+        # 60-day rolling — 10min fresh / 1h stale.
+        response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=3600"
     cutoff = datetime.utcnow() - timedelta(days=days)
     midpoint = datetime.utcnow() - timedelta(days=days // 2)
 

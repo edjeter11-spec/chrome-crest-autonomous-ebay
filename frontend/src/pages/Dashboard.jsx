@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import {
   Gavel, Flame, Database, DollarSign, Zap, Activity,
@@ -6,9 +6,11 @@ import {
   AlertTriangle, ChevronRight, ChevronDown, Shield, BellRing, Target
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
-import BiggestSnipes from '../components/BiggestSnipes'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
-import WelcomeModal from '../components/WelcomeModal'
+// BiggestSnipes hides behind the "Show more analytics" toggle and
+// WelcomeModal only shows once per user — defer both off the critical path.
+const BiggestSnipes = lazy(() => import('../components/BiggestSnipes'))
+const WelcomeModal = lazy(() => import('../components/WelcomeModal'))
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
@@ -491,7 +493,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 max-w-[1800px]">
-      <WelcomeModal />
+      <Suspense fallback={null}><WelcomeModal /></Suspense>
 
       {/* WelcomeBanner: desktop-only — too noisy on mobile */}
       <div className="hidden md:block">
@@ -677,7 +679,9 @@ export default function Dashboard() {
       <>
       {/* Biggest Snipes + Next Big Auctions */}
       <SectionBoundary>
-        <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
+        <Suspense fallback={<div className="h-32" />}>
+          <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
+        </Suspense>
       </SectionBoundary>
 
       {/* Welcome-back delta strip */}

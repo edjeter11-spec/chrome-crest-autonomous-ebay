@@ -329,7 +329,7 @@ async def refresh_stale_listings(request: Request, db: Session = Depends(get_db)
 
 
 @router.get("/snipe/targets")
-def snipe_targets(db: Session = Depends(get_db)):
+def snipe_targets(response: Response = None, db: Session = Depends(get_db)):
     from datetime import timedelta
     now = datetime.utcnow()
     # Try snipe_eligible first (best signal). If <5 results, fall back to top
@@ -340,6 +340,8 @@ def snipe_targets(db: Session = Depends(get_db)):
         Auction.snipe_eligible == True,
         Auction.end_time > now,
     ).order_by(Auction.snipe_score.desc()).limit(20).all()
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=120, stale-while-revalidate=600"
     if len(eligible) >= 5:
         return {"targets": [auction_to_dict(a) for a in eligible]}
     # Fallback: top active auctions ending within 48h, any score.

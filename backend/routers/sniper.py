@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, Request, Query, Header, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query, Header, Body
 from sqlalchemy.orm import Session
 
 from database import get_db, Auction, Card, PushSubscription
@@ -553,7 +553,7 @@ def import_rules(
 
 
 @router.get("/fresh-snipes/{limit}")
-def get_fresh_snipes(limit: int = 6, db: Session = Depends(get_db)):
+def get_fresh_snipes(limit: int = 6, response: Response = None, db: Session = Depends(get_db)):
     """Public: return top N snipe-worthy auctions from DB (no eBay API calls).
 
     Previously made a live eBay Browse API call per-candidate (50+ calls),
@@ -561,6 +561,10 @@ def get_fresh_snipes(limit: int = 6, db: Session = Depends(get_db)):
     sub-100ms response, no quota burn.
     """
     from sqlalchemy.orm import joinedload
+    if response is not None:
+        # Lightweight DB query but called on every dashboard load — cache 2min
+        # so a flurry of refreshes hits CDN, not the function.
+        response.headers["Cache-Control"] = "public, s-maxage=120, stale-while-revalidate=300"
 
     BORING_PARALLELS = {"Base", "B&W Ray Wave", "B&W Lazer", "Floor It", "Four & More"}
     RARE_PRINT_RE = re.compile(r"/(5|10|15|20|25|50|75|99|150|199|250|299)\b")
