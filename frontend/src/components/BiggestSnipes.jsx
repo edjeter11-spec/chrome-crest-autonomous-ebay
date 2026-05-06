@@ -30,9 +30,10 @@ function verdictRank(v) {
   return 0
 }
 
+// 'Refractor' removed — catches Portrait Refractors, colored refractors, etc.
+// Use price ($10+) as primary signal for "interesting" rather than parallel name.
 const BORING_PARALLELS = new Set([
-  'Base', 'B&W Ray Wave', 'B&W Lazer', 'Floor It', 'Four & More', 'Refractor',
-  'Prism Refractor', 'Checker Flag', 'Diamond 75th'
+  'Base', 'B&W Ray Wave', 'B&W Lazer', 'Floor It', 'Four & More', 'Checker Flag', 'Diamond 75th'
 ])
 const RARE_PRINT_RUN_RE = /\/(5|10|15|20|25|50|75)\b/
 
@@ -46,17 +47,17 @@ function isBigSnipe(a, maxSecs) {
   if (BORING_PARALLELS.has(parallel)) return false
   if (/\bb\s*&\s*w\b|black\s*&\s*white|floor it|four & more/.test(title)) return false
 
-  // Always pass: high-value, auto, rare print run, or strong verdict.
-  if (price >= 100) return true
+  // Price is the most reliable signal — parallel metadata is missing 30-40%
+  // of the time (scraper doesn't tag parallel for many listings). $10+ always
+  // shows. Portrait Refractors, colored refractors etc. all pass this gate.
+  if (price >= 10) return true
   if (/\bauto(graph)?\b|\bsigned\b/.test(title)) return true
   if (RARE_PRINT_RUN_RE.test(title)) return true
-  if (a.verdict === 'STRONG_BUY') return true
+  if (a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY') return true
+  if ((a.bid_count || 0) > 1) return true
 
-  // Empty/null parallel = Base card not tagged. Don't show unless caught above.
-  if (!parallel) return false
-
-  // Non-base parallel with at least $5 or a bid — show it.
-  if (price >= 5 || (a.bid_count || 0) > 0) return true
+  // Low-price: only show if has a named non-base parallel
+  if (parallel && price >= 5) return true
 
   return false
 }
@@ -239,11 +240,15 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
         if (secs <= 24 * 3600 || secs > 7 * 24 * 3600) return false
         const parallel = a.card?.parallel || a.parallel || ''
         if (BORING_PARALLELS.has(parallel)) return false
-        if (!parallel && !/\bauto(graph)?\b|\bsigned\b/i.test(a.title || '') && !/\/\d{1,3}\b/.test(a.title || '')) return false
         const price = a.current_price || 0
-        if (price < 5) return false
+        // Price-first: $10+ always interesting regardless of parallel tag gaps
+        if (price >= 10) return true
+        if (/\bauto(graph)?\b|\bsigned\b/i.test(a.title || '')) return true
+        if (/\/\d{1,3}\b/.test(a.title || '')) return true
+        if ((a.bid_count || 0) > 0) return true
+        if (parallel && price >= 5) return true
         if (inItems.has(a.id)) return false
-        return true
+        return false
       })
       .sort((a, b) => {
         const p = (b.current_price || 0) - (a.current_price || 0)

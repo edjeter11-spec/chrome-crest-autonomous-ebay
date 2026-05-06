@@ -426,6 +426,9 @@ export default function Dashboard() {
   }, [snipes])
 
   // --- Derived lists ---
+  // Explicit boring set — ONLY exact matches we're 100% sure are junk.
+  // Do NOT include 'Refractor' — that kills Portrait Refractor, colored
+  // refractors, etc. Use price as primary signal instead.
   const BORING_STRIP = new Set(['Base', 'B&W Ray Wave', 'B&W Lazer', 'Floor It', 'Four & More'])
   const endingStrip = useMemo(() => {
     return (Array.isArray(auctions) ? auctions : [])
@@ -433,11 +436,17 @@ export default function Dashboard() {
         const s = secsLeft(a)
         if (!a || s <= 0 || s > 86400) return false // 24h window
         if (!isLiveAuctionRow(a)) return false
-        // Filter boring base parallels — don't show base cards in ending strip
         const parallel = a.card?.parallel || a.parallel || ''
         if (BORING_STRIP.has(parallel)) return false
-        if (!parallel && !/\bauto(graph)?\b|\bsigned\b/i.test(a.title || '') && !/\/\d{1,3}\b/.test(a.title || '')) return false
-        return true
+        const price = a.current_price || 0
+        // Price is the most reliable signal — $10+ always show
+        if (price >= 10) return true
+        // Low-price: only show if named parallel, auto, rare print, or bids
+        if (parallel && !BORING_STRIP.has(parallel)) return true
+        if (/\bauto(graph)?\b|\bsigned\b/i.test(a.title || '')) return true
+        if (/\/\d{1,3}\b/.test(a.title || '')) return true
+        if ((a.bid_count || 0) > 0) return true
+        return false
       })
       .sort((a, b) => secsLeft(a) - secsLeft(b))
       .slice(0, 8)
