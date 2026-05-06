@@ -74,6 +74,11 @@ from ebay_api import has_real_credentials
 
 app = FastAPI(title="F1 Chrome Crest", version="2.0.0")
 
+# Per-IP rate-limit dict for /api/sniper/refresh-imminent (user-triggered).
+# Keyed by client IP; value is the unix timestamp of last successful call.
+# Module-level so it survives across requests within a single process.
+_refresh_imminent_rate: dict = {}
+
 # --- CORS lockdown (security) ---------------------------------------------
 # Previously `allow_origins=["*"]` with credentials — unsafe. Lock to prod
 # domains + Vercel preview wildcard; loosen to localhost only outside prod.
@@ -1413,6 +1418,180 @@ async def cron_sync(db: Session = Depends(get_db)):
         "rules_auto_watched": rules_auto_watched,
         "snipe_recompute": snipe_recompute,
     }
+
+
+# ---------------------------------------------------------------------------
+# Imminent-window cron: fills the "blind window" between full hourly syncs.
+# Background: /api/cron/sync now runs every 2h. Auctions that are listed AND
+# end within those 2h would never appear in our DB. This cron pulls only
+# auctions ending in the next 90 minutes, every 15 min, so the gap closes.
+# ---------------------------------------------------------------------------
+
+async def _do_imminent_sync(db: Session, window_min: int = 90) -> dict:
+    """Shared implementation for both the cron and the user-triggered refresh.
+    Pulls 2025 F1 auctions ending in the next `window_min` minutes (server-side
+    filtered via itemEndDate), then upserts via scraper._upsert_listings.
+    Returns {fetched, added, updated, ending_in_30m}."""
+    from ebay_api import search_f1_cards, parse_ebay_item, _is_valid_2025_f1_listing
+    from scraper import _upsert_listings, recompute_snipe_eligibility
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+    now = _dt.now(_tz.utc)
+    now_iso = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    end_iso = (now + _td(minutes=window_min)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    time_filter = f"itemEndDate:[{now_iso}..{end_iso}]"
+
+    all_items: list = []
+    seen_ids: set = set()
+    for page in range(3):  # max 3 pages × 200 = 600 items
+        try:
+            items = await search_f1_cards(
+                query="2025 Topps Chrome Formula 1",
+                limit=200,
+                sort="endingSoonest",
+                buying_options_filter="buyingOptions:{AUCTION}",
+                offset=page * 200,
+                extra_filter=time_filter,
+            )
+        except Exception:
+            break
+        if not items:
+            break
+        for it in items:
+            iid = it.get("itemId", "")
+            title = it.get("title", "")
+            if iid and iid not in seen_ids and _is_valid_2025_f1_listing(title):
+                seen_ids.add(iid)
+                all_items.append(parse_ebay_item(it))
+        if len(items) < 200:
+            break
+
+    added, updated = _upsert_listings(db, all_items)
+    db.commit()
+
+    # Recompute snipe flags so anything just inserted with a fresh price gets
+    # surfaced on the dashboard immediately (rather than waiting for the next
+    # full /api/cron/sync).
+    try:
+        recompute_snipe_eligibility(db)
+    except Exception as _re:
+        import logging as _log
+        _log.getLogger("imminent").warning(f"snipe recompute failed: {_re}")
+
+    # Count rows ending in next 30 min so caller can confirm we plugged the gap
+    from datetime import datetime as _dtnow
+    thirty_cutoff = _dtnow.utcnow() + _td(minutes=30)
+    ending_in_30m = (
+        db.query(Auction)
+        .filter(Auction.status == "active", Auction.end_time != None, Auction.end_time <= thirty_cutoff)
+        .count()
+    )
+
+    return {
+        "fetched": len(all_items),
+        "added": added,
+        "updated": updated,
+        "ending_in_30m": ending_in_30m,
+        "window_min": window_min,
+    }
+
+
+@app.get("/api/cron/sync-imminent")
+async def cron_sync_imminent(db: Session = Depends(get_db)):
+    """Tight loop: pull only auctions ending in next 90 minutes.
+    Runs every 15 min via Vercel cron. Solves the blind window between full
+    2-hourly syncs where newly-listed short-duration auctions would otherwise
+    never reach our DB before they end."""
+    if not has_real_credentials():
+        return {"ok": False, "reason": "no_credentials"}
+    try:
+        result = await _do_imminent_sync(db, window_min=90)
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+@app.post("/api/sniper/refresh-imminent")
+async def refresh_imminent_user(request: Request, db: Session = Depends(get_db)):
+    """User-triggered refresh — same logic as cron_sync_imminent but
+    rate-limited to 1 call per 60s per client IP."""
+    import time as _time
+    ip = request.client.host if request.client else "unknown"
+    now_t = _time.time()
+    last = _refresh_imminent_rate.get(ip, 0)
+    if now_t - last < 60:
+        return {
+            "ok": False,
+            "error": "rate_limited",
+            "retry_after": int(60 - (now_t - last)),
+        }
+    _refresh_imminent_rate[ip] = now_t
+    if not has_real_credentials():
+        return {"ok": False, "reason": "no_credentials"}
+    try:
+        result = await _do_imminent_sync(db, window_min=90)
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
+@app.get("/api/cron/refresh-bids")
+async def cron_refresh_bids(db: Session = Depends(get_db)):
+    """Refresh bid_count + current_price on the top 50 auctions ending soonest.
+    Most rows show bids=0 because Browse search doesn't include live bid counts
+    reliably; the per-item /buy/browse/v1/item/{id} endpoint does. Runs every
+    10 min so the dashboard's bid columns stay fresh on the most actionable
+    auctions."""
+    from database import Auction as _Auction
+    from ebay_api import get_item_details
+    from datetime import datetime as _dt
+
+    if not has_real_credentials():
+        return {"ok": False, "reason": "no_credentials"}
+
+    now = _dt.utcnow()
+    rows = (
+        db.query(_Auction)
+        .filter(_Auction.status == "active", _Auction.end_time > now)
+        .order_by(_Auction.end_time.asc())
+        .limit(50)
+        .all()
+    )
+
+    updated = 0
+    for a in rows:
+        iid = a.ebay_listing_id  # eBay item id; usually "v1|123456|0" format
+        try:
+            # Extract numeric portion. Some rows may already be numeric.
+            parts = (iid or "").split("|")
+            if len(parts) >= 2:
+                numeric = parts[1]
+            else:
+                numeric = iid or ""
+            if not numeric:
+                continue
+            details = await get_item_details(numeric)
+            if not details:
+                continue
+            row_changed = False
+            new_bids = details.get("bidCount", details.get("bid_count", a.bid_count or 0))
+            if new_bids is not None and new_bids != (a.bid_count or 0):
+                a.bid_count = new_bids
+                row_changed = True
+            cbp = details.get("currentBidPrice", {}) or {}
+            cbp_val = float(cbp.get("value", 0)) if cbp else 0.0
+            if not cbp_val:
+                cbp_val = float(details.get("current_price", 0) or 0)
+            if cbp_val and cbp_val != (a.current_price or 0):
+                a.current_price = cbp_val
+                row_changed = True
+            a.last_updated = now
+            if row_changed:
+                updated += 1
+        except Exception:
+            continue
+    db.commit()
+    return {"ok": True, "checked": len(rows), "updated": updated}
 
 
 @app.api_route("/api/ebay/refresh-top-page", methods=["GET", "POST"])

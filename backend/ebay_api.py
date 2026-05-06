@@ -630,6 +630,14 @@ async def get_item_details(item_id: str) -> Optional[dict]:
                     seller = data.get("seller", {})
                     seller_feedback_pct = seller.get("feedbackPercentage")
 
+                    # Live pricing (added May 2026 for /api/cron/refresh-bids).
+                    # Browse search results don't always include fresh bid/price;
+                    # /buy/browse/v1/item/{id} does. Surface both raw + normalized.
+                    cbp = data.get("currentBidPrice", {}) or {}
+                    cbp_val = float(cbp.get("value", 0)) if cbp else 0.0
+                    pdata = data.get("price", {}) or {}
+                    pval = float(pdata.get("value", 0)) if pdata else 0.0
+
                     return {
                         "item_id": item_id,
                         "title": data.get("title", ""),
@@ -644,6 +652,11 @@ async def get_item_details(item_id: str) -> Optional[dict]:
                         "categories": [c.get("categoryName") for c in data.get("categories", [])],
                         "buying_options": data.get("buyingOptions", []),
                         "bid_count": data.get("bidCount", 0),
+                        # camelCase aliases so callers expecting raw eBay shape work
+                        "bidCount": data.get("bidCount", 0),
+                        "currentBidPrice": cbp,
+                        "current_price": cbp_val or pval or 0.0,
+                        "price_value": pval,
                         "quantity_sold": data.get("estimatedAvailabilities", [{}])[0].get("soldQuantity", 0)
                         if data.get("estimatedAvailabilities") else 0,
                         "returns_accepted": data.get("returnTerms", {}).get("returnsAccepted", False),

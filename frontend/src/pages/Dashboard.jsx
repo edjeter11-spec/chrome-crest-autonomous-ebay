@@ -6,7 +6,10 @@ import {
   AlertTriangle, ChevronRight, ChevronDown, Shield, BellRing, Target
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
+import CardDetailModal from '../components/CardDetailModal'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
+import EndingStripEmpty from '../components/EndingStripEmpty'
+import { SkeletonBox, SkeletonCard, SkeletonCardRow, SkeletonStat } from '../components/Skeleton'
 // BiggestSnipes hides behind the "Show more analytics" toggle and
 // WelcomeModal only shows once per user — defer both off the critical path.
 const BiggestSnipes = lazy(() => import('../components/BiggestSnipes'))
@@ -131,6 +134,8 @@ export default function Dashboard() {
   const [snipes, setSnipes] = useState([])
   const [snipesLoading, setSnipesLoading] = useState(true)
 
+  // Card detail modal — opens when a user clicks an AuctionCard body.
+  const [detailAuction, setDetailAuction] = useState(null)
 
   const [ebayLimited, setEbayLimited] = useState(false)
 
@@ -342,7 +347,11 @@ export default function Dashboard() {
 
     setEbayLimited(false)
     setRefreshing(false)
-    setLastSync(new Date())
+    const now = new Date()
+    setLastSync(now)
+    // Share with StatusFooter (and any other listener) — simple cross-component
+    // signal without adding a context provider for this single value.
+    try { localStorage.setItem('lastSyncAt', String(now.getTime())) } catch {}
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -494,6 +503,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 max-w-[1800px]">
       <Suspense fallback={null}><WelcomeModal /></Suspense>
+      <CardDetailModal auction={detailAuction} onClose={() => setDetailAuction(null)} />
 
       {/* WelcomeBanner: desktop-only — too noisy on mobile */}
       <div className="hidden md:block">
@@ -507,8 +517,8 @@ export default function Dashboard() {
           so mobile users see a single cohesive block instead of scattered tiles. */}
       <SectionBoundary>
         <div className="space-y-3">
-          {/* KPI strip — 3 cols mobile (2 rows), 6 cols desktop */}
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
+          {/* KPI strip — 2 cols phone (3 rows), 3 cols small tablet, 6 cols desktop */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
             <KpiTile
               icon={Gavel}
               label={<><span className="md:hidden">Live</span><span className="hidden md:inline">Live Auctions</span></>}
@@ -632,13 +642,13 @@ export default function Dashboard() {
       {/* Race calendar strip */}
       <SectionBoundary><RaceCalendarStrip /></SectionBoundary>
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
+      {/* Header — sticky on mobile so the refresh button is always reachable */}
+      <div className="sticky top-0 z-30 -mx-3 px-3 py-2 md:py-0 md:mx-0 md:px-0 md:static bg-gray-950/85 backdrop-blur-md md:bg-transparent md:backdrop-blur-none border-b border-gray-800/60 md:border-0 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-1 h-7 bg-red-600 rounded-full shrink-0" />
-          <div>
-            <h1 className="text-2xl font-black text-white tracking-tight leading-none">Home</h1>
-            <p className="text-gray-500 text-xs mt-1.5 font-medium light:text-gray-600">F1 Card Vault · Live auctions, fresh sales, hot snipes</p>
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-black text-white tracking-tight leading-none">Home</h1>
+            <p className="hidden sm:block text-gray-500 text-xs mt-1.5 font-medium light:text-gray-600 truncate">F1 Card Vault · Live auctions, fresh sales, hot snipes</p>
           </div>
         </div>
         <div className="flex items-center gap-2.5 shrink-0">
@@ -650,7 +660,8 @@ export default function Dashboard() {
           <button
             onClick={() => loadAll(true)}
             disabled={refreshing}
-            className="p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-50 light:bg-gray-200 light:hover:bg-gray-300 light:text-gray-700"
+            aria-label="Refresh dashboard"
+            className="min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 p-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors disabled:opacity-50 light:bg-gray-200 light:hover:bg-gray-300 light:text-gray-700 flex items-center justify-center"
           >
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
@@ -773,7 +784,7 @@ export default function Dashboard() {
           </h2>
           <button
             onClick={() => navigate('/sales')}
-            className="text-xs text-emerald-400 hover:underline font-medium flex items-center gap-1"
+            className="min-h-[44px] sm:min-h-0 px-2 -mr-2 sm:px-0 sm:mr-0 text-xs text-emerald-400 hover:underline font-medium flex items-center gap-1"
           >
             All sales <ChevronRight size={11} />
           </button>
@@ -781,7 +792,19 @@ export default function Dashboard() {
         {bigWinsLoading ? (
           <div className="flex gap-3 overflow-hidden">
             {Array(5).fill(0).map((_, i) => (
-              <div key={i} className="w-48 shrink-0 h-32 bg-gray-900 rounded-2xl border border-gray-800 animate-pulse" />
+              <div key={i} className="w-48 shrink-0 bg-gradient-to-br from-emerald-900/20 to-gray-900 border border-emerald-700/30 rounded-2xl p-3 flex flex-col gap-2">
+                <div className="flex items-start gap-2">
+                  <SkeletonBox className="w-12 h-16 shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <SkeletonBox className="h-3 w-3/4" />
+                    <SkeletonBox className="h-2.5 w-1/2" />
+                  </div>
+                </div>
+                <div className="flex items-end justify-between mt-auto">
+                  <SkeletonBox className="h-6 w-16" />
+                  <SkeletonBox className="h-2.5 w-10" />
+                </div>
+              </div>
             ))}
           </div>
         ) : bigWins.length === 0 ? (
@@ -856,21 +879,22 @@ export default function Dashboard() {
             </h2>
             <button
               onClick={() => loadAll(true)}
-              className="text-xs text-gray-500 hover:text-white flex items-center gap-1 light:text-gray-600 light:hover:text-gray-800"
+              aria-label="Refresh latest sales"
+              className="min-h-[44px] sm:min-h-0 px-2 -mr-2 sm:px-0 sm:mr-0 text-xs text-gray-500 hover:text-white flex items-center gap-1 light:text-gray-600 light:hover:text-gray-800"
             >
-              <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} /> Refresh
+              <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} /> <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
           <div className="divide-y divide-gray-800/50 max-h-[560px] overflow-y-auto">
             {salesLoading ? (
               Array(6).fill(0).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-2.5 animate-pulse">
-                  <div className="w-10 h-14 bg-gray-800 rounded shrink-0" />
+                <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                  <SkeletonBox className="w-10 h-14 shrink-0" />
                   <div className="flex-1 space-y-1.5">
-                    <div className="h-3 bg-gray-800 rounded w-3/4" />
-                    <div className="h-2.5 bg-gray-800 rounded w-1/2" />
+                    <SkeletonBox className="h-3 w-3/4" />
+                    <SkeletonBox className="h-2.5 w-1/2" />
                   </div>
-                  <div className="h-4 w-14 bg-gray-800 rounded" />
+                  <SkeletonBox className="h-4 w-14" />
                 </div>
               ))
             ) : (Array.isArray(sales) ? sales : []).length === 0 ? (
@@ -932,26 +956,24 @@ export default function Dashboard() {
           </h2>
           <button
             onClick={() => navigate('/auctions')}
-            className="text-xs text-red-400 hover:underline font-medium flex items-center gap-1"
+            className="min-h-[44px] sm:min-h-0 px-2 -mr-2 sm:px-0 sm:mr-0 text-xs text-red-400 hover:underline font-medium flex items-center gap-1"
           >
             View all <ChevronRight size={11} />
           </button>
         </div>
         {auctionsLoading ? (
-          <div className="flex gap-3 overflow-hidden">
-            {Array(4).fill(0).map((_, i) => (
-              <div key={i} className="w-64 shrink-0 h-72 bg-gray-900 rounded-2xl border border-gray-800 animate-pulse" />
-            ))}
-          </div>
+          <SkeletonCardRow count={4} />
         ) : (endingStrip || []).length === 0 ? (
-          <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl">
-            <EmptyRow text="Nothing ending in the next 2 hours" />
-          </div>
+          <EndingStripEmpty
+            allAuctions={auctions}
+            lastSyncAt={lastSync}
+            onRefreshed={() => loadAll(true)}
+          />
         ) : (
           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
             {(endingStrip || []).filter(Boolean).map((a, i) => (
-              <div key={a?.id ?? i} className="w-64 shrink-0 snap-start">
-                <AuctionCard auction={a} />
+              <div key={a?.id ?? i} className="w-[78vw] max-w-[300px] sm:w-64 shrink-0 snap-start">
+                <AuctionCard auction={a} onClick={() => setDetailAuction(a)} />
               </div>
             ))}
           </div>
@@ -968,7 +990,7 @@ export default function Dashboard() {
           </h2>
           <button
             onClick={() => navigate('/auctions')}
-            className="text-xs text-red-400 hover:underline font-medium flex items-center gap-1"
+            className="min-h-[44px] sm:min-h-0 px-2 -mr-2 sm:px-0 sm:mr-0 text-xs text-red-400 hover:underline font-medium flex items-center gap-1"
           >
             All snipes <ChevronRight size={11} />
           </button>
@@ -976,7 +998,7 @@ export default function Dashboard() {
         {snipesLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {Array(6).fill(0).map((_, i) => (
-              <div key={i} className="h-72 bg-gray-900 rounded-2xl border border-gray-800 animate-pulse" />
+              <SkeletonCard key={i} />
             ))}
           </div>
         ) : (hotSnipes || []).length === 0 ? (
@@ -985,7 +1007,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {(hotSnipes || []).filter(Boolean).map((a, i) => <AuctionCard key={a?.id ?? i} auction={a} />)}
+            {(hotSnipes || []).filter(Boolean).map((a, i) => <AuctionCard key={a?.id ?? i} auction={a} onClick={() => setDetailAuction(a)} />)}
           </div>
         )}
       </div>

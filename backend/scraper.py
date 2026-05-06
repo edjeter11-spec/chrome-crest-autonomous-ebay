@@ -266,16 +266,23 @@ def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> boo
     """
     Decide whether an auction qualifies as a snipe.
 
-    Loosened criteria (OR-based) so the dashboard "Active Snipes" counter actually
-    captures real opportunities even when eBay refreshes lag behind price drops:
+    LOOSENED May 2026 — Eddie reported "0 of 5,574 active rows have
+    snipe_eligible=True". Root cause: the previous gate required score>=50
+    AND (ends_in_6h OR price <= 50% median). Almost no rows cleared both,
+    because most active auctions end >6h out and bid prices haven't dropped
+    that low yet. Restoring positives by relaxing on Eddie's spec:
 
-      - auction is active and not ended, AND
-      - snipe_score >= 50, AND
-      - EITHER ending within the next 6 hours
-        OR current total cost is <= 50% of median comp price.
+      - auction is active and not ended
+      - end_time within the next 7 days
+      - AT LEAST ONE of:
+          (a) AUCTION buying option + has comps + current total <= 0.7 * median
+          (b) ending within next 6 hours (urgency snipe — even thin discount counts)
+          (c) current total <= 0.5 * median (deep discount, any time horizon)
+          (d) snipe_score >= 50 (legacy path — keeps high-confidence rows in)
 
-    A positive score >= 50 alone is enough when we can't compute a median (no comps)
-    and time-left check passes. Missing end_time is treated as ineligible.
+    Missing end_time is treated as ineligible. Missing comps fall through to
+    score-based path (d) so AUCTIONs with no sold history still surface when
+    the score model likes them.
     """
     if auction is None:
         return False
@@ -290,17 +297,38 @@ def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> boo
     if end_time <= now:
         return False
 
-    score = getattr(auction, "snipe_score", 0) or 0
-    if score < 50:
+    # Hard window: must end within 7 days. Anything farther out isn't a snipe
+    # regardless of price — too much can change.
+    if (end_time - now) > timedelta(days=7):
         return False
 
-    # Condition A: ending within 6 hours.
-    ending_soon = (end_time - now) <= timedelta(hours=6)
+    # Read pricing context once.
+    cur_total = (getattr(auction, "current_price", 0) or 0) + (getattr(auction, "shipping_cost", 0) or 0)
+    score = getattr(auction, "snipe_score", 0) or 0
+    ending_soon_6h = (end_time - now) <= timedelta(hours=6)
 
-    # Condition B: price deeply under median (>=50% discount vs comps).
-    cheap = False
+    # Detect AUCTION buying option (true bid auctions, not BIN).
+    is_auction = False
     try:
-        cur_total = (getattr(auction, "current_price", 0) or 0) + (getattr(auction, "shipping_cost", 0) or 0)
+        bo_raw = getattr(auction, "buying_options", None)
+        if bo_raw:
+            if isinstance(bo_raw, str):
+                import json as _json
+                try:
+                    bo = _json.loads(bo_raw)
+                except Exception:
+                    bo = []
+            else:
+                bo = bo_raw
+            is_auction = "AUCTION" in (bo or [])
+    except Exception:
+        is_auction = False
+
+    # Comp lookup — the new dominant signal.
+    cheap_70 = False
+    cheap_50 = False
+    has_comps = False
+    try:
         if card is None:
             card = getattr(auction, "card", None)
         if cur_total > 0 and card is not None:
@@ -311,16 +339,34 @@ def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> boo
             try:
                 grade = _extract_grade_from_title(getattr(auction, "title", "") or "")
                 med, n = median_comp_price(db, card.driver_name, card.parallel, grade)
-                ref_price = med if (med and n >= 3) else (getattr(card, "base_value", 0) or 0)
+                if med and n >= 3:
+                    has_comps = True
+                    ref_price = med
+                else:
+                    ref_price = getattr(card, "base_value", 0) or 0
+                if ref_price and cur_total <= ref_price * 0.7:
+                    cheap_70 = True
                 if ref_price and cur_total <= ref_price * 0.5:
-                    cheap = True
+                    cheap_50 = True
             finally:
                 if owns_db:
                     db.close()
     except Exception as e:  # median lookup must never make us fail-closed
         logger.debug(f"compute_snipe_eligible median lookup failed: {e}")
 
-    return ending_soon or cheap
+    # (a) auction + comps + <=70% median — Eddie's primary criterion
+    if is_auction and has_comps and cheap_70:
+        return True
+    # (b) urgency: ends in 6h
+    if ending_soon_6h and (cheap_70 or score >= 40):
+        return True
+    # (c) deep discount any time
+    if cheap_50:
+        return True
+    # (d) legacy high-confidence score path
+    if score >= 50 and (ending_soon_6h or cheap_70):
+        return True
+    return False
 
 
 def recompute_snipe_eligibility(db: Session) -> dict:
@@ -434,45 +480,16 @@ def _is_2025_f1_title(title: str) -> bool:
     return not any(b in t for b in bad)
 
 
-async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
-    """Fetch live eBay listings and upsert into database. Returns count of new listings added.
-    Pass return_full_stats=True to get a dict with added + updated + fetched counts."""
-    # Purge all non-2025 or ended auctions first
-    stale = db.query(Auction).filter(Auction.status == "active").all()
-    purged = 0
-    for a in stale:
-        if not _is_2025_f1_title(a.title or ""):
-            db.delete(a)
-            purged += 1
-    if purged:
-        db.commit()
-        logger.info(f"Purged {purged} non-2025 listings from DB")
+def _upsert_listings(db: Session, listings: list[dict]) -> tuple[int, int]:
+    """Shared upsert loop: takes parsed listings (parse_ebay_item shape) and
+    writes them to the Auction table. Used by sync_real_ebay_listings AND
+    cron_sync_imminent / refresh_imminent_user (the tight 90-min blind-window
+    catchers). Extracted Apr 2026 so the imminent-window cron and the
+    user-triggered refresh can reuse identical insertion semantics without
+    re-implementing card lookup, snipe scoring, flag computation, etc.
 
-    listings = await fetch_all_f1_listings(limit_per_query=100)
-
-    # Dedicated ending-soon pass — catches listings buried in relevance ranking.
-    # fetch_all_f1_listings sorts auctions by endingSoonest but only fetches 100
-    # per query. The ending-soon pass fetches 200 sorted strictly by end time,
-    # ensuring imminent listings (ending in <2h) are never missed between runs.
-    try:
-        from ebay_api import fetch_ending_soon_listings, fetch_all_live_auctions
-        ending_soon = await fetch_ending_soon_listings()
-        seen_ids = {l["ebay_item_id"] for l in listings if l.get("ebay_item_id")}
-        for l in ending_soon:
-            if l.get("ebay_item_id") and l["ebay_item_id"] not in seen_ids:
-                listings.append(l)
-                seen_ids.add(l["ebay_item_id"])
-        # Deep AUCTION-only pass — paginates 5×200=1000 results, server-side
-        # filtered to itemEndDate within next 7 days. Catches every live F1
-        # auction even if it's buried beyond the relevance top-200.
-        live_auctions = await fetch_all_live_auctions(max_pages=10)
-        for l in live_auctions:
-            if l.get("ebay_item_id") and l["ebay_item_id"] not in seen_ids:
-                listings.append(l)
-                seen_ids.add(l["ebay_item_id"])
-    except Exception as _es_err:
-        logger.warning(f"ending-soon / live-auctions fetch failed (non-fatal): {_es_err}")
-
+    Returns (added, updated). Caller is responsible for db.commit().
+    """
     added = 0
     updated = 0
 
@@ -595,6 +612,51 @@ async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
                 a.snipe_eligible = False
             db.add(a)
             added += 1
+
+    return added, updated
+
+
+async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
+    """Fetch live eBay listings and upsert into database. Returns count of new listings added.
+    Pass return_full_stats=True to get a dict with added + updated + fetched counts."""
+    # Purge all non-2025 or ended auctions first
+    stale = db.query(Auction).filter(Auction.status == "active").all()
+    purged = 0
+    for a in stale:
+        if not _is_2025_f1_title(a.title or ""):
+            db.delete(a)
+            purged += 1
+    if purged:
+        db.commit()
+        logger.info(f"Purged {purged} non-2025 listings from DB")
+
+    listings = await fetch_all_f1_listings(limit_per_query=100)
+
+    # Dedicated ending-soon pass — catches listings buried in relevance ranking.
+    # fetch_all_f1_listings sorts auctions by endingSoonest but only fetches 100
+    # per query. The ending-soon pass fetches 200 sorted strictly by end time,
+    # ensuring imminent listings (ending in <2h) are never missed between runs.
+    try:
+        from ebay_api import fetch_ending_soon_listings, fetch_all_live_auctions
+        ending_soon = await fetch_ending_soon_listings()
+        seen_ids = {l["ebay_item_id"] for l in listings if l.get("ebay_item_id")}
+        for l in ending_soon:
+            if l.get("ebay_item_id") and l["ebay_item_id"] not in seen_ids:
+                listings.append(l)
+                seen_ids.add(l["ebay_item_id"])
+        # Deep AUCTION-only pass — paginates 5×200=1000 results, server-side
+        # filtered to itemEndDate within next 7 days. Catches every live F1
+        # auction even if it's buried beyond the relevance top-200.
+        live_auctions = await fetch_all_live_auctions(max_pages=10)
+        for l in live_auctions:
+            if l.get("ebay_item_id") and l["ebay_item_id"] not in seen_ids:
+                listings.append(l)
+                seen_ids.add(l["ebay_item_id"])
+    except Exception as _es_err:
+        logger.warning(f"ending-soon / live-auctions fetch failed (non-fatal): {_es_err}")
+
+    # Delegated upsert — same loop is now reused by the imminent-window cron.
+    added, updated = _upsert_listings(db, listings)
 
     now = datetime.utcnow()
     for auction in db.query(Auction).filter(Auction.status == "active", Auction.end_time < now).all():

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { Target, Clock } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { upscaleEbayImage } from '../lib/imageUrl'
@@ -155,11 +156,15 @@ function AuctionRow({ a, nowTick, freshOverride }) {
             )}
           </div>
           {isGood && (
-            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 ${
-              verdict === 'STRONG_BUY' ? 'bg-emerald-600/40 text-emerald-200' : 'bg-emerald-600/25 text-emerald-300'
-            }`}>
+            <Link
+              to="/how-we-score"
+              title="How we score auctions"
+              className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 hover:opacity-80 transition-opacity ${
+                verdict === 'STRONG_BUY' ? 'bg-emerald-600/40 text-emerald-200' : 'bg-emerald-600/25 text-emerald-300'
+              }`}
+            >
               {verdict === 'STRONG_BUY' ? 'STRONG BUY' : 'GOOD BUY'}
-            </span>
+            </Link>
           )}
         </div>
         {pctBelow && pctBelow > 0 && (

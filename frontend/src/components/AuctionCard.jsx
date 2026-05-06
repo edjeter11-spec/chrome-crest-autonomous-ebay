@@ -15,6 +15,7 @@ import VerdictBadge from './VerdictBadge'
 import LastUpdatedLabel from './LastUpdatedLabel'
 import ScoreExplain from './ScoreExplain'
 import InfoTooltip from './InfoTooltip'
+import Countdown from './Countdown'
 import { JARGON_DEFS } from '../lib/definitions'
 import { dealRating } from '../lib/dealRating'
 
@@ -450,7 +451,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
             rel="sponsored noopener"
-            className="flex items-center justify-center gap-1.5 py-2 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white text-xs font-bold rounded-lg transition-colors"
+            className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white text-xs font-bold rounded-lg transition-colors"
           >
             <Tag size={10} />
             Buy Now · ${auction.buy_now_price?.toFixed(2)}
@@ -461,7 +462,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
             rel="sponsored noopener"
-            className="flex items-center justify-center gap-1.5 py-2 bg-blue-800/80 hover:bg-blue-700 active:bg-blue-900 text-blue-200 text-xs font-bold rounded-lg transition-colors border border-blue-700/50"
+            className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 bg-blue-800/80 hover:bg-blue-700 active:bg-blue-900 text-blue-200 text-xs font-bold rounded-lg transition-colors border border-blue-700/50"
           >
             <MessageSquare size={10} />
             Make Offer
@@ -472,7 +473,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
             rel="sponsored noopener"
-            className="flex items-center justify-center gap-1.5 py-1.5 bg-gray-800 hover:bg-gray-700 active:bg-gray-900 text-gray-400 hover:text-gray-200 text-xs font-medium rounded-lg transition-colors"
+            className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-1.5 bg-gray-800 hover:bg-gray-700 active:bg-gray-900 text-gray-400 hover:text-gray-200 text-xs font-medium rounded-lg transition-colors"
           >
             {hasAuction ? <><Gavel size={10} /> Bid on eBay</> : <><ExternalLink size={10} /> View on eBay</>}
           </a>
@@ -712,6 +713,13 @@ function computeSecsLeft(auction) {
 }
 
 export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry }) {
+  // Default click handler — keeps legacy "card click → eBay" behavior for any
+  // caller that hasn't migrated to the in-app detail modal yet.
+  const handleCardClick = onClick || (() => {
+    if (auction?.ebay_url) {
+      window.open(ebayAffiliateUrl(auction.ebay_url), '_blank', 'noopener')
+    }
+  })
   const [timeLeft, setTimeLeft] = useState(() => computeSecsLeft(auction))
   const { user } = useAuth() || { user: null }
   const [watching, setWatching] = useState(() => resolveWatchingState({ user, auction }))
@@ -958,7 +966,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
 
   return (
     <div
-      onClick={onClick}
+      onClick={handleCardClick}
       className={`relative bg-gray-900 rounded-2xl border overflow-hidden card-hover flex flex-col group cursor-pointer transition-all duration-500
         ${fadeOut ? 'opacity-20' : 'opacity-100'}
         ${isEnded ? 'border-gray-700/60 grayscale' : ''}
@@ -1035,15 +1043,28 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
               LIVE
             </div>
           )}
+          {auction.ebay_url && (
+            <a
+              href={ebayAffiliateUrl(auction.ebay_url)}
+              target="_blank"
+              rel="sponsored noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title="Open this listing on eBay"
+              aria-label="View on eBay"
+              className="bg-gray-900/80 backdrop-blur-sm text-gray-300 hover:text-white text-[10px] font-bold px-2 py-1 rounded-lg border border-gray-700/60 hover:border-gray-500/80 transition-colors flex items-center gap-1"
+            >
+              eBay <ExternalLink size={9} />
+            </a>
+          )}
         </div>
 
         {/* Timer — only on auction listings */}
         {((auction.buying_options || []).includes('AUCTION') || !(auction.buying_options?.length)) && (
           <>
-            <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 text-xs font-mono font-bold ${timeCls}
-              bg-gray-950/80 backdrop-blur-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5 z-10 shadow`}>
+            <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 text-xs font-mono font-bold
+              bg-gray-950/80 backdrop-blur-sm px-2.5 py-1 rounded-lg flex items-center gap-1.5 z-10 shadow ${timeCls}`}>
               <Clock size={9} />
-              {timeText}
+              <Countdown endTime={auction.end_time} />
             </div>
             {/* Countdown progress fill — shows how much of the auction window has elapsed.
                 Color ramps urgency: blue (safe) → orange (<1h) → red pulse (<5m). */}
@@ -1201,7 +1222,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           user ? (
             <button
               onClick={(e) => { e.stopPropagation(); setBidIntentOpen(true) }}
-              className="w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors"
+              className="w-full min-h-[44px] sm:min-h-0 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors"
             >
               <Zap size={11} fill="white" /> Place Snipe Bid
             </button>
@@ -1209,7 +1230,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             <Link
               to="/login"
               onClick={(e) => { e.stopPropagation() }}
-              className="w-full py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-600/40 transition-colors"
+              className="w-full min-h-[44px] sm:min-h-0 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-600/40 transition-colors"
               title="Sign in to set a snipe bid"
             >
               <Zap size={11} /> Sign in to set snipe bid
@@ -1237,7 +1258,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           {isEnded ? (
             <button
               onClick={refreshStatus}
-              className="flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700/30 transition-colors"
+              className="flex-1 min-h-[44px] sm:min-h-0 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700/30 transition-colors"
             >
               <RotateCw size={11} /> Verify Ended
             </button>
@@ -1245,7 +1266,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             <button
               onClick={toggleWatchlist}
               disabled={watchLoading}
-              className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
+              className={`flex-1 min-h-[44px] sm:min-h-0 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium transition-colors ${
                 watching
                   ? 'bg-yellow-700/25 text-yellow-400 hover:bg-yellow-700/40 border border-yellow-700/30'
                   : 'bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-300 border border-gray-700/30'
@@ -1258,7 +1279,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             onClick={shareListing}
             title="Share listing"
             aria-label="Share listing"
-            className="relative shrink-0 py-1.5 px-2.5 rounded-lg bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-200 border border-gray-700/30 transition-colors"
+            className="relative shrink-0 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 py-1.5 px-2.5 rounded-lg bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-200 border border-gray-700/30 transition-colors flex items-center justify-center"
           >
             <Share2 size={11} />
             {shareToast && (
@@ -1271,7 +1292,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             onClick={shareToX}
             title="Share on X"
             aria-label="Share on X"
-            className="shrink-0 py-1.5 px-2.5 rounded-lg bg-gray-800/60 hover:bg-black text-gray-500 hover:text-white border border-gray-700/30 transition-colors"
+            className="shrink-0 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 py-1.5 px-2.5 rounded-lg bg-gray-800/60 hover:bg-black text-gray-500 hover:text-white border border-gray-700/30 transition-colors flex items-center justify-center"
           >
             <Twitter size={11} />
           </button>

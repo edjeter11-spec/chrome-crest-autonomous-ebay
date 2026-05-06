@@ -11,6 +11,7 @@ import Tutorial from './Tutorial'
 import OnboardingTour from './OnboardingTour'
 import SignedOutBanner from './SignedOutBanner'
 import FeedbackWidget from './FeedbackWidget'
+import StatusFooter from './StatusFooter'
 import { useAuth } from '../lib/auth'
 import { LogIn, LogOut } from 'lucide-react'
 
@@ -427,6 +428,7 @@ export default function Layout() {
               <a href="mailto:edjeter11@gmail.com" className="text-gray-500 hover:underline light:text-gray-700 light:hover:text-gray-900">Contact</a>
             </p>
           </div>
+          <StatusFooter />
         </main>
         <FeedbackWidget />
 

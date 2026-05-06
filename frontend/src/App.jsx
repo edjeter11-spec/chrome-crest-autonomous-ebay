@@ -1,5 +1,7 @@
 import { lazy, Suspense, Component } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import useKeyboardShortcuts from './lib/useKeyboardShortcuts'
+import ShortcutsHelp from './components/ShortcutsHelp'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import { AuthProvider, useAuth } from './lib/auth'
@@ -71,16 +73,25 @@ const RaceWeekend = lazy(() => import('./pages/RaceWeekend'))
 const ParallelLanding = lazy(() => import('./pages/ParallelLanding'))
 const AffiliateROI = lazy(() => import('./pages/AffiliateROI'))
 const AdminFeedback = lazy(() => import('./pages/AdminFeedback'))
+const HowWeScore = lazy(() => import('./pages/HowWeScore'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
 )
+
+function GlobalShortcuts() {
+  const navigate = useNavigate()
+  useKeyboardShortcuts(navigate)
+  return null
+}
 
 export default function App() {
   return (
     <ErrorBoundary>
     <AuthProvider>
     <BrowserRouter>
+      <GlobalShortcuts />
+      <ShortcutsHelp />
       <Routes>
         {/* Standalone routes — no layout chrome */}
         <Route path="/share/watchlist/:token" element={<Suspense fallback={<PageFallback />}><SharedWatchlist /></Suspense>} />
@@ -116,6 +127,7 @@ export default function App() {
           <Route path="parallels/:parallel" element={<Suspense fallback={<PageFallback />}><ParallelLanding /></Suspense>} />
           <Route path="affiliate-roi" element={<Suspense fallback={<PageFallback />}><AffiliateROI /></Suspense>} />
           <Route path="admin/feedback" element={<Suspense fallback={<PageFallback />}><AdminFeedback /></Suspense>} />
+          <Route path="how-we-score" element={<Suspense fallback={<PageFallback />}><HowWeScore /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>
