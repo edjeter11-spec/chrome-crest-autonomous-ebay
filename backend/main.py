@@ -2435,6 +2435,44 @@ async def debug_ebay():
             return {"token_obtained": True, "error": str(e)[:200]}
 
 
+@app.get("/api/debug/live-auctions-raw")
+async def debug_live_auctions_raw():
+    """Diagnostic: hit eBay Browse with various filters to see what's
+    actually returnable. Helps separate 'eBay doesn't have it' from
+    'our filter is dropping it'."""
+    from ebay_api import search_f1_cards, _is_valid_2025_f1_listing
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    now_iso = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    end_iso = (_dt.now(_tz.utc) + _td(days=2)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    end_iso_24 = (_dt.now(_tz.utc) + _td(days=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    async def _probe(label, **kwargs):
+        items = await search_f1_cards(query="2025 Topps Chrome F1", limit=200, **kwargs)
+        f1_ok = sum(1 for it in items if _is_valid_2025_f1_listing(it.get("title","")))
+        # Sample 3 items
+        sample = []
+        for it in items[:3]:
+            sample.append({
+                "title": (it.get("title") or "")[:80],
+                "endDate": it.get("itemEndDate"),
+                "buyOpts": it.get("buyingOptions"),
+            })
+        return {"label": label, "count": len(items), "f1_valid": f1_ok, "sample": sample}
+
+    out = []
+    out.append(await _probe("AUCTION+endDate7d", buying_options_filter="buyingOptions:{AUCTION}",
+                            sort="endingSoonest", extra_filter=f"itemEndDate:[{now_iso}..{(_dt.now(_tz.utc)+_td(days=7)).strftime('%Y-%m-%dT%H:%M:%S.000Z')}]"))
+    out.append(await _probe("AUCTION+endDate24h", buying_options_filter="buyingOptions:{AUCTION}",
+                            sort="endingSoonest", extra_filter=f"itemEndDate:[{now_iso}..{end_iso_24}]"))
+    out.append(await _probe("AUCTION+endDate2d_NO_endsoonest", buying_options_filter="buyingOptions:{AUCTION}",
+                            sort="newlyListed", extra_filter=f"itemEndDate:[{now_iso}..{end_iso}]"))
+    out.append(await _probe("AUCTION_NO_dateFilter", buying_options_filter="buyingOptions:{AUCTION}",
+                            sort="endingSoonest"))
+    out.append(await _probe("BOTH_endingSoonest", buying_options_filter="buyingOptions:{AUCTION|FIXED_PRICE}",
+                            sort="endingSoonest"))
+    return {"probes": out}
+
+
 @app.get("/api/health")
 def health():
     return {
