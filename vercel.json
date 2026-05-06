@@ -76,7 +76,7 @@
   "crons": [
     {
       "path": "/api/cron/sync",
-      "schedule": "0 * * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/ebay/refresh",
@@ -113,10 +113,6 @@
     {
       "path": "/api/audit/auto-fix",
       "schedule": "12 6 * * *"
-    },
-    {
-      "path": "/api/cron/keepalive",
-      "schedule": "*/4 * * * *"
     },
     {
       "path": "/api/psa/snapshot",
