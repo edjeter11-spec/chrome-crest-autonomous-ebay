@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>F1 Card Vault</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 0;
+      background: #0b0b0e;
+      color: #f4f4f5;
+      font-size: 13px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .header img { width: 28px; height: 28px; border-radius: 6px; }
+    .title { font-weight: 800; font-size: 14px; }
+    .subtitle { font-size: 11px; color: #71717a; margin-top: 1px; }
+    .section { padding: 14px 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+    .section:last-of-type { border-bottom: none; }
+    .row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+    .row label { font-size: 12px; color: #d4d4d8; }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      margin-top: 6px;
+      background: #18181b;
+      color: #fff;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      font-size: 12px;
+      box-sizing: border-box;
+    }
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: #27272a;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .toggle.on { background: #16a34a; }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.15s;
+    }
+    .toggle.on::after { transform: translateX(16px); }
+    .footer-actions {
+      padding: 12px 16px;
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      flex: 1;
+      display: block;
+      padding: 9px 10px;
+      background: #dc2626;
+      color: #fff;
+      text-align: center;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 12px;
+      border: none;
+      cursor: pointer;
+    }
+    .btn:hover { background: #ef4444; }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid #27272a;
+      color: #d4d4d8;
+    }
+    .btn-ghost:hover { background: #18181b; color: #fff; }
+    .stat { font-size: 11px; color: #71717a; }
+    .stat strong { color: #d4d4d8; font-weight: 600; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .pill {
+      font-size: 9.5px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      color: #fff;
+      letter-spacing: 0.04em;
+    }
+    .help {
+      font-size: 11px;
+      color: #71717a;
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon-48.png" alt="" />
+    <div>
+      <div class="title">F1 Card Vault</div>
+      <div class="subtitle">Live verdicts on eBay</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="row">
+      <label for="enabled">Enable on eBay pages</label>
+      <div id="enabled" class="toggle" role="switch" aria-checked="true"></div>
+    </div>
+    <div class="help">When enabled, every 2025 Topps Chrome F1 listing on eBay shows our verdict badge.</div>
+  </div>
+
+  <div class="section">
+    <div class="row"><label>API endpoint</label></div>
+    <input id="apiBase" type="text" placeholder="https://www.f1cardvault.com" />
+    <div class="help">Leave default unless you're testing a local backend.</div>
+  </div>
+
+  <div class="section">
+    <div class="row"><label>Verdict legend</label></div>
+    <div class="legend">
+      <span class="pill" style="background:#10b981;">🔥 STRONG BUY</span>
+      <span class="pill" style="background:#22c55e;">✓ GOOD BUY</span>
+      <span class="pill" style="background:#9ca3af;">· FAIR</span>
+      <span class="pill" style="background:#f59e0b;">↑ OVERPRICED</span>
+      <span class="pill" style="background:#ef4444;">✗ PASS</span>
+    </div>
+    <div class="help">STRONG BUY: ≥40% under 90-day median, with ≥10 comps.</div>
+  </div>
+
+  <div class="section">
+    <div class="stat">Cache: <strong id="cacheSize">…</strong> entries</div>
+  </div>
+
+  <div class="footer-actions">
+    <a class="btn" href="https://www.f1cardvault.com" target="_blank" rel="noopener">Open dashboard</a>
+    <button id="clearCache" class="btn btn-ghost">Clear cache</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

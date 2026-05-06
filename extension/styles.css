@@ -1,0 +1,253 @@
+/* F1 Card Vault — extension overlay styles.
+ * All classes are namespaced f1v- to avoid clashing with eBay's own CSS. */
+
+/* Search-result badge (small, attached bottom-right of each card) */
+.f1v-badge-wrap {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 99;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #fff;
+  background: rgba(15, 15, 17, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  max-width: 200px;
+  pointer-events: auto;
+}
+
+.f1v-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.f1v-badge-emoji {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.f1v-badge-text {
+  font-weight: 800;
+}
+
+.f1v-badge-detail {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: #d4d4d8;
+}
+
+.f1v-badge-detail strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+.f1v-badge-conf {
+  color: #71717a;
+  margin-left: 2px;
+}
+
+.f1v-badge-link {
+  display: block;
+  margin-top: 3px;
+  font-size: 9.5px;
+  color: #f87171;
+  text-decoration: none;
+  text-align: right;
+  letter-spacing: 0.02em;
+}
+
+.f1v-badge-link:hover {
+  text-decoration: underline;
+}
+
+/* Manual scan button (corner) */
+.f1v-manual-scan {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 99999;
+  padding: 9px 14px;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
+  transition: transform 0.15s, background 0.15s;
+}
+
+.f1v-manual-scan:hover {
+  background: #ef4444;
+  transform: translateY(-1px);
+}
+
+.f1v-manual-scan:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Single-listing panel (top-right floating) */
+.f1v-listing-panel {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 99999;
+  width: 320px;
+  background: rgba(11, 11, 14, 0.96);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.f1v-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.f1v-panel-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+.f1v-panel-title {
+  font-weight: 700;
+  font-size: 13px;
+  flex: 1;
+}
+
+.f1v-panel-close {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.f1v-panel-close:hover {
+  color: #fff;
+}
+
+.f1v-panel-verdict {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 12px;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.f1v-panel-emoji {
+  font-size: 18px;
+}
+
+.f1v-panel-stats {
+  padding: 12px 14px;
+}
+
+.f1v-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.f1v-panel-row:last-child {
+  border-bottom: none;
+}
+
+.f1v-panel-row-muted {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.f1v-panel-k {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.f1v-panel-v {
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.f1v-panel-row-muted .f1v-panel-v {
+  color: #d4d4d8;
+  font-weight: 500;
+}
+
+.f1v-panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.f1v-panel-btn {
+  display: block;
+  text-align: center;
+  padding: 9px 10px;
+  background: #dc2626;
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 12.5px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.f1v-panel-btn:hover {
+  background: #ef4444;
+}
+
+.f1v-panel-link {
+  text-align: center;
+  font-size: 11px;
+  color: #71717a;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.f1v-panel-link:hover {
+  color: #d4d4d8;
+  text-decoration: underline;
+}
+
+/* Light-mode safety: even if eBay's host CSS forces a light background,
+ * keep the panel readable. */
+@media (prefers-color-scheme: light) {
+  .f1v-listing-panel { color: #fff; }
+  .f1v-badge-wrap { color: #fff; }
+}

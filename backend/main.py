@@ -2826,6 +2826,124 @@ async def rebuild_auctions(db: Session = Depends(get_db), _admin=Depends(require
     return {"deleted": deleted, "added": added, "total_active": total}
 
 
+@app.post("/api/extension/verdicts")
+def extension_verdicts(
+    payload: dict = Body(...),
+    response: Response = None,
+    db: Session = Depends(get_db),
+):
+    """Batch verdict lookup for the browser extension.
+
+    Input:
+        {"items": [{"title": "...", "price": 42.0}, ...]}
+    Returns:
+        {"verdicts": [{"verdict": "STRONG_BUY"|..., "median": 80.0, "n_comps": 12,
+                       "ratio": 0.52, "driver": "Lewis Hamilton",
+                       "parallel": "Refractor"}|null, ...]}
+
+    Order is preserved 1:1 with the input list. `null` entries indicate we
+    couldn't determine driver/parallel from the title (treat as 'unknown').
+    """
+    from ebay_api import extract_driver_from_title, extract_parallel_from_title
+    from scraper import median_comp_price, _extract_grade_from_title
+
+    items = payload.get("items") or []
+    if not isinstance(items, list):
+        return {"verdicts": []}
+    items = items[:50]  # cap batch size — protect API + DB
+
+    if response is not None:
+        # Items rarely change verdict in <60s. Cache the batch response so
+        # repeat scrolls of the same eBay page hit the CDN edge.
+        response.headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300"
+        # Allow the extension to call from any eBay tab origin.
+        response.headers["Access-Control-Allow-Origin"] = "*"
+
+    out = []
+    # In-request memo so duplicate (driver, parallel, grade) tuples only do
+    # one median lookup per batch.
+    memo: dict = {}
+
+    for it in items:
+        title = (it or {}).get("title", "") or ""
+        price = float((it or {}).get("price", 0) or 0)
+        if not title:
+            out.append(None)
+            continue
+
+        driver = extract_driver_from_title(title)
+        parallel = extract_parallel_from_title(title)
+        grade = _extract_grade_from_title(title)
+
+        if not driver:
+            out.append({
+                "verdict": None,
+                "median": None,
+                "n_comps": 0,
+                "ratio": None,
+                "driver": None,
+                "parallel": parallel,
+                "reason": "no_driver_match",
+            })
+            continue
+
+        memo_key = (driver, parallel, grade)
+        if memo_key in memo:
+            median, n_comps = memo[memo_key]
+        else:
+            try:
+                median, n_comps = median_comp_price(db, driver, parallel, grade)
+            except Exception:
+                median, n_comps = None, 0
+            memo[memo_key] = (median, n_comps)
+
+        if not median or n_comps < 3 or price <= 0:
+            out.append({
+                "verdict": None,
+                "median": median,
+                "n_comps": n_comps,
+                "ratio": None,
+                "driver": driver,
+                "parallel": parallel,
+                "reason": "no_comps" if not median else "low_confidence",
+            })
+            continue
+
+        ratio = price / median
+        if ratio <= 0.6 and n_comps >= 10:
+            verdict = "STRONG_BUY"
+        elif ratio <= 0.8:
+            verdict = "GOOD_BUY"
+        elif ratio <= 1.05:
+            verdict = "FAIR"
+        elif ratio <= 1.25:
+            verdict = "OVERPRICED"
+        else:
+            verdict = "PASS"
+
+        out.append({
+            "verdict": verdict,
+            "median": round(median, 2),
+            "n_comps": n_comps,
+            "ratio": round(ratio, 3),
+            "driver": driver,
+            "parallel": parallel,
+            "low_confidence": n_comps < 10,
+        })
+
+    return {"verdicts": out}
+
+
+@app.options("/api/extension/verdicts")
+def extension_verdicts_preflight(response: Response):
+    """CORS preflight for the extension batch endpoint."""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return {}
+
+
 @app.get("/api/ebay-status")
 def ebay_status():
     connected = has_real_credentials()
