@@ -1457,6 +1457,13 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
                     continue
                 _a.current_price = _item.get("current_price", _a.current_price)
                 _a.bid_count = _item.get("bid_count", _a.bid_count)
+                # Always write fresh end_time so secsLeft() stays accurate
+                _fresh_end = _item.get("end_time")
+                if _fresh_end:
+                    from datetime import timezone as _tz
+                    if hasattr(_fresh_end, "tzinfo") and _fresh_end.tzinfo:
+                        _fresh_end = _fresh_end.astimezone(_tz.utc).replace(tzinfo=None)
+                    _a.end_time = _fresh_end
                 _a.last_updated = datetime.utcnow()
                 updated += 1
             except Exception:

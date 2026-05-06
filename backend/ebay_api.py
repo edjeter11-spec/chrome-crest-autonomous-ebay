@@ -438,6 +438,49 @@ async def fetch_all_f1_listings(limit_per_query: int = 200) -> list[dict]:
     return all_items
 
 
+async def fetch_ending_soon_listings() -> list[dict]:
+    """Dedicated pass: ALL listing types sorted by endingSoonest.
+
+    Runs inside the hourly Browse API sync alongside fetch_all_f1_listings.
+    The broad queries sort by relevance, which can bury niche listings
+    (e.g. Kimi Portrait Refractor) even when they're ending in 30 minutes.
+    This pass uses sort=endingSoonest so the most-imminent 200 listings are
+    always captured regardless of relevance ranking.
+
+    Cost: 1 API call per query × len(SEARCH_QUERIES) = ~2 calls/run × 24/day = 48 calls/day.
+    Current quota usage: ~63/5000. No risk.
+    """
+    if _is_rate_limited():
+        logger.warning("fetch_ending_soon: rate-limited, skipping")
+        return []
+
+    all_items: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for q in SEARCH_QUERIES:
+        if _is_rate_limited():
+            break
+        try:
+            items = await search_f1_cards(
+                q,
+                limit=200,
+                sort="endingSoonest",
+                buying_options_filter="buyingOptions:{AUCTION|FIXED_PRICE}",
+            )
+            for item in items:
+                item_id = item.get("itemId", "")
+                title = item.get("title", "")
+                if item_id and item_id not in seen_ids and _is_valid_2025_f1_listing(title):
+                    seen_ids.add(item_id)
+                    all_items.append(parse_ebay_item(item))
+            await asyncio.sleep(0.3)
+        except Exception as exc:
+            logger.warning(f"fetch_ending_soon: query failed ({q}): {exc}")
+
+    logger.info(f"fetch_ending_soon_listings: {len(all_items)} listings")
+    return all_items
+
+
 EBAY_ITEM_URL = "https://api.ebay.com/buy/browse/v1/item"
 EBAY_SANDBOX_ITEM_URL = "https://api.sandbox.ebay.com/buy/browse/v1/item"
 

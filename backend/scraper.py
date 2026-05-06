@@ -449,6 +449,22 @@ async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
         logger.info(f"Purged {purged} non-2025 listings from DB")
 
     listings = await fetch_all_f1_listings(limit_per_query=100)
+
+    # Dedicated ending-soon pass — catches listings buried in relevance ranking.
+    # fetch_all_f1_listings sorts auctions by endingSoonest but only fetches 100
+    # per query. The ending-soon pass fetches 200 sorted strictly by end time,
+    # ensuring imminent listings (ending in <2h) are never missed between runs.
+    try:
+        from ebay_api import fetch_ending_soon_listings
+        ending_soon = await fetch_ending_soon_listings()
+        seen_ids = {l["ebay_item_id"] for l in listings if l.get("ebay_item_id")}
+        for l in ending_soon:
+            if l.get("ebay_item_id") and l["ebay_item_id"] not in seen_ids:
+                listings.append(l)
+                seen_ids.add(l["ebay_item_id"])
+    except Exception as _es_err:
+        logger.warning(f"fetch_ending_soon_listings failed (non-fatal): {_es_err}")
+
     added = 0
     updated = 0
 
