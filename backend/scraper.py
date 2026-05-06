@@ -483,7 +483,11 @@ async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
 
         title = listing.get("title", "")
         current_price = listing.get("current_price", 0) or 0
-        if current_price <= 0:
+        # AUCTION starting bids are routinely $0.99 — and eBay sometimes
+        # reports an unbid auction's price as 0 entirely. parse_ebay_item
+        # already falls back to a $0.99 placeholder; rejecting <=0 here would
+        # discard hundreds of valid auctions ending in the next hours.
+        if current_price < 0:
             continue
 
         driver = extract_driver_from_title(title)

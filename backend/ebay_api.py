@@ -328,16 +328,23 @@ def parse_ebay_item(item: dict) -> dict:
     title = item.get("title", "")
     item_id = item.get("itemId", "")
 
-    # Price info
-    price_data = item.get("price", {})
-    current_price = float(price_data.get("value", 0))
+    # Price info — for AUCTION items eBay populates currentBidPrice with the
+    # live high bid; price may be 0 for no-bid auctions. Prefer currentBidPrice
+    # when it's > 0, fall back to price.value, fall back to minimumPriceToBid.
+    cbp = item.get("currentBidPrice", {}) or {}
+    cbp_val = float(cbp.get("value", 0)) if cbp else 0.0
+    price_data = item.get("price", {}) or {}
+    price_val = float(price_data.get("value", 0)) if price_data else 0.0
+    min_bid = item.get("minimumPriceToBid", {}) or {}
+    min_bid_val = float(min_bid.get("value", 0)) if min_bid else 0.0
+    current_price = cbp_val or price_val or min_bid_val or 0.99
 
     # Buy It Now
     buy_now = None
     if "buyingOptions" in item:
         options = item["buyingOptions"]
-        if "FIXED_PRICE" in options:
-            buy_now = current_price
+        if "FIXED_PRICE" in options and price_val > 0:
+            buy_now = price_val
 
     # Auction-specific
     bid_count = item.get("bidCount", 0)
