@@ -390,11 +390,14 @@ def parse_ebay_item(item: dict) -> dict:
 
 
 def _is_valid_2025_f1_listing(title: str) -> bool:
-    """Return True only for 2025 Topps Chrome Formula 1 cards (not F2/F3/other years)."""
+    """Return True for 2025 Topps Chrome Formula 1 cards (not F2/F3/other years).
+
+    Year heuristic: accept if "2025" / "'25" / "25-" appears, OR if the listing
+    looks like Topps Chrome F1 with no competing year marker (2020-2024).
+    Sellers routinely omit the year on title-length-limited eBay listings, and
+    rejecting them was hiding the bulk of live auctions Eddie sees on eBay.
+    """
     t = title.lower()
-    # Must mention 2025
-    if "2025" not in t:
-        return False
     # Must be F1 (Formula 1) — reject F2, F3, Indy, NASCAR, etc.
     f1_keywords = ["formula 1", "formula1", "f1", "grand prix"]
     if not any(k in t for k in f1_keywords):
@@ -403,6 +406,13 @@ def _is_valid_2025_f1_listing(title: str) -> bool:
     reject = [" f2 ", " f3 ", "formula 2", "formula 3", "formula two", "formula three",
               "indycar", "nascar", "nfl", "nba", "mlb", "soccer", "football"]
     if any(k in t for k in reject):
+        return False
+    # Reject competing earlier years explicitly
+    earlier_years = ["2020", "2021", "2022", "2023", "2024"]
+    if any(y in t for y in earlier_years):
+        # If 2025 is ALSO present (e.g. "2024-25"), allow it
+        if "2025" in t or "'25" in t or "25-" in t:
+            return True
         return False
     return True
 
@@ -494,7 +504,7 @@ async def fetch_ending_soon_listings() -> list[dict]:
     return all_items
 
 
-async def fetch_all_live_auctions(max_pages: int = 5) -> list[dict]:
+async def fetch_all_live_auctions(max_pages: int = 10) -> list[dict]:
     """Pull every live F1 AUCTION ending in the next 7 days, paginated deep.
 
     Eddie's complaint: Ending Soonest shows 1 card while eBay has 20+ ending

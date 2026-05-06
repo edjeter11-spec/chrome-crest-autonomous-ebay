@@ -465,7 +465,7 @@ async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
         # Deep AUCTION-only pass — paginates 5×200=1000 results, server-side
         # filtered to itemEndDate within next 7 days. Catches every live F1
         # auction even if it's buried beyond the relevance top-200.
-        live_auctions = await fetch_all_live_auctions(max_pages=5)
+        live_auctions = await fetch_all_live_auctions(max_pages=10)
         for l in live_auctions:
             if l.get("ebay_item_id") and l["ebay_item_id"] not in seen_ids:
                 listings.append(l)
