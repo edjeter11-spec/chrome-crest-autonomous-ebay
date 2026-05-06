@@ -2435,6 +2435,30 @@ async def debug_ebay():
             return {"token_obtained": True, "error": str(e)[:200]}
 
 
+@app.get("/api/debug/live-fetch")
+async def debug_live_fetch():
+    """Run fetch_all_live_auctions in isolation and report what it actually
+    returns + a sample of the parsed items. Helps locate where the pipeline
+    is dropping the 200 ending-soon items the Browse API exposes."""
+    from ebay_api import fetch_all_live_auctions, fetch_ending_soon_listings, fetch_all_f1_listings
+    try:
+        live = await fetch_all_live_auctions(max_pages=2)
+    except Exception as e:
+        return {"error": f"fetch_all_live_auctions raised: {type(e).__name__}: {str(e)[:300]}"}
+    sample = []
+    for it in live[:5]:
+        sample.append({
+            "title": (it.get("title") or "")[:80],
+            "end_time": str(it.get("end_time"))[:24],
+            "current_price": it.get("current_price"),
+            "buying_options": it.get("buying_options"),
+            "ebay_item_id": it.get("ebay_item_id"),
+        })
+    return {"count": len(live), "sample": sample,
+            "missing_id": sum(1 for it in live if not it.get("ebay_item_id")),
+            "zero_price": sum(1 for it in live if not it.get("current_price"))}
+
+
 @app.get("/api/debug/live-auctions-raw")
 async def debug_live_auctions_raw():
     """Diagnostic: hit eBay Browse with various filters to see what's
