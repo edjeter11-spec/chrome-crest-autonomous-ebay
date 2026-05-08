@@ -3049,18 +3049,27 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
     updated = 0
     errors = []
     try:
-        # Parallelize all OpenF1 fetches — sequential mode hit the Vercel
-        # function timeout after ~1 race. With asyncio.gather we fetch every
-        # session's drivers + results concurrently. ~50 calls, ~3-5s total.
-        async with httpx.AsyncClient(timeout=20) as client:
-            # 1. Pull all Race + Sprint sessions
+        # Parallel with bounded concurrency (8) — earlier full-fanout
+        # asyncio.gather overloaded httpx's default connection pool and
+        # silently dropped most calls (only Melbourne ingested out of ~30
+        # sessions). Semaphore bounds it; full pull runs in ~10s.
+        sem = asyncio.Semaphore(8)
+        async def bounded_get(client, url, **kw):
+            async with sem:
+                try:
+                    return await client.get(url, **kw)
+                except Exception as e:
+                    return e
+
+        async with httpx.AsyncClient(timeout=30, limits=httpx.Limits(max_connections=20)) as client:
             sessions_calls = await asyncio.gather(*[
-                client.get(
+                bounded_get(
+                    client,
                     "https://api.openf1.org/v1/sessions",
                     params={"session_name": label, "year": 2026},
                 )
                 for label in ("Race", "Sprint")
-            ], return_exceptions=True)
+            ])
 
             races_sessions = []
             for label, resp in zip(("Race", "Sprint"), sessions_calls):
@@ -3072,17 +3081,20 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                         races_sessions.append(s)
             sessions = races_sessions
 
-            # 2. For each session, fire off drivers + results calls concurrently
+            # Skip sessions in the future (no results yet) to halve the work.
+            _now_iso = _dt.utcnow().isoformat()
+            sessions = [s for s in sessions if (s.get("date_start", "") or "")[:19] <= _now_iso]
+
             session_keys = [s.get("session_key") for s in sessions]
             drv_calls = [
-                client.get("https://api.openf1.org/v1/drivers", params={"session_key": sk})
+                bounded_get(client, "https://api.openf1.org/v1/drivers", params={"session_key": sk})
                 for sk in session_keys
             ]
             res_calls = [
-                client.get("https://api.openf1.org/v1/session_result", params={"session_key": sk})
+                bounded_get(client, "https://api.openf1.org/v1/session_result", params={"session_key": sk})
                 for sk in session_keys
             ]
-            all_responses = await asyncio.gather(*(drv_calls + res_calls), return_exceptions=True)
+            all_responses = await asyncio.gather(*(drv_calls + res_calls))
             drv_responses = all_responses[:len(session_keys)]
             res_responses = all_responses[len(session_keys):]
 
