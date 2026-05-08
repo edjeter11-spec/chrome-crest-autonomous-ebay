@@ -212,10 +212,11 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
   }, [])
 
   const items = useMemo(() => {
-    // 24h window — widens pool; only 1-2 non-base F1 auctions end in <12h at
-    // any given time, causing the section to render empty with the tighter gate.
+    // 2h window — Eddie's directive: a $1 starting bid on a $1000 card with
+    // 3 days left isn't a snipe, it's just an early listing. Real snipes are
+    // the urgency window where the price has settled and you can grab cheap.
     return (auctions || [])
-      .filter(a => isBigSnipe(a, 24 * 3600))
+      .filter(a => isBigSnipe(a, 2 * 3600))
       .sort((a, b) => {
         const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
         if (vr !== 0) return vr
@@ -223,7 +224,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
         if (s !== 0) return s
         return secsLeft(a) - secsLeft(b)
       })
-      .slice(0, 6)
+      .slice(0, 12)
   }, [auctions, nowTick])
 
   // "Next Big Auctions" is meant to show what's coming — be more permissive
@@ -236,23 +237,21 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
   // soonest so the high-value ones still float to the top.
   const nextBig = useMemo(() => {
     const inItems = new Set(items.map(a => a.id))
-    // Window: 24h-7d. Biggest Snipes uses <24h; Next Big picks up 24h-7d.
-    // Wide window needed — thin F1 market means few non-base auctions in any
-    // narrow window. Also filter empty parallel (= untagged base cards).
+    // Window: 2h-24h. Biggest Snipes is now <2h (true urgency); Next Big
+    // picks up the 2h-24h horizon — what to set alerts for next.
     return (auctions || [])
       .filter(a => {
         const secs = secsLeft(a)
-        if (secs <= 24 * 3600 || secs > 7 * 24 * 3600) return false
+        if (secs <= 2 * 3600 || secs > 24 * 3600) return false
+        if (inItems.has(a.id)) return false
         const parallel = a.card?.parallel || a.parallel || ''
         if (BORING_PARALLELS.has(parallel)) return false
         const price = a.current_price || 0
-        // Price-first: $10+ always interesting regardless of parallel tag gaps
         if (price >= 10) return true
         if (/\bauto(graph)?\b|\bsigned\b/i.test(a.title || '')) return true
         if (/\/\d{1,3}\b/.test(a.title || '')) return true
         if ((a.bid_count || 0) > 0) return true
         if (parallel && price >= 5) return true
-        if (inItems.has(a.id)) return false
         return false
       })
       .sort((a, b) => {
@@ -260,7 +259,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
         if (Math.abs(p) > 20) return p
         return secsLeft(a) - secsLeft(b)
       })
-      .slice(0, 6)
+      .slice(0, 12)
   }, [auctions, items, nowTick])
 
   // Auto-refresh: only refresh items that are ALREADY stale (>15 min old) and
@@ -322,7 +321,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
             🎯 Biggest Snipes
           </h2>
           <div className="text-[10px] text-gray-500 mt-1 font-medium">
-            Ending ≤12h · non-base parallels + real money only
+            Ending ≤2h · price has settled, snipe window is now
           </div>
         </div>
         <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">
@@ -353,7 +352,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
             ⏰ Next Big Auctions
           </h2>
           <div className="text-[10px] text-gray-500 mt-1 font-medium">
-            ending 24h–7d · non-base parallels · $5+
+            ending 2h–24h · set alerts for these
           </div>
         </div>
         <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">

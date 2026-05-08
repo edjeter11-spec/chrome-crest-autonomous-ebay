@@ -264,25 +264,29 @@ def explain_snipe_score(auction) -> dict:
 
 def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> bool:
     """
-    Decide whether an auction qualifies as a snipe.
+    Decide whether an auction qualifies as a SNIPE.
 
-    LOOSENED May 2026 — Eddie reported "0 of 5,574 active rows have
-    snipe_eligible=True". Root cause: the previous gate required score>=50
-    AND (ends_in_6h OR price <= 50% median). Almost no rows cleared both,
-    because most active auctions end >6h out and bid prices haven't dropped
-    that low yet. Restoring positives by relaxing on Eddie's spec:
+    REVISED May 2026 — Eddie's directive: "a $1000 card listed for $1 with
+    3 days left isn't a snipe — bidding will push the price up before it
+    ends. A snipe is the urgency window where the price has settled and
+    you can grab it cheap."
 
-      - auction is active and not ended
-      - end_time within the next 7 days
-      - AT LEAST ONE of:
-          (a) AUCTION buying option + has comps + current total <= 0.7 * median
-          (b) ending within next 6 hours (urgency snipe — even thin discount counts)
-          (c) current total <= 0.5 * median (deep discount, any time horizon)
-          (d) snipe_score >= 50 (legacy path — keeps high-confidence rows in)
+    A snipe ALWAYS requires both:
+      (1) Auction ending within the next 24 hours (HARD requirement)
+      (2) Some price-vs-comp signal that it's actually cheap
 
-    Missing end_time is treated as ineligible. Missing comps fall through to
-    score-based path (d) so AUCTIONs with no sold history still surface when
-    the score model likes them.
+    Then within that, AT LEAST ONE of:
+      (a) AUCTION buying option + comps + current total <= 0.7 * median
+      (b) ends within 6h AND (cheap_70 OR snipe_score >= 40)
+          — high urgency tolerates thinner margins
+      (c) ends within 12h AND current total <= 0.5 * median
+          — very cheap with under half-day to bid up
+      (d) snipe_score >= 60 + ends within 24h
+          — legacy high-confidence path
+
+    Items ending >24h out are never snipes regardless of price; they go
+    in 'Next Big Auctions' / 'Hot Buys' instead. Verdict (STRONG_BUY etc)
+    is independent — that's the price-vs-comp rating, not a snipe label.
     """
     if auction is None:
         return False
@@ -297,15 +301,17 @@ def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> boo
     if end_time <= now:
         return False
 
-    # Hard window: must end within 7 days. Anything farther out isn't a snipe
-    # regardless of price — too much can change.
-    if (end_time - now) > timedelta(days=7):
+    # HARD requirement: ending within 24h. Anything beyond is not a snipe —
+    # bid action between now and end will determine final price.
+    time_left = end_time - now
+    if time_left > timedelta(hours=24):
         return False
 
     # Read pricing context once.
     cur_total = (getattr(auction, "current_price", 0) or 0) + (getattr(auction, "shipping_cost", 0) or 0)
     score = getattr(auction, "snipe_score", 0) or 0
-    ending_soon_6h = (end_time - now) <= timedelta(hours=6)
+    ending_soon_6h = time_left <= timedelta(hours=6)
+    ending_soon_12h = time_left <= timedelta(hours=12)
 
     # Detect AUCTION buying option (true bid auctions, not BIN).
     is_auction = False
@@ -324,7 +330,7 @@ def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> boo
     except Exception:
         is_auction = False
 
-    # Comp lookup — the new dominant signal.
+    # Comp lookup — the dominant signal.
     cheap_70 = False
     cheap_50 = False
     has_comps = False
@@ -351,20 +357,20 @@ def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> boo
             finally:
                 if owns_db:
                     db.close()
-    except Exception as e:  # median lookup must never make us fail-closed
+    except Exception as e:
         logger.debug(f"compute_snipe_eligible median lookup failed: {e}")
 
-    # (a) auction + comps + <=70% median — Eddie's primary criterion
+    # (a) AUCTION + comps + cheap_70, ending in 24h
     if is_auction and has_comps and cheap_70:
         return True
-    # (b) urgency: ends in 6h
+    # (b) ends in 6h with thin-or-better signal
     if ending_soon_6h and (cheap_70 or score >= 40):
         return True
-    # (c) deep discount any time
-    if cheap_50:
+    # (c) ends in 12h with deep discount
+    if ending_soon_12h and cheap_50:
         return True
-    # (d) legacy high-confidence score path
-    if score >= 50 and (ending_soon_6h or cheap_70):
+    # (d) legacy high-confidence score path, still gated by 24h
+    if score >= 60:
         return True
     return False
 

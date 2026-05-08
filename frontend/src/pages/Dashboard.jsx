@@ -460,11 +460,11 @@ export default function Dashboard() {
         return false
       })
       .sort((a, b) => secsLeft(a) - secsLeft(b))
-      .slice(0, 8)
+      .slice(0, 16)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auctions])
 
-  const hotSnipes = useMemo(() => (Array.isArray(snipes) ? snipes : []).slice(0, 6), [snipes])
+  const hotSnipes = useMemo(() => (Array.isArray(snipes) ? snipes : []).slice(0, 12), [snipes])
 
   // Deprecated: BiggestSnipes does its own comprehensive filtering.
   // Just check if there are ANY auctions to avoid showing empty state prematurely.
