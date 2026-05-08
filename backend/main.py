@@ -3113,6 +3113,7 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                 results = rresp.json()
                 drv_map = {d.get("driver_number"): d.get("full_name") for d in drivers if d.get("driver_number")}
 
+                _session_added_before = added
                 for r in results:
                     dn = r.get("driver_number")
                     name = drv_map.get(dn)
@@ -3154,9 +3155,19 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                             laps_completed=laps,
                         ))
                         added += 1
-        db.commit()
+                # Commit per-session — earlier batched-commit lost most rows
+                # silently when one session's data triggered a constraint
+                # rollback that took the others with it.
+                try:
+                    db.commit()
+                except Exception as _ce:
+                    db.rollback()
+                    errors.append(f"sess {sk} commit: {str(_ce)[:120]}")
+                    added = _session_added_before  # un-count rolled-back adds
     except Exception as e:
         errors.append(str(e)[:200])
+        try: db.rollback()
+        except Exception: pass
     # Diagnostic — what's actually in the table now
     try:
         from sqlalchemy import func as _func
