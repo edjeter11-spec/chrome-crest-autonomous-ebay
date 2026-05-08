@@ -3157,7 +3157,20 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
         db.commit()
     except Exception as e:
         errors.append(str(e)[:200])
-    return {"ok": not errors, "added": added, "updated": updated, "sessions_seen": sessions_seen, "errors": errors}
+    # Diagnostic — what's actually in the table now
+    try:
+        from sqlalchemy import func as _func
+        total_rows = db.query(_func.count(RaceResult.id)).scalar() or 0
+        distinct_dates = db.query(_func.count(_func.distinct(RaceResult.race_date))).scalar() or 0
+    except Exception:
+        total_rows = -1
+        distinct_dates = -1
+    return {
+        "ok": not errors, "added": added, "updated": updated,
+        "sessions_seen": sessions_seen,
+        "total_rows": total_rows, "distinct_race_dates": distinct_dates,
+        "errors": errors,
+    }
 
 
 @app.get("/api/drivers/form")
