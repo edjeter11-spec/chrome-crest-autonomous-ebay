@@ -3108,9 +3108,20 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                     continue
 
                 if dresp.status_code != 200 or rresp.status_code != 200:
+                    errors.append(f"sess {sk} status {dresp.status_code}/{rresp.status_code}")
                     continue
-                drivers = dresp.json()
-                results = rresp.json()
+                try:
+                    drivers = dresp.json()
+                    results = rresp.json()
+                except Exception as _je:
+                    errors.append(f"sess {sk} json: {str(_je)[:80]}")
+                    continue
+                if not isinstance(results, list) or not isinstance(drivers, list):
+                    errors.append(f"sess {sk} not-list results={type(results).__name__} drivers={type(drivers).__name__}")
+                    continue
+                if not results:
+                    errors.append(f"sess {sk} empty results")
+                    continue
                 drv_map = {d.get("driver_number"): d.get("full_name") for d in drivers if d.get("driver_number")}
 
                 _session_added_before = added
