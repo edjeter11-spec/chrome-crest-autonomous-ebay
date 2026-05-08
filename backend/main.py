@@ -3049,26 +3049,45 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
     updated = 0
     errors = []
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            # OpenF1 returns BOTH the Sprint and the actual GP under
-            # session_type=Race. We pull both — Race AND Sprint — and tag
-            # rows with is_sprint=True for the sprints. Form-score weighting
-            # downweights sprints to 0.5x. This way Sprint results contribute
-            # to driver form / news ticker without overpowering the GP.
-            races_sessions = []
-            for label in ("Race", "Sprint"):
-                r = await client.get(
+        # Parallelize all OpenF1 fetches — sequential mode hit the Vercel
+        # function timeout after ~1 race. With asyncio.gather we fetch every
+        # session's drivers + results concurrently. ~50 calls, ~3-5s total.
+        async with httpx.AsyncClient(timeout=20) as client:
+            # 1. Pull all Race + Sprint sessions
+            sessions_calls = await asyncio.gather(*[
+                client.get(
                     "https://api.openf1.org/v1/sessions",
                     params={"session_name": label, "year": 2026},
                 )
-                if r.status_code == 200:
-                    for s in r.json():
-                        if s.get("session_name") == label:
-                            s["_label"] = label  # carry through
-                            races_sessions.append(s)
+                for label in ("Race", "Sprint")
+            ], return_exceptions=True)
+
+            races_sessions = []
+            for label, resp in zip(("Race", "Sprint"), sessions_calls):
+                if isinstance(resp, Exception) or resp.status_code != 200:
+                    continue
+                for s in resp.json():
+                    if s.get("session_name") == label:
+                        s["_label"] = label
+                        races_sessions.append(s)
             sessions = races_sessions
 
-            for sess in sessions:
+            # 2. For each session, fire off drivers + results calls concurrently
+            session_keys = [s.get("session_key") for s in sessions]
+            drv_calls = [
+                client.get("https://api.openf1.org/v1/drivers", params={"session_key": sk})
+                for sk in session_keys
+            ]
+            res_calls = [
+                client.get("https://api.openf1.org/v1/session_result", params={"session_key": sk})
+                for sk in session_keys
+            ]
+            all_responses = await asyncio.gather(*(drv_calls + res_calls), return_exceptions=True)
+            drv_responses = all_responses[:len(session_keys)]
+            res_responses = all_responses[len(session_keys):]
+
+            # 3. Walk results + upsert
+            for sess, dresp, rresp in zip(sessions, drv_responses, res_responses):
                 sk = sess.get("session_key")
                 label = sess.get("_label", "Race")
                 meeting = sess.get("meeting_name") or sess.get("circuit_short_name") or "Race"
@@ -3079,20 +3098,11 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                 except Exception:
                     continue
 
-                # Get drivers map
-                drivers_resp = await client.get(
-                    "https://api.openf1.org/v1/drivers",
-                    params={"session_key": sk},
-                )
-                drivers = drivers_resp.json() if drivers_resp.status_code == 200 else []
+                if isinstance(dresp, Exception) or dresp.status_code != 200: continue
+                if isinstance(rresp, Exception) or rresp.status_code != 200: continue
+                drivers = dresp.json()
+                results = rresp.json()
                 drv_map = {d.get("driver_number"): d.get("full_name") for d in drivers if d.get("driver_number")}
-
-                # Get results
-                results_resp = await client.get(
-                    "https://api.openf1.org/v1/session_result",
-                    params={"session_key": sk},
-                )
-                results = results_resp.json() if results_resp.status_code == 200 else []
 
                 for r in results:
                     dn = r.get("driver_number")
