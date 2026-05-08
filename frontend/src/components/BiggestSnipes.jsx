@@ -38,6 +38,37 @@ const BORING_PARALLELS = new Set([
 ])
 const RARE_PRINT_RUN_RE = /\/(5|10|15|20|25|50|75)\b/
 
+/**
+ * Pull the serial number ("22/150") OR just the print-run total ("/150")
+ * out of an eBay title. Returns "#22/150", "/150", or '' when neither is
+ * present. Intentionally tight so we don't false-positive on card numbers
+ * like "#143" or release dates.
+ *
+ * Preferred patterns:
+ *   "22/150" → "#22/150" (numbered to total)
+ *   "/150"   → "/150"   (print-run total only)
+ *   "#22/150" → "#22/150"
+ */
+function parsePrintRun(title) {
+  if (!title) return ''
+  const t = String(title)
+  // Numbered: "22/150" or "#22/150" — common print-run notation. Reject
+  // tiny totals (<5) to avoid catching dates / fractions.
+  const numbered = t.match(/(?:^|\s|#)(\d{1,3})\/(\d{1,4})\b/)
+  if (numbered) {
+    const total = parseInt(numbered[2], 10)
+    const num = parseInt(numbered[1], 10)
+    if (total >= 5 && num <= total) return `#${num}/${total}`
+  }
+  // Total-only: "/150", "/99", "/10". Same lower bound.
+  const totalOnly = t.match(/(?:^|\s)\/(\d{1,4})\b/)
+  if (totalOnly) {
+    const total = parseInt(totalOnly[1], 10)
+    if (total >= 5 && total <= 9999) return `/${total}`
+  }
+  return ''
+}
+
 function isBigSnipe(a, maxSecs) {
   const secs = secsLeft(a)
   if (secs <= 0 || secs > maxSecs) return false
@@ -110,7 +141,7 @@ function SnipeImage({ src, driverName }) {
   )
 }
 
-function AuctionRow({ a, nowTick, freshOverride }) {
+function AuctionRow({ a, nowTick, freshOverride, onOpen }) {
   const sL = Math.max(0, Math.floor(((a.end_time ? parseUtc(a.end_time).getTime() : 0) - nowTick) / 1000))
   const h = Math.floor(sL / 3600)
   const m = Math.floor((sL % 3600) / 60)
@@ -119,7 +150,12 @@ function AuctionRow({ a, nowTick, freshOverride }) {
   const timeStr = h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`
   const verdict = a.verdict
   const isGood = verdict === 'STRONG_BUY' || verdict === 'GOOD_BUY'
-  const median = a.median_price || a.median_sold_price
+  // Median lives in verdict_comp.median_total (set server-side by
+  // /api/auctions/with-verdicts). The legacy a.median_price field is never
+  // populated — reading it returned undefined → 'usually sells for' never
+  // rendered on snipe rows.
+  const median = a.verdict_comp?.median_total ?? a.median_price ?? a.median_sold_price
+  const nComps = a.verdict_comp?.n ?? null
   // Prefer freshly-fetched price/bids over the (possibly stale) prop.
   const livePrice = freshOverride?.current_price ?? a.current_price
   const liveBids = freshOverride?.bid_count ?? a.bid_count
@@ -127,6 +163,16 @@ function AuctionRow({ a, nowTick, freshOverride }) {
   // Prefer the title-derived driver — covers F1 Legends (card_id NULL) and
   // legacy mislabeled rows where the joined card disagrees with the title.
   const driverName = a.title_driver || a.driver_name || a.driver || a.card?.driver_name
+  const parallel = a.card?.parallel || a.parallel || ''
+  const parallelLabel = parallel && parallel !== 'Base' ? parallel : ''
+  const printRun = parsePrintRun(a.title)
+  // Clickable when the parent has wired an onOpen handler. Falls back to
+  // a static row otherwise so callers without the modal still work.
+  const clickable = typeof onOpen === 'function'
+  const handleRowClick = clickable ? () => onOpen(a) : undefined
+  const handleKeyDown = clickable
+    ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(a) } }
+    : undefined
   // Freshness label — green dot if updated <2 min ago, otherwise show "Xm ago"
   const lastUpdatedRaw = freshOverride?.last_updated || a.last_updated
   let freshness = null
@@ -145,20 +191,40 @@ function AuctionRow({ a, nowTick, freshOverride }) {
     }
   }
   return (
-    <div className="px-4 py-3 hover:bg-gray-800/40 transition-colors flex gap-3">
+    <div
+      className={`px-4 py-3 transition-colors flex gap-3 ${clickable ? 'hover:bg-gray-800/60 cursor-pointer focus:bg-gray-800/60 focus:outline-none' : 'hover:bg-gray-800/40'}`}
+      onClick={handleRowClick}
+      onKeyDown={handleKeyDown}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      aria-label={clickable ? `Open details for ${driverName || 'auction'}` : undefined}
+    >
       <SnipeImage src={a.image_url} driverName={driverName} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-          <div className="text-xs font-bold text-white truncate">
-            {driverName || '—'}
-            {a.parallel && a.parallel !== 'Base' && (
-              <span className="text-gray-300"> · {a.parallel}</span>
-            )}
-          </div>
+          {clickable ? (
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onOpen(a) }}
+              className="text-xs font-bold text-white truncate hover:text-red-300 hover:underline transition-colors text-left max-w-full"
+              title="View card + seller details"
+            >
+              {driverName || '—'}
+              {parallelLabel && <span className="text-gray-300"> · {parallelLabel}</span>}
+              {printRun && <span className="text-amber-300 ml-1">{printRun}</span>}
+            </button>
+          ) : (
+            <div className="text-xs font-bold text-white truncate">
+              {driverName || '—'}
+              {parallelLabel && <span className="text-gray-300"> · {parallelLabel}</span>}
+              {printRun && <span className="text-amber-300 ml-1">{printRun}</span>}
+            </div>
+          )}
           {isGood && (
             <Link
               to="/how-we-score"
               title="How we score auctions"
+              onClick={e => e.stopPropagation()}
               className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 hover:opacity-80 transition-opacity ${
                 verdict === 'STRONG_BUY' ? 'bg-emerald-600/40 text-emerald-200' : 'bg-emerald-600/25 text-emerald-300'
               }`}
@@ -168,15 +234,25 @@ function AuctionRow({ a, nowTick, freshOverride }) {
           )}
         </div>
         {pctBelow && pctBelow > 0 && (
-          <div className="text-[10px] text-emerald-400 font-semibold mb-0.5">{pctBelow}% off median</div>
+          <div className="text-[10px] text-emerald-400 font-semibold mb-0.5">{pctBelow}% off usual sale</div>
         )}
         <div className="flex items-baseline gap-2 mb-1">
           <span className="text-xl font-black text-yellow-400">${Math.round(livePrice || 0).toLocaleString()}</span>
           {liveBids != null && liveBids > 0 && (
             <span className="text-[10px] text-gray-400">{liveBids} bid{liveBids === 1 ? '' : 's'}</span>
           )}
-          {median ? <span className="text-[10px] text-gray-500">med ${Math.round(median).toLocaleString()}</span> : null}
         </div>
+        {median ? (
+          <div className="text-[10px] text-gray-500 mb-1">
+            Usually sells for{' '}
+            <span className="text-gray-300 font-semibold">
+              ${Math.round(median).toLocaleString()}
+            </span>
+            {nComps && (
+              <span className="text-gray-600"> · {nComps} sale{nComps === 1 ? '' : 's'}</span>
+            )}
+          </div>
+        ) : null}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-mono text-red-400 tabular-nums font-bold">{timeStr}</span>
@@ -187,6 +263,7 @@ function AuctionRow({ a, nowTick, freshOverride }) {
               href={ebayAffiliateUrl(a.ebay_url)}
               target="_blank"
               rel="sponsored noopener"
+              onClick={e => e.stopPropagation()}
               className="text-[11px] font-black px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white transition-colors whitespace-nowrap"
             >
               Buy on eBay →
@@ -198,7 +275,7 @@ function AuctionRow({ a, nowTick, freshOverride }) {
   )
 }
 
-export default function BiggestSnipes({ auctions = [], loading = false }) {
+export default function BiggestSnipes({ auctions = [], loading = false, onAuctionClick }) {
   const [nowTick, setNowTick] = useState(Date.now())
   // Map<auction.id, {current_price, bid_count, last_updated}> — fresh data
   // fetched per-item from /api/auctions/{id}/refresh so the showcase NEVER
@@ -348,7 +425,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
               No big snipes ending soon — the action is elsewhere right now. Check back in an hour.
             </div>
           ) : (
-            items.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} />)
+            items.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} onOpen={onAuctionClick} />)
           )}
         </div>
       </div>
@@ -369,7 +446,7 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
               Nothing big on deck in the next 24h.
             </div>
           ) : (
-            nextBig.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} />)
+            nextBig.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} onOpen={onAuctionClick} />)
           )}
         </div>
       </div>

@@ -93,6 +93,7 @@ export default function SalesDatabase() {
   const [accuracyStats, setAccuracyStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState(null)
   const [advancedOpen, setAdvancedOpen] = useState(() => {
     try { return localStorage.getItem('cc_sales_advanced_open') === '1' } catch { return false }
   })
@@ -188,6 +189,7 @@ export default function SalesDatabase() {
 
   const load = useCallback((showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
+    setLoadError(null)
     swrFetch(
       `${API}/api/sales?${qs}`,
       d => {
@@ -195,9 +197,10 @@ export default function SalesDatabase() {
         // B&W/Base when Notable is on (server doesn't know parallel names).
         let arr = d.sales || []
         if (onlyNotable) arr = arr.filter(isNotable)
-        setSales(arr); setTotal(d.total || 0); setLoading(false)
+        setSales(arr); setTotal(d.total || 0)
       },
-      () => setRefreshing(false)
+      () => { setLoading(false); setRefreshing(false) }, // ALWAYS clear loading
+      err => { setLoadError(`Couldn't load sales — ${err?.message || 'network error'}`) },
     )
     swrFetch(
       `${API}/api/sales/stats?${statsQs}`,
@@ -500,6 +503,23 @@ export default function SalesDatabase() {
         </div>
         <span className="text-[10px] text-gray-600 ml-auto">{sales.length} shown</span>
       </div>
+
+      {/* Error banner — surfaces network/API failures so the page never just
+          sits in 'loading' silently. Reload re-fires the load() callback. */}
+      {loadError && (
+        <div className="bg-red-950/40 border border-red-800/60 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <div className="text-sm text-red-200">
+            <span className="font-bold mr-1">Sales failed to load.</span>
+            <span className="text-red-300/80">{loadError}</span>
+          </div>
+          <button
+            onClick={() => load(true)}
+            className="text-xs font-bold px-3 py-2 rounded bg-red-700 hover:bg-red-600 text-white transition-colors whitespace-nowrap"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Mobile card list */}
       <div className="md:hidden space-y-2">

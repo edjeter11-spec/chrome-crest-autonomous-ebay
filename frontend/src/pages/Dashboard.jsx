@@ -715,7 +715,11 @@ export default function Dashboard() {
       {/* Biggest Snipes + Next Big Auctions */}
       <SectionBoundary>
         <Suspense fallback={<div className="h-32" />}>
-          <BiggestSnipes auctions={auctions} loading={auctionsLoading} />
+          <BiggestSnipes
+            auctions={auctions}
+            loading={auctionsLoading}
+            onAuctionClick={a => setDetailAuction(a)}
+          />
         </Suspense>
       </SectionBoundary>
 

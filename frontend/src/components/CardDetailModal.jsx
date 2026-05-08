@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, ExternalLink, BookmarkPlus, BookmarkCheck, Clock, Gavel } from 'lucide-react'
+import { X, ExternalLink, BookmarkPlus, BookmarkCheck, Clock, Gavel, Store, ShieldCheck } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { verdictFor } from '../lib/verdict'
 import VerdictBadge from './VerdictBadge'
@@ -107,6 +107,25 @@ export default function CardDetailModal({ auction, onClose, onWatchlistChange })
   const parallel = auction.card?.parallel || auction.parallel
   const grade = auction.card?.grade
   const teamColor = auction.card?.team_color
+  // Pull serial number / print run from the title — sellers commonly write
+  // "22/150" or "/150". Reused logic mirrors BiggestSnipes.parsePrintRun.
+  const printRun = (() => {
+    const t = auction.title || ''
+    const m = t.match(/(?:^|\s|#)(\d{1,3})\/(\d{1,4})\b/)
+    if (m) {
+      const total = parseInt(m[2], 10)
+      const num = parseInt(m[1], 10)
+      if (total >= 5 && num <= total) return `#${num}/${total}`
+    }
+    const m2 = t.match(/(?:^|\s)\/(\d{1,4})\b/)
+    if (m2) {
+      const total = parseInt(m2[1], 10)
+      if (total >= 5 && total <= 9999) return `/${total}`
+    }
+    return ''
+  })()
+  const seller = auction.seller || auction.seller_username || null
+  const sellerFb = auction.seller_feedback ?? null
   const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
   const median = auction.verdict_comp?.median_total
   const n = auction.verdict_comp?.n
@@ -183,6 +202,11 @@ export default function CardDetailModal({ auction, onClose, onWatchlistChange })
                   {grade}
                 </span>
               )}
+              {printRun && (
+                <span className="text-xs font-black px-2 py-1 rounded-full bg-amber-900/30 text-amber-300 border border-amber-700/50 tabular-nums">
+                  {printRun}
+                </span>
+              )}
             </div>
           )}
 
@@ -240,6 +264,48 @@ export default function CardDetailModal({ auction, onClose, onWatchlistChange })
                   Flagged as a {auction.verdict === 'STRONG_BUY' ? 'strong' : 'good'} buy by our pricing model.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Seller block — eBay seller username + feedback score */}
+          {(seller || sellerFb != null) && (
+            <div className="bg-gray-900/60 rounded-xl p-3 border border-gray-800/60">
+              <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                <Store size={10} /> Seller
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {seller && seller !== 'unknown_seller' ? (
+                  <a
+                    href={`https://www.ebay.com/usr/${encodeURIComponent(seller)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-bold text-white hover:text-blue-400 hover:underline transition-colors"
+                  >
+                    {seller}
+                  </a>
+                ) : (
+                  <span className="text-sm text-gray-500">Unknown seller</span>
+                )}
+                {sellerFb != null && sellerFb > 0 && (
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                      sellerFb >= 1000
+                        ? 'bg-green-900/40 text-green-300'
+                        : sellerFb >= 100
+                        ? 'bg-blue-900/40 text-blue-300'
+                        : 'bg-gray-800 text-gray-400'
+                    }`}
+                  >
+                    {sellerFb >= 1000 && <ShieldCheck size={10} className="inline -mt-0.5 mr-1" />}
+                    {sellerFb.toLocaleString()} feedback
+                  </span>
+                )}
+                {sellerFb != null && sellerFb < 10 && (
+                  <span className="text-[10px] text-amber-400 font-semibold">
+                    ⚠️ New / low-feedback seller
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
