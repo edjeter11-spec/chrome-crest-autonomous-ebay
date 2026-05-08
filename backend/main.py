@@ -3080,10 +3080,13 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
             sessions = past_sessions
             sessions_seen = len(sessions)
 
-            # Sequential per-session (parallel bounded gather kept dropping
-            # responses silently). Each session = 2 httpx calls × ~0.5s, so
-            # ~10 sessions in 10s. Vercel default 60s, plenty of margin.
-            for sess in sessions:
+            # OpenF1 rate-limits us at ~1 req/sec. Sequential 8 sessions × 2
+            # calls = 16 calls in 8s without sleep → most return 429. Sleep
+            # 700ms between sessions keeps us under the limit and still
+            # finishes 8 sessions in ~12s.
+            for sess_idx, sess in enumerate(sessions):
+                if sess_idx > 0:
+                    await asyncio.sleep(0.7)
                 sk = sess.get("session_key")
                 label = sess.get("_label", "Race")
                 meeting = sess.get("meeting_name") or sess.get("circuit_short_name") or "Race"
@@ -3094,14 +3097,26 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                 except Exception:
                     continue
 
+                async def _get_with_retry(url, params):
+                    for attempt in range(3):
+                        try:
+                            r = await client.get(url, params=params)
+                        except Exception as e:
+                            if attempt == 2: raise
+                            await asyncio.sleep(0.8 * (attempt + 1))
+                            continue
+                        if r.status_code == 429:
+                            if attempt == 2: return r
+                            await asyncio.sleep(1.5 * (attempt + 1))
+                            continue
+                        return r
+                    return r
                 try:
-                    dresp = await client.get(
-                        "https://api.openf1.org/v1/drivers",
-                        params={"session_key": sk},
+                    dresp = await _get_with_retry(
+                        "https://api.openf1.org/v1/drivers", {"session_key": sk}
                     )
-                    rresp = await client.get(
-                        "https://api.openf1.org/v1/session_result",
-                        params={"session_key": sk},
+                    rresp = await _get_with_retry(
+                        "https://api.openf1.org/v1/session_result", {"session_key": sk}
                     )
                 except Exception as _se:
                     errors.append(f"sess {sk}: {str(_se)[:80]}")
