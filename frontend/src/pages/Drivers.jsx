@@ -13,6 +13,8 @@ import Breadcrumbs from '../components/Breadcrumbs'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ScoreExplain from '../components/ScoreExplain'
 import CardImage from '../components/CardImage'
+import DriverNewsCard from '../components/DriverNewsCard'
+import MarketMakers from '../components/MarketMakers'
 import { usePageTitle } from '../lib/pageTitle'
 
 function DriverAvatar({ name, teamColor, size = 36, rounded = 'rounded-xl', textClass = 'text-xs' }) {
@@ -62,7 +64,7 @@ function MomentumChip({ delta, small }) {
   )
 }
 
-const DriverPriceChart = lazy(() => import('../components/DriverPriceChart'))
+const DriverIndexChart = lazy(() => import('../components/DriverIndexChart'))
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -76,6 +78,26 @@ const TIER_STYLE = {
 
 const SERIES_TABS = ['All', 'F1', 'F2', 'F3', 'Legends']
 const SERIES_COLOR = { F1: '#EF4444', F2: '#8B5CF6', F3: '#EC4899', Legends: '#F59E0B', All: '#6B7280' }
+
+// Form-tier badge styles — match existing dark-theme palette.
+const FORM_TIER_STYLE = {
+  hot:      { cls: 'bg-red-600 text-white border-red-500/40',         label: 'HOT',      icon: '🔥' },
+  climbing: { cls: 'bg-orange-600 text-white border-orange-500/40',   label: 'CLIMBING', icon: '📈' },
+  stable:   { cls: 'bg-gray-700 text-gray-200 border-gray-600/40',    label: 'STABLE',   icon: ''   },
+  cold:     { cls: 'bg-gray-800 text-gray-500 border-gray-700/40',    label: 'COLD',     icon: ''   },
+}
+
+function FormBadge({ form, small }) {
+  if (!form?.tier) return null
+  const s = FORM_TIER_STYLE[form.tier] || FORM_TIER_STYLE.cold
+  return (
+    <span
+      title={`Form ${form.form_score} — last ${form.races_counted} race${form.races_counted === 1 ? '' : 's'}`}
+      className={`font-black px-1.5 py-0.5 rounded-lg border ${s.cls} ${small ? 'text-[9px]' : 'text-[10px]'}`}>
+      {s.icon ? `${s.icon} ` : ''}{s.label}
+    </span>
+  )
+}
 
 function ScoreMeter({ score, color }) {
   return (
@@ -244,6 +266,22 @@ export default function Drivers() {
   const [rookiePremium, setRookiePremium] = useState(null)
   const [recentlyViewed, setRecentlyViewed] = usePersistedState('cc_recent_drivers', [])
   const [sniperModal, setSniperModal] = useState(false)
+  const [formMap, setFormMap] = useState({})
+  const [hideLegends, setHideLegends] = usePersistedState('cc_hide_legends', false)
+
+  // Pull current driver form scores (last 4 races, weighted). Lets us
+  // sort hot → cold and slap a tier badge on each card.
+  useEffect(() => {
+    fetch(`${API}/api/drivers/form`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.drivers) return
+        const m = {}
+        for (const row of d.drivers) m[row.driver_name] = row
+        setFormMap(m)
+      })
+      .catch(() => {})
+  }, [])
 
   // Load all-driver momentum once
   useEffect(() => {
@@ -332,11 +370,45 @@ export default function Drivers() {
       }).catch(() => {})
   }, [selected?.driver_name])
 
+  // Tolerant lookup: OpenF1's full_name (e.g. "Andrea Kimi ANTONELLI") may
+  // not perfectly match our seed driver_name ("Andrea Kimi Antonelli"). Try
+  // exact match first, then last-name match.
+  const formFor = (name) => {
+    if (!name) return null
+    if (formMap[name]) return formMap[name]
+    const lower = name.toLowerCase()
+    const exact = Object.keys(formMap).find(k => k.toLowerCase() === lower)
+    if (exact) return formMap[exact]
+    const last = lower.split(' ').slice(-1)[0]
+    if (!last || last.length < 3) return null
+    const partial = Object.keys(formMap).find(k => k.toLowerCase().split(' ').slice(-1)[0] === last)
+    return partial ? formMap[partial] : null
+  }
+
+  // A driver is a Legend if explicitly tagged by the backend OR if their
+  // series is "Legends" — both checks make the UI robust to a missing column
+  // on existing deployments.
+  const isLegend = (d) => Boolean(d?.is_legend) || (d?.series === 'Legends')
+
   const filtered = drivers.filter(d => {
     if (series !== 'All' && (d.series || 'F1') !== series) return false
     if (search) return d.driver_name?.toLowerCase().includes(search.toLowerCase())
     return true
+  }).slice().sort((a, b) => {
+    // Sort by form score desc (hot → cold). Falls back to existing implicit
+    // order (alphabetical or however backend served it) for unknown drivers.
+    const fa = formFor(a.driver_name)?.form_score
+    const fb = formFor(b.driver_name)?.form_score
+    if (fa == null && fb == null) return 0
+    if (fa == null) return 1
+    if (fb == null) return -1
+    return fb - fa
   })
+
+  // Section the list: current grid leads, legends sit at the bottom.
+  // Eddie's directive: "all current drivers are worth more than legends".
+  const currentGrid = filtered.filter(d => !isLegend(d))
+  const legendsList = hideLegends ? [] : filtered.filter(isLegend)
 
   // Auto-select first in filtered list when series changes — DESKTOP ONLY.
   // On mobile (where the detail is a slide-up drawer), don't auto-open the
@@ -347,7 +419,10 @@ export default function Drivers() {
       && window.matchMedia('(min-width: 768px)').matches
     if (!isDesktop) return
     if (filtered.length && (!selected || !filtered.find(d => d.driver_name === selected.driver_name))) {
-      setSelected(filtered[0])
+      // Prefer current-grid drivers as the default selection — Eddie's
+      // directive: legends shouldn't be the headline driver.
+      const firstCurrent = filtered.find(d => !isLegend(d))
+      setSelected(firstCurrent || filtered[0])
     }
   }, [series, drivers])
 
@@ -371,6 +446,44 @@ export default function Drivers() {
   const breadcrumbItems = selected?.driver_name
     ? [{ label: 'Home', to: '/' }, { label: 'Drivers', to: '/drivers' }, { label: selected.driver_name }]
     : [{ label: 'Home', to: '/' }, { label: 'Drivers' }]
+
+  // Renderer used by both the Current Grid and Legends sections — keeps
+  // styling identical to the pre-overhaul single-list version.
+  const renderDriverButton = (d) => {
+    const tier = getTier(d.investment_score || 0)
+    const isSelected = selected?.driver_name === d.driver_name
+    const dSeries = d.series || 'F1'
+    const dTeamColor = d.team_color || resolveTeamColor(d.team)
+    return (
+      <button key={d.driver_name} onClick={() => setSelected(d)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
+          isSelected ? 'bg-gray-800 border border-gray-700/60 shadow-sm' : 'hover:bg-gray-900/70 border border-transparent'
+        }`}
+        style={dTeamColor ? { borderLeft: `4px solid ${dTeamColor}` } : undefined}>
+        <DriverAvatar name={d.driver_name} teamColor={dTeamColor} size={36} />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-white truncate flex items-center gap-1.5">
+            {d.driver_name}
+            {ROOKIES_2025.has(d.driver_name) && (
+              <span className="text-[9px] font-black px-1 py-0.5 rounded bg-pink-900/40 text-pink-300 border border-pink-700/50">RC</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <span className="text-[10px] text-gray-500 truncate">{d.team}</span>
+            {dSeries !== 'F1' && (
+              <span className="text-[9px] font-bold px-1 py-0.5 rounded"
+                style={{ backgroundColor: SERIES_COLOR[dSeries] + '30', color: SERIES_COLOR[dSeries] }}>
+                {dSeries}
+              </span>
+            )}
+            <FormBadge form={formFor(d.driver_name)} small />
+            <MomentumChip delta={momentumMap[d.driver_name]?.delta_pct} small />
+          </div>
+        </div>
+        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg border ${TIER_STYLE[tier]}`}>{tier}</span>
+      </button>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -420,43 +533,49 @@ export default function Drivers() {
               ))}
             </div>
           )}
+          {/* Hide-legends toggle — collapses the bottom section. */}
+          <label className="flex items-center gap-1.5 text-[10px] text-gray-500 hover:text-gray-300 cursor-pointer select-none px-1">
+            <input
+              type="checkbox"
+              checked={hideLegends}
+              onChange={e => setHideLegends(e.target.checked)}
+              className="rounded accent-red-600"
+            />
+            <span>Hide legends</span>
+          </label>
           <div className="space-y-0.5 max-h-[30vh] md:max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
             {filtered.length === 0 ? (
               <p className="text-xs text-gray-600 px-2 py-4 text-center">No drivers in this series</p>
-            ) : filtered.map(d => {
-              const tier = getTier(d.investment_score || 0)
-              const isSelected = selected?.driver_name === d.driver_name
-              const dSeries = d.series || 'F1'
-              const dTeamColor = d.team_color || resolveTeamColor(d.team)
-              return (
-                <button key={d.driver_name} onClick={() => setSelected(d)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all ${
-                    isSelected ? 'bg-gray-800 border border-gray-700/60 shadow-sm' : 'hover:bg-gray-900/70 border border-transparent'
-                  }`}
-                  style={dTeamColor ? { borderLeft: `4px solid ${dTeamColor}` } : undefined}>
-                  <DriverAvatar name={d.driver_name} teamColor={dTeamColor} size={36} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-white truncate flex items-center gap-1.5">
-                      {d.driver_name}
-                      {ROOKIES_2025.has(d.driver_name) && (
-                        <span className="text-[9px] font-black px-1 py-0.5 rounded bg-pink-900/40 text-pink-300 border border-pink-700/50">RC</span>
-                      )}
+            ) : (
+              <>
+                {/* Section 1: Current grid (sorted by form/popularity above) */}
+                {currentGrid.length > 0 && (
+                  <div>
+                    <div className="px-1 pb-1 text-[9px] uppercase tracking-widest font-black text-gray-600">
+                      Current Grid · 2026
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[10px] text-gray-500 truncate">{d.team}</span>
-                      {dSeries !== 'F1' && (
-                        <span className="text-[9px] font-bold px-1 py-0.5 rounded"
-                          style={{ backgroundColor: SERIES_COLOR[dSeries] + '30', color: SERIES_COLOR[dSeries] }}>
-                          {dSeries}
-                        </span>
-                      )}
-                      <MomentumChip delta={momentumMap[d.driver_name]?.delta_pct} small />
-                    </div>
+                    {currentGrid.map(d => renderDriverButton(d))}
                   </div>
-                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-lg border ${TIER_STYLE[tier]}`}>{tier}</span>
-                </button>
-              )
-            })}
+                )}
+
+                {/* Visual divider + Section 2: Legends (less liquid in raw market) */}
+                {legendsList.length > 0 && (
+                  <>
+                    <div className="my-3 flex items-center gap-3 text-[9px] uppercase tracking-widest text-gray-500">
+                      <div className="flex-1 h-px bg-gray-800" />
+                      Legends
+                      <div className="flex-1 h-px bg-gray-800" />
+                    </div>
+                    <p className="text-[10px] text-gray-500 px-1 mb-2">
+                      Historic drivers from the F1 Legends sub-set. Less liquid in the raw market — peak prices are pre-grading.
+                    </p>
+                    <div className="opacity-90">
+                      {legendsList.map(d => renderDriverButton(d))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -518,6 +637,7 @@ export default function Drivers() {
                   <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-gray-800/70 border border-gray-700/50">
                     <MomentumChip delta={momentumMap[selected.driver_name]?.delta_pct} />
                   </span>
+                  <FormBadge form={formFor(selected.driver_name)} />
                   </div>
                   <ShareMenu
                     title={selected.driver_name}
@@ -549,6 +669,29 @@ export default function Drivers() {
               <ScoreMeter score={selected.investment_score||0} color={selTeamColor || selected.team_color} />
             </div>
 
+            {/* Form trigger fact: only when hot + recent (≤21d) win — Eddie's
+                "Kimi won Miami last week" example. */}
+            {(() => {
+              const f = formFor(selected.driver_name)
+              if (!f || f.tier !== 'hot') return null
+              const lr = f.latest_race
+              if (!lr || lr.position !== 1 || !lr.date) return null
+              const days = (Date.now() - new Date(lr.date).getTime()) / 86400000
+              if (days > 21 || days < 0) return null
+              return (
+                <div className="mb-5 px-4 py-3 rounded-2xl bg-red-900/20 border border-red-700/40 text-sm text-gray-100 flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-red-300">🏆 Won {lr.name}</span>
+                  <span className="text-gray-400">{new Date(lr.date).toLocaleDateString()}</span>
+                  <span className="ml-auto text-[10px] text-red-300/80 font-semibold">Form score {f.form_score}</span>
+                </div>
+              )
+            })()}
+
+            {/* Auto-generated news ticker — race results, sales velocity, big sales */}
+            <div className="mb-5">
+              <DriverNewsCard driverName={selected.driver_name} />
+            </div>
+
             {/* Rookie premium insight */}
             {ROOKIES_2025.has(selected.driver_name) && rookiePremium?.premium_pct != null && (
               <div className="mb-5 px-4 py-3 rounded-2xl bg-pink-900/15 border border-pink-700/40 text-sm text-gray-200">
@@ -561,6 +704,11 @@ export default function Drivers() {
                 <span className="text-[10px] text-gray-500 ml-2">(n={rookiePremium.rookie_sample_count} rookie sales, {rookiePremium.days}d)</span>
               </div>
             )}
+
+            {/* Market Makers — recent $200+ sales that shape the driver's market */}
+            <div className="mb-5">
+              <MarketMakers driverName={selected.driver_name} />
+            </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               {[
@@ -625,13 +773,14 @@ export default function Drivers() {
               </div>
             )}
 
-            {/* 90-day price chart */}
+            {/* Top-10 driver index chart — S&P-500-style equal-weighted index
+                of this driver's most-valuable parallel/grade combos */}
             <div className="mb-6">
               <h3 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-widest flex items-center gap-2">
-                <LineChartIcon size={12} className="text-cyan-400" /> Price Trend (90 days)
+                <LineChartIcon size={12} className="text-cyan-400" /> Top-10 Index · 180d
               </h3>
               <Suspense fallback={<div className="h-56 skeleton rounded-xl" />}>
-                <DriverPriceChart driver={selected.driver_name} days={90} />
+                <DriverIndexChart driverName={selected.driver_name} days={180} />
               </Suspense>
               <PredictionBlock driver={selected.driver_name} />
             </div>

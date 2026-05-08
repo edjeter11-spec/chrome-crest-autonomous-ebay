@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, Index
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -56,6 +56,7 @@ class Card(Base):
     championships = Column(Integer, default=0)
     series = Column(String, default="F1", nullable=True)
     is_rookie = Column(Boolean, default=False, nullable=True)
+    is_legend = Column(Boolean, default=False, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     auctions = relationship("Auction", back_populates="card", cascade="all, delete-orphan")
@@ -410,6 +411,24 @@ class SoldCardArchive(Base):
     )
 
 
+class RaceResult(Base):
+    """Per-driver, per-race finishing result. Powers form-score / driver tier
+    computation so card prices can react to current F1 form (e.g. Kimi wins
+    Miami → his cards rocket → 'hot' tier badge on the site)."""
+    __tablename__ = "race_results"
+    id = Column(Integer, primary_key=True, index=True)
+    driver_name = Column(String, index=True, nullable=False)  # e.g. "Kimi Antonelli"
+    race_name = Column(String, nullable=False)  # e.g. "Miami GP 2026"
+    race_date = Column(DateTime, nullable=False, index=True)
+    position = Column(Integer, nullable=True)  # 1-20, NULL for DNF/DSQ
+    status = Column(String, nullable=True)  # "Finished", "DNF", "DSQ", etc
+    points = Column(Integer, nullable=True)
+    season = Column(Integer, default=2026)
+    source = Column(String, default="openf1")  # 'openf1', 'manual'
+    inserted_at = Column(DateTime, default=datetime.utcnow)
+    __table_args__ = (UniqueConstraint('driver_name', 'race_date', name='uq_race_driver_date'),)
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -438,6 +457,7 @@ def create_tables():
             "ALTER TABLE portfolio ADD COLUMN IF NOT EXISTS user_id TEXT",
             "ALTER TABLE wishlist ADD COLUMN IF NOT EXISTS user_id TEXT",
             "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS user_id TEXT",
+            "ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_legend BOOLEAN DEFAULT FALSE",
         ]
         with engine.begin() as conn:
             for sql in adds:
@@ -500,3 +520,36 @@ def create_tables():
     except Exception as e:
         import logging
         logging.getLogger("jarvis.db").warning(f"index creation skipped: {e}")
+    # Index: speeds up per-driver form-score lookups (last N races by date desc).
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_race_results_driver_date "
+                "ON race_results (driver_name, race_date DESC)"
+            ))
+            conn.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"race_results index creation: {e}")
+    # Mark historic / Legends-set drivers so the UI can section them apart
+    # from the current grid. Eddie's directive: legends are usually less
+    # liquid in the raw market and shouldn't lead the drivers list.
+    try:
+        from sqlalchemy import text
+        LEGEND_NAMES = [
+            "Ayrton Senna", "James Hunt", "Damon Hill", "Michael Schumacher",
+            "Juan Pablo Montoya", "Jacques Villeneuve", "Gerhard Berger",
+            "Nigel Mansell", "Niki Lauda", "Alain Prost",
+        ]
+        with engine.begin() as conn:
+            for ln in LEGEND_NAMES:
+                conn.execute(
+                    text("UPDATE cards SET is_legend = :t WHERE driver_name ILIKE :n")
+                    if "postgresql" in str(engine.url)
+                    else text("UPDATE cards SET is_legend = :t WHERE LOWER(driver_name) = LOWER(:n)"),
+                    {"t": True, "n": ln},
+                )
+    except Exception as e:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"is_legend tag step: {e}")

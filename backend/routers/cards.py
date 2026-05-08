@@ -26,6 +26,7 @@ def card_to_dict(c: Card) -> dict:
         "championships": c.championships,
         "series": getattr(c, "series", "F1") or "F1",
         "is_rookie": getattr(c, "is_rookie", False) or False,
+        "is_legend": bool(getattr(c, "is_legend", False) or False),
     }
 
 
@@ -64,6 +65,7 @@ def drivers_summary(db: Session = Depends(get_db)):
         Card.image_url,
         Card.base_value,
         func.max(Card.investment_score).label("investment_score"),
+        func.max(func.coalesce(Card.is_legend, False)).label("is_legend"),
     ).filter(Card.grade == "Raw", Card.parallel == "Base").group_by(
         Card.driver_name, Card.team, Card.team_color, Card.nationality,
         Card.career_wins, Card.championships, Card.card_number,
@@ -119,6 +121,7 @@ def drivers_summary(db: Session = Depends(get_db)):
             "championships": d.championships,
             "series": getattr(d, "series", "F1") or "F1",
             "is_rookie": getattr(d, "is_rookie", False) or False,
+            "is_legend": bool(getattr(d, "is_legend", False) or False),
             "card_number": d.card_number,
             "investment_score": d.investment_score,
             "active_auctions": active_map.get(d.driver_name, 0),

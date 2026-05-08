@@ -360,6 +360,14 @@ PREMIUM_QUERIES = [
     f"2025 Topps Chrome F1 {d.split()[-1]}" for d in DRIVERS
 ]
 
+# Market maker scrape: ≥$200 sales per driver. These shape the high-end
+# of every parallel and define what 'sold for' really means for that
+# driver. Caps at the eBay price floor of $200 to keep the result set
+# focused on real comps, not blaster prices.
+MARKET_MAKER_QUERIES = [
+    f"2025 Topps Chrome F1 {d.split()[-1]}" for d in DRIVERS
+]
+
 
 def upsert_auction(conn, rows):
     """Upsert active auction/BIN rows into the `auctions` table.
@@ -824,7 +832,11 @@ def main():
         # The Sales Database must only contain actual completed sales.
         # Broad queries + premium per-driver queries ($40+) so snipe scoring has
         # deep comp history on valuable cards.
-        sold_queries = [(q, 0) for q in QUERIES] + [(q, 40) for q in PREMIUM_QUERIES]
+        sold_queries = (
+            [(q, 0) for q in QUERIES]
+            + [(q, 40) for q in PREMIUM_QUERIES]
+            + [(q, 200) for q in MARKET_MAKER_QUERIES]
+        )
         for query, min_price in sold_queries:
             url = build_url(query, "sold", min_price=min_price)
             log.info(f"Scraping [sold] {query!r} (min=${min_price})")

@@ -96,6 +96,16 @@ GRADE_MULT = {"Raw": 0.65, "PSA 10": 3.2}
 BASE_PRICE = 8.0
 
 
+# Historic / Legends-set drivers — sub-set of the 2025 Topps Chrome F1 release.
+# Eddie's directive: current grid leads the Drivers page; legends sit in their
+# own section below because they're less liquid in the raw market.
+LEGEND_NAMES = [
+    "Ayrton Senna", "James Hunt", "Damon Hill", "Michael Schumacher",
+    "Juan Pablo Montoya", "Jacques Villeneuve", "Gerhard Berger",
+    "Nigel Mansell", "Niki Lauda", "Alain Prost",
+]
+
+
 def _make_card(driver: dict, parallel: dict, grade: str) -> Card:
     base_val = round(BASE_PRICE * driver["multiplier"] * parallel["mult"] * GRADE_MULT[grade], 2)
     color = driver["team_color"].lstrip("#")
@@ -116,12 +126,25 @@ def _make_card(driver: dict, parallel: dict, grade: str) -> Card:
         championships=driver["championships"],
         series=driver.get("series", "F1"),
         is_rookie=driver.get("rookie", False),
+        is_legend=driver["name"] in LEGEND_NAMES,
     )
+
+
+def _mark_legends(db: Session) -> None:
+    """Tag the 10 historic-set drivers as legends. Idempotent."""
+    for ln in LEGEND_NAMES:
+        db.query(Card).filter(Card.driver_name.ilike(ln)).update(
+            {Card.is_legend: True}, synchronize_session=False
+        )
+    db.commit()
 
 
 def seed_all(db: Session):
     """Seed card catalog only. Auctions are populated by live eBay API sync."""
     if db.query(Card).count() > 0:
+        # Even if already seeded, ensure legends are tagged (handles upgrades
+        # where the column was just added and existing rows default to False).
+        _mark_legends(db)
         return
 
     for driver in ALL_DRIVERS:
@@ -130,6 +153,7 @@ def seed_all(db: Session):
                 db.add(_make_card(driver, parallel, grade))
 
     db.commit()
+    _mark_legends(db)
 
 
 def seed_missing_drivers(db: Session) -> int:
@@ -148,6 +172,7 @@ def seed_missing_drivers(db: Session) -> int:
             db.query(Card).filter(Card.driver_name == driver["name"]).update({
                 "series": driver.get("series", "F1"),
                 "is_rookie": driver.get("rookie", False),
+                "is_legend": driver["name"] in LEGEND_NAMES,
                 "investment_score": float(driver["score"]),
                 "team": driver["team"],
                 "team_color": driver["team_color"],
@@ -156,4 +181,5 @@ def seed_missing_drivers(db: Session) -> int:
                 "championships": driver["championships"],
             })
     db.commit()
+    _mark_legends(db)
     return added

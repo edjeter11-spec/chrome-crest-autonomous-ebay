@@ -970,6 +970,131 @@ async def refresh_driver_photos():
     return {"status": "done", "updated": updated}
 
 
+@app.get("/api/drivers/{driver_name}/news")
+def driver_news(driver_name: str, response: Response = None, db: Session = Depends(get_db)):
+    """Auto-generate per-driver news facts from existing data sources.
+    Returns up to 5 most-relevant facts ordered by recency / impact."""
+    from database import SoldCard, RaceResult
+    from datetime import datetime as _dt, timedelta as _td
+    from sqlalchemy import func, desc
+
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=3600"
+
+    facts = []
+    now = _dt.utcnow()
+
+    # 1. Latest race result (last 30 days)
+    last_race = (
+        db.query(RaceResult)
+        .filter(
+            RaceResult.driver_name.ilike(driver_name),
+            RaceResult.race_date >= now - _td(days=30),
+        )
+        .order_by(desc(RaceResult.race_date))
+        .first()
+    )
+    if last_race:
+        if last_race.position == 1:
+            facts.append({
+                "kind": "win",
+                "icon": "\U0001F3C6",
+                "headline": f"Won {last_race.race_name}",
+                "date": last_race.race_date.isoformat(),
+                "impact": "high",
+            })
+        elif last_race.position and last_race.position <= 3:
+            facts.append({
+                "kind": "podium",
+                "icon": "\U0001F949",
+                "headline": f"Podium ({last_race.position}) at {last_race.race_name}",
+                "date": last_race.race_date.isoformat(),
+                "impact": "medium",
+            })
+        elif last_race.position and last_race.position <= 10:
+            facts.append({
+                "kind": "points",
+                "icon": "\U0001F4CA",
+                "headline": f"P{last_race.position} at {last_race.race_name}",
+                "date": last_race.race_date.isoformat(),
+                "impact": "low",
+            })
+        elif last_race.status in ("DNF", "DSQ"):
+            facts.append({
+                "kind": "dnf",
+                "icon": "❌",
+                "headline": f"{last_race.status} at {last_race.race_name}",
+                "date": last_race.race_date.isoformat(),
+                "impact": "low",
+            })
+
+    # 2. Sales velocity — last 7d avg vs prior 7d avg
+    last_7d_cut = now - _td(days=7)
+    prior_7d_cut = now - _td(days=14)
+    last7 = db.query(func.avg(SoldCard.sale_price)).filter(
+        SoldCard.driver_name.ilike(driver_name),
+        SoldCard.sale_date >= last_7d_cut,
+        SoldCard.is_duplicate == False,  # noqa: E712
+        SoldCard.sale_price > 0,
+    ).scalar()
+    prior7 = db.query(func.avg(SoldCard.sale_price)).filter(
+        SoldCard.driver_name.ilike(driver_name),
+        SoldCard.sale_date >= prior_7d_cut,
+        SoldCard.sale_date < last_7d_cut,
+        SoldCard.is_duplicate == False,  # noqa: E712
+        SoldCard.sale_price > 0,
+    ).scalar()
+    if last7 and prior7 and prior7 > 0:
+        pct = round((float(last7) - float(prior7)) / float(prior7) * 100)
+        if abs(pct) >= 8:  # only surface meaningful moves
+            facts.append({
+                "kind": "velocity",
+                "icon": "\U0001F4C8" if pct > 0 else "\U0001F4C9",
+                "headline": f"Avg sale price {'up' if pct > 0 else 'down'} {abs(pct)}% week-over-week",
+                "date": now.isoformat(),
+                "impact": "medium" if abs(pct) >= 20 else "low",
+            })
+
+    # 3. Recent big sale (>=$200, last 14d)
+    big = (
+        db.query(SoldCard)
+        .filter(
+            SoldCard.driver_name.ilike(driver_name),
+            SoldCard.sale_date >= now - _td(days=14),
+            SoldCard.sale_price >= 200,
+            SoldCard.is_duplicate == False,  # noqa: E712
+        )
+        .order_by(desc(SoldCard.sale_price))
+        .first()
+    )
+    if big:
+        days_ago = max(1, (now - big.sale_date).days)
+        facts.append({
+            "kind": "big_sale",
+            "icon": "\U0001F4B0",
+            "headline": f"${int(big.sale_price)} {big.parallel or 'card'} sold {days_ago}d ago",
+            "date": big.sale_date.isoformat(),
+            "impact": "medium",
+        })
+
+    # 4. Sales count this week vs last week (volume)
+    cnt7 = db.query(func.count(SoldCard.id)).filter(
+        SoldCard.driver_name.ilike(driver_name),
+        SoldCard.sale_date >= last_7d_cut,
+        SoldCard.is_duplicate == False,  # noqa: E712
+    ).scalar() or 0
+    if cnt7 >= 20:
+        facts.append({
+            "kind": "volume",
+            "icon": "\U0001F525",
+            "headline": f"{cnt7} sales in the last 7 days — high market activity",
+            "date": now.isoformat(),
+            "impact": "low",
+        })
+
+    return {"driver": driver_name, "facts": facts[:5]}
+
+
 _ALLOWED_HOSTS = {
     "i.ebayimg.com", "ir.ebaystatic.com", "thumbs.ebaystatic.com",
     "upload.wikimedia.org", "commons.wikimedia.org",
@@ -2880,6 +3005,165 @@ def cron_mark_ended(db: Session = Depends(get_db)):
     )
     db.commit()
     return {"ok": True, "marked_ended": updated}
+
+
+@app.get("/api/cron/sync-race-results")
+async def cron_sync_race_results(db: Session = Depends(get_db)):
+    """Pull all 2026 race results from OpenF1 (https://openf1.org) and
+    upsert into race_results. Free public API, no auth."""
+    import httpx
+    from database import RaceResult
+    from datetime import datetime as _dt
+
+    added = 0
+    updated = 0
+    errors = []
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            sessions_resp = await client.get(
+                "https://api.openf1.org/v1/sessions",
+                params={"session_type": "Race", "year": 2026},
+            )
+            sessions = sessions_resp.json() if sessions_resp.status_code == 200 else []
+
+            for sess in sessions:
+                sk = sess.get("session_key")
+                race_name = sess.get("meeting_name") or sess.get("circuit_short_name") or "Race"
+                race_date_str = sess.get("date_start", "")[:19]
+                try:
+                    race_date = _dt.fromisoformat(race_date_str)
+                except Exception:
+                    continue
+
+                # Get drivers map
+                drivers_resp = await client.get(
+                    "https://api.openf1.org/v1/drivers",
+                    params={"session_key": sk},
+                )
+                drivers = drivers_resp.json() if drivers_resp.status_code == 200 else []
+                drv_map = {d.get("driver_number"): d.get("full_name") for d in drivers if d.get("driver_number")}
+
+                # Get results
+                results_resp = await client.get(
+                    "https://api.openf1.org/v1/session_result",
+                    params={"session_key": sk},
+                )
+                results = results_resp.json() if results_resp.status_code == 200 else []
+
+                for r in results:
+                    dn = r.get("driver_number")
+                    name = drv_map.get(dn)
+                    if not name:
+                        continue
+                    pos = r.get("position")
+                    dnf = r.get("dnf", False)
+                    dsq = r.get("dsq", False)
+                    status = "DSQ" if dsq else "DNF" if dnf else "Finished"
+                    pts = r.get("points")
+
+                    existing = (
+                        db.query(RaceResult)
+                        .filter(RaceResult.driver_name == name, RaceResult.race_date == race_date)
+                        .first()
+                    )
+                    if existing:
+                        existing.position = pos
+                        existing.status = status
+                        existing.points = pts
+                        existing.race_name = race_name
+                        updated += 1
+                    else:
+                        db.add(RaceResult(
+                            driver_name=name,
+                            race_name=race_name,
+                            race_date=race_date,
+                            position=pos,
+                            status=status,
+                            points=pts,
+                            season=2026,
+                            source="openf1",
+                        ))
+                        added += 1
+        db.commit()
+    except Exception as e:
+        errors.append(str(e)[:200])
+    return {"ok": not errors, "added": added, "updated": updated, "errors": errors}
+
+
+@app.get("/api/drivers/form")
+def driver_form_scores(response: Response = None, db: Session = Depends(get_db)):
+    """Compute current form score for every driver from their last 4 race
+    results. 1st = 25pts, 2nd = 18, 3rd = 15, 4-10 declining 12-3, DNF = 0.
+    Tier:
+      'hot'      score >= 20
+      'climbing' score >= 10
+      'stable'   score >= 5
+      'cold'     score < 5  (or no recent races)
+    """
+    from database import RaceResult
+    from datetime import datetime as _dt, timedelta as _td
+    from sqlalchemy import desc
+
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=3600"
+
+    # Form score table: position → points
+    PTS = {1: 25, 2: 18, 3: 15, 4: 12, 5: 10, 6: 8, 7: 6, 8: 4, 9: 3, 10: 2}
+    cutoff = _dt.utcnow() - _td(days=120)  # last 4 months covers ~4 races
+
+    rows = (
+        db.query(RaceResult)
+        .filter(RaceResult.race_date >= cutoff)
+        .order_by(RaceResult.driver_name, desc(RaceResult.race_date))
+        .all()
+    )
+
+    by_driver = {}
+    for r in rows:
+        by_driver.setdefault(r.driver_name, []).append(r)
+
+    out = []
+    for name, results in by_driver.items():
+        recent = results[:4]  # last 4
+        total = 0
+        weight_sum = 0
+        # Weighted: most recent gets 1.0, then 0.75, 0.5, 0.25
+        weights = [1.0, 0.75, 0.5, 0.25]
+        for i, r in enumerate(recent):
+            w = weights[i] if i < len(weights) else 0.1
+            pts = PTS.get(r.position, 1) if r.position and r.position <= 10 else 0
+            if r.status in ("DNF", "DSQ"):
+                pts = 0
+            total += pts * w
+            weight_sum += w
+        score = round(total / weight_sum, 1) if weight_sum else 0.0
+
+        if score >= 20:
+            tier = "hot"
+        elif score >= 10:
+            tier = "climbing"
+        elif score >= 5:
+            tier = "stable"
+        else:
+            tier = "cold"
+
+        # Latest race for the trigger fact
+        latest = recent[0] if recent else None
+        out.append({
+            "driver_name": name,
+            "form_score": score,
+            "tier": tier,
+            "races_counted": len(recent),
+            "latest_race": {
+                "name": latest.race_name,
+                "date": latest.race_date.isoformat() if latest.race_date else None,
+                "position": latest.position,
+                "status": latest.status,
+            } if latest else None,
+        })
+
+    out.sort(key=lambda x: -x["form_score"])
+    return {"drivers": out, "weights_table": PTS}
 
 
 @app.post("/api/extension/verdicts")

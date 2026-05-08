@@ -709,3 +709,205 @@ def backfill_from_price_history(db: Session = Depends(get_db)):
         "skipped_dupe": skipped_dupe,
         "total_processed": len(rows),
     }
+
+
+@router.get("/market-makers/{driver_name}")
+def market_makers(
+    driver_name: str,
+    min_price: float = 200,
+    days: int = 90,
+    limit: int = 10,
+    response: Response = None,
+    db: Session = Depends(get_db),
+):
+    """Return the recent $200+ sold cards for a driver — the 'market makers'
+    that shape what their cards are really worth. Sorted by sale_date desc.
+    """
+    if response is not None:
+        # 5min fresh / 30min stale — sale data only updates on cron.
+        response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    rows = (
+        db.query(SoldCard)
+        .filter(
+            SoldCard.driver_name.ilike(driver_name),
+            SoldCard.sale_price >= min_price,
+            SoldCard.sale_date >= cutoff,
+            SoldCard.is_duplicate == False,  # noqa: E712
+        )
+        .order_by(SoldCard.sale_date.desc())
+        .limit(limit)
+        .all()
+    )
+
+    # Aggregate stats for the header strip
+    total_count = (
+        db.query(func.count(SoldCard.id))
+        .filter(
+            SoldCard.driver_name.ilike(driver_name),
+            SoldCard.sale_price >= min_price,
+            SoldCard.sale_date >= cutoff,
+            SoldCard.is_duplicate == False,  # noqa: E712
+        )
+        .scalar() or 0
+    )
+    max_sale = (
+        db.query(func.max(SoldCard.sale_price))
+        .filter(
+            SoldCard.driver_name.ilike(driver_name),
+            SoldCard.sale_price >= min_price,
+            SoldCard.sale_date >= cutoff,
+            SoldCard.is_duplicate == False,  # noqa: E712
+        )
+        .scalar() or 0
+    )
+
+    return {
+        "driver": driver_name,
+        "min_price": min_price,
+        "days": days,
+        "stats": {
+            "count": total_count,
+            "peak_price": float(max_sale),
+        },
+        "sales": [
+            {
+                "id": r.id,
+                "title": r.title or "",
+                "parallel": r.parallel,
+                "grade": r.grade,
+                "sale_price": float(r.sale_price or 0),
+                "shipping_cost": float(r.shipping_cost or 0) if r.shipping_cost else 0,
+                "sale_date": r.sale_date.isoformat() if r.sale_date else None,
+                "image_url": r.image_url,
+                "ebay_listing_id": r.ebay_item_id,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.get("/driver-index/{driver_name}")
+def driver_index(
+    driver_name: str,
+    days: int = 180,
+    top_n: int = 10,
+    response: Response = None,
+    db: Session = Depends(get_db),
+):
+    """Compute an equal-weighted price index for a driver's top-N most-valuable
+    parallel/grade combos over the last N days. Returns a daily series
+    starting at index 100. Like S&P 500 tracking N constituents.
+    """
+    from collections import defaultdict
+
+    if response is not None:
+        # Heavy aggregation, but data only updates on cron — cache hard.
+        response.headers["Cache-Control"] = "public, s-maxage=900, stale-while-revalidate=3600"
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    # 1. Find this driver's top-N parallel/grade combos by lifetime median
+    #    sale price. Need at least 3 sales to qualify (avoid one-off outliers).
+    combos = (
+        db.query(
+            SoldCard.parallel,
+            SoldCard.grade,
+            func.count(SoldCard.id).label("cnt"),
+            func.avg(SoldCard.sale_price).label("avg_price"),
+        )
+        .filter(
+            SoldCard.driver_name.ilike(driver_name),
+            SoldCard.parallel.isnot(None),
+            SoldCard.is_duplicate == False,  # noqa: E712
+            SoldCard.sale_price > 0,
+        )
+        .group_by(SoldCard.parallel, SoldCard.grade)
+        .having(func.count(SoldCard.id) >= 3)
+        .order_by(func.avg(SoldCard.sale_price).desc())
+        .limit(top_n)
+        .all()
+    )
+    if not combos:
+        return {"driver": driver_name, "constituents": [], "series": []}
+
+    constituents = [
+        {
+            "parallel": c.parallel,
+            "grade": c.grade,
+            "lifetime_avg": round(float(c.avg_price), 2),
+            "n_sales": int(c.cnt),
+        }
+        for c in combos
+    ]
+
+    # 2. Pull all sales for these combos in the chart window.
+    sales_q = (
+        db.query(SoldCard.parallel, SoldCard.grade, SoldCard.sale_date, SoldCard.sale_price)
+        .filter(
+            SoldCard.driver_name.ilike(driver_name),
+            SoldCard.sale_date >= cutoff,
+            SoldCard.is_duplicate == False,  # noqa: E712
+            SoldCard.sale_price > 0,
+        )
+    )
+
+    # Filter to only our top-N combos
+    target = {(c.parallel, c.grade) for c in combos}
+    rows = [r for r in sales_q.all() if (r.parallel, r.grade) in target]
+
+    if not rows:
+        return {"driver": driver_name, "constituents": constituents, "series": []}
+
+    # 3. Group sales by combo + day, compute daily avg per combo
+    by_combo_day = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        day = r.sale_date.date()
+        by_combo_day[(r.parallel, r.grade)][day].append(float(r.sale_price))
+
+    # 4. Build daily series for each combo with forward-fill (last known
+    #    price if no sale that day). Start price = first sale within window.
+    today = datetime.utcnow().date()
+    start = (datetime.utcnow() - timedelta(days=days)).date()
+
+    combo_series = {}
+    for combo in target:
+        days_data = by_combo_day.get(combo, {})
+        if not days_data:
+            continue
+        sorted_days = sorted(days_data.keys())
+        first_day = sorted_days[0]
+        first_price = sum(days_data[first_day]) / len(days_data[first_day])
+        last_price = first_price
+        per_day = {}
+        d = start
+        while d <= today:
+            if d in days_data:
+                last_price = sum(days_data[d]) / len(days_data[d])
+            per_day[d] = last_price / first_price * 100  # normalized to 100
+            d = d + timedelta(days=1)
+        combo_series[combo] = per_day
+
+    # 5. Equal-weight average across combos for each day
+    if not combo_series:
+        return {"driver": driver_name, "constituents": constituents, "series": []}
+
+    series = []
+    d = start
+    while d <= today:
+        vals = [s.get(d) for s in combo_series.values() if s.get(d) is not None]
+        if vals:
+            series.append({
+                "date": d.isoformat(),
+                "value": round(sum(vals) / len(vals), 2),
+            })
+        d = d + timedelta(days=1)
+
+    return {
+        "driver": driver_name,
+        "days": days,
+        "top_n": top_n,
+        "constituents": constituents,
+        "series": series,
+    }

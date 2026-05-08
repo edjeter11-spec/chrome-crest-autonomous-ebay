@@ -9,7 +9,7 @@ import { usePageTitle } from '../lib/pageTitle'
 
 const API = import.meta.env.VITE_API_URL || ''
 
-const DriverPriceChart = lazy(() => import('../components/DriverPriceChart'))
+const DriverIndexChart = lazy(() => import('../components/DriverIndexChart'))
 
 const SOURCE_STYLES = {
   eBay:               { bg: 'bg-gray-700/60',   text: 'text-gray-200',   border: 'border-gray-600/50' },
@@ -463,7 +463,7 @@ function DriverDrawer({ driver, onClose }) {
               <div>
                 <h3 className="text-xs font-bold text-white mb-2 uppercase tracking-wide">90-Day Price Trend</h3>
                 <Suspense fallback={<div className="h-40 skeleton rounded-xl" />}>
-                  <DriverPriceChart driver={driver} days={90} />
+                  <DriverIndexChart driverName={driver} days={180} />
                 </Suspense>
               </div>
 
