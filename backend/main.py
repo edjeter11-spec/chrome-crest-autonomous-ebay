@@ -3012,8 +3012,15 @@ async def cron_sync_race_results(db: Session = Depends(get_db)):
     """Pull all 2026 race results from OpenF1 (https://openf1.org) and
     upsert into race_results. Free public API, no auth."""
     import httpx
-    from database import RaceResult
+    from database import RaceResult, engine as _engine
     from datetime import datetime as _dt
+
+    # Self-heal: Vercel's stateless workers don't always run create_tables()
+    # before the first request. Make sure the table exists before we query it.
+    try:
+        RaceResult.__table__.create(bind=_engine, checkfirst=True)
+    except Exception as _e:
+        logger.warning(f"race_results table create skipped: {_e}")
 
     added = 0
     updated = 0
@@ -3100,9 +3107,15 @@ def driver_form_scores(response: Response = None, db: Session = Depends(get_db))
       'stable'   score >= 5
       'cold'     score < 5  (or no recent races)
     """
-    from database import RaceResult
+    from database import RaceResult, engine as _engine
     from datetime import datetime as _dt, timedelta as _td
     from sqlalchemy import desc
+
+    # Self-heal table on first call (see cron_sync_race_results note).
+    try:
+        RaceResult.__table__.create(bind=_engine, checkfirst=True)
+    except Exception:
+        pass
 
     if response is not None:
         response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=3600"
