@@ -414,7 +414,12 @@ class SoldCardArchive(Base):
 class RaceResult(Base):
     """Per-driver, per-race finishing result. Powers form-score / driver tier
     computation so card prices can react to current F1 form (e.g. Kimi wins
-    Miami → his cards rocket → 'hot' tier badge on the site)."""
+    Miami → his cards rocket → 'hot' tier badge on the site).
+
+    Sprint races stored alongside GPs (is_sprint=True) and weighted at half
+    the Race weight in form scoring. laps_completed lets us distinguish
+    'crashed into on lap 1' (low penalty — not the driver's fault) from
+    'gave up on lap 50 with a mechanical' (higher penalty)."""
     __tablename__ = "race_results"
     id = Column(Integer, primary_key=True, index=True)
     driver_name = Column(String, index=True, nullable=False)  # e.g. "Kimi Antonelli"
@@ -425,6 +430,8 @@ class RaceResult(Base):
     points = Column(Integer, nullable=True)
     season = Column(Integer, default=2026)
     source = Column(String, default="openf1")  # 'openf1', 'manual'
+    is_sprint = Column(Boolean, default=False, index=True)  # True for Sprint races
+    laps_completed = Column(Integer, nullable=True)  # for DNF severity heuristic
     inserted_at = Column(DateTime, default=datetime.utcnow)
     __table_args__ = (UniqueConstraint('driver_name', 'race_date', name='uq_race_driver_date'),)
 

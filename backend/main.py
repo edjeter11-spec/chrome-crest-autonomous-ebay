@@ -3025,6 +3025,18 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
     except Exception as _e:
         logger.warning(f"race_results table create skipped: {_e}")
 
+    # Defensive ALTERs for the new columns (is_sprint, laps_completed) — these
+    # were added after RaceResult shipped, so existing prod tables don't have
+    # them yet. Safe + idempotent.
+    try:
+        from sqlalchemy import text as _text
+        with _engine.connect() as _conn:
+            _conn.execute(_text("ALTER TABLE race_results ADD COLUMN IF NOT EXISTS is_sprint BOOLEAN DEFAULT FALSE"))
+            _conn.execute(_text("ALTER TABLE race_results ADD COLUMN IF NOT EXISTS laps_completed INTEGER"))
+            _conn.commit()
+    except Exception as _e:
+        logger.warning(f"race_results column add skipped: {_e}")
+
     if request.query_params.get("reset") == "1":
         try:
             db.query(RaceResult).delete()
@@ -3038,23 +3050,29 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
     errors = []
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            # OpenF1 returns BOTH the Sprint and the Grand Prix Race under
-            # session_type=Race — filtering only on session_type pulls the
-            # Sprint as if it were the GP, which corrupts form scores
-            # (e.g. for Miami 2026 Sprint had Norris P1 / Antonelli P6, but
-            # the actual Race had Antonelli P1 — totally different
-            # narrative). We want session_name="Race" specifically.
-            sessions_resp = await client.get(
-                "https://api.openf1.org/v1/sessions",
-                params={"session_name": "Race", "year": 2026},
-            )
-            sessions = sessions_resp.json() if sessions_resp.status_code == 200 else []
-            # Defensive: drop anything where session_name isn't exactly "Race"
-            sessions = [s for s in sessions if s.get("session_name") == "Race"]
+            # OpenF1 returns BOTH the Sprint and the actual GP under
+            # session_type=Race. We pull both — Race AND Sprint — and tag
+            # rows with is_sprint=True for the sprints. Form-score weighting
+            # downweights sprints to 0.5x. This way Sprint results contribute
+            # to driver form / news ticker without overpowering the GP.
+            races_sessions = []
+            for label in ("Race", "Sprint"):
+                r = await client.get(
+                    "https://api.openf1.org/v1/sessions",
+                    params={"session_name": label, "year": 2026},
+                )
+                if r.status_code == 200:
+                    for s in r.json():
+                        if s.get("session_name") == label:
+                            s["_label"] = label  # carry through
+                            races_sessions.append(s)
+            sessions = races_sessions
 
             for sess in sessions:
                 sk = sess.get("session_key")
-                race_name = sess.get("meeting_name") or sess.get("circuit_short_name") or "Race"
+                label = sess.get("_label", "Race")
+                meeting = sess.get("meeting_name") or sess.get("circuit_short_name") or "Race"
+                race_name = f"{meeting} ({label})" if label == "Sprint" else meeting
                 race_date_str = sess.get("date_start", "")[:19]
                 try:
                     race_date = _dt.fromisoformat(race_date_str)
@@ -3084,8 +3102,11 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                     pos = r.get("position")
                     dnf = r.get("dnf", False)
                     dsq = r.get("dsq", False)
-                    status = "DSQ" if dsq else "DNF" if dnf else "Finished"
+                    dns = r.get("dns", False)
+                    status = "DSQ" if dsq else "DNS" if dns else "DNF" if dnf else "Finished"
                     pts = r.get("points")
+                    laps = r.get("number_of_laps")
+                    is_sprint = (label == "Sprint")
 
                     existing = (
                         db.query(RaceResult)
@@ -3097,6 +3118,8 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                         existing.status = status
                         existing.points = pts
                         existing.race_name = race_name
+                        existing.is_sprint = is_sprint
+                        existing.laps_completed = laps
                         updated += 1
                     else:
                         db.add(RaceResult(
@@ -3108,6 +3131,8 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                             points=pts,
                             season=2026,
                             source="openf1",
+                            is_sprint=is_sprint,
+                            laps_completed=laps,
                         ))
                         added += 1
         db.commit()
@@ -3118,13 +3143,20 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
 
 @app.get("/api/drivers/form")
 def driver_form_scores(response: Response = None, db: Session = Depends(get_db)):
-    """Compute current form score for every driver from their last 4 race
-    results. 1st = 25pts, 2nd = 18, 3rd = 15, 4-10 declining 12-3, DNF = 0.
-    Tier:
-      'hot'      score >= 20
-      'climbing' score >= 10
-      'stable'   score >= 5
-      'cold'     score < 5  (or no recent races)
+    """Compute current form score for every driver from their last 6 events
+    (Race or Sprint). All considered, but each is weighted:
+
+    - Race recency × 1.0 modifier (full weight)
+    - Sprint recency × 0.5 modifier (half weight — Sprints matter less)
+    - DNF severity by laps_completed:
+        ≤3 laps  →  5 pts (likely lap-1 incident, NOT driver's fault)
+        4-15     →  2 pts (could be either)
+        15+      →  0 pts (long DNF — usually mechanical or driver error)
+
+    Position points: 1st=25, 2nd=18, 3rd=15, 4-10 declining 12-3, else 1.
+    DSQ always = 0 pts. DNS doesn't count toward weight_sum (not their fault).
+
+    Tiers: hot ≥20, climbing ≥10, stable ≥5, else cold.
     """
     from database import RaceResult, engine as _engine
     from datetime import datetime as _dt, timedelta as _td
@@ -3139,9 +3171,9 @@ def driver_form_scores(response: Response = None, db: Session = Depends(get_db))
     if response is not None:
         response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=3600"
 
-    # Form score table: position → points
+    # Position → points table
     PTS = {1: 25, 2: 18, 3: 15, 4: 12, 5: 10, 6: 8, 7: 6, 8: 4, 9: 3, 10: 2}
-    cutoff = _dt.utcnow() - _td(days=120)  # last 4 months covers ~4 races
+    cutoff = _dt.utcnow() - _td(days=120)  # ~4 race weekends + sprints
 
     rows = (
         db.query(RaceResult)
@@ -3154,18 +3186,36 @@ def driver_form_scores(response: Response = None, db: Session = Depends(get_db))
     for r in rows:
         by_driver.setdefault(r.driver_name, []).append(r)
 
+    def dnf_points(laps):
+        """Crashed-into / lap-1 incident → light penalty.
+        Long DNF (mechanical or driver error) → full penalty."""
+        if laps is None: return 0
+        if laps <= 3: return 5    # almost certainly not their fault
+        if laps <= 15: return 2   # ambiguous
+        return 0                  # ran a while then broke / spun
+
     out = []
     for name, results in by_driver.items():
-        recent = results[:4]  # last 4
+        # Take last 6 events (mix of Race + Sprint) for a fuller picture
+        recent = results[:6]
         total = 0
         weight_sum = 0
-        # Weighted: most recent gets 1.0, then 0.75, 0.5, 0.25
-        weights = [1.0, 0.75, 0.5, 0.25]
+        recency_weights = [1.0, 0.85, 0.7, 0.55, 0.4, 0.25]
         for i, r in enumerate(recent):
-            w = weights[i] if i < len(weights) else 0.1
-            pts = PTS.get(r.position, 1) if r.position and r.position <= 10 else 0
-            if r.status in ("DNF", "DSQ"):
+            recency = recency_weights[i] if i < len(recency_weights) else 0.15
+            sprint_mod = 0.5 if getattr(r, "is_sprint", False) else 1.0
+            w = recency * sprint_mod
+            if r.status == "DNS":
+                # didn't start → don't count this event
+                continue
+            elif r.status == "DSQ":
                 pts = 0
+            elif r.status == "DNF":
+                pts = dnf_points(getattr(r, "laps_completed", None))
+            elif r.position and r.position <= 10:
+                pts = PTS.get(r.position, 1)
+            else:
+                pts = 1  # finished outside points
             total += pts * w
             weight_sum += w
         score = round(total / weight_sum, 1) if weight_sum else 0.0
