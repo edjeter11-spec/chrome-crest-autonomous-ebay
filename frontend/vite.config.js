@@ -16,9 +16,16 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
+        // Only force-split react itself. Letting Rollup auto-chunk the rest
+        // means recharts goes only into the chunks that actually import it
+        // (Drivers, GradedTracker, AffiliateROI, Indices) — not preloaded
+        // on /bin, /sales, etc. The previous 'charts' manualChunk was 548KB
+        // and got modulepreloaded everywhere via <link rel="modulepreload">,
+        // and on slow networks would race React's hydration → React error
+        // #426 (Suspense interrupted). Removing the manual split fixes that
+        // AND reduces total transfer on chart-free pages.
         manualChunks: {
-          vendor: ['react', 'react-dom'],
-          charts: ['recharts'],
+          vendor: ['react', 'react-dom', 'react-router-dom'],
         }
       }
     }
