@@ -580,6 +580,9 @@ def get_fresh_snipes(limit: int = 6, response: Response = None, db: Session = De
             Auction.status == "active",
             Auction.end_time > now,
             (Auction.end_time <= window) | (Auction.snipe_eligible == True),
+            # Snipes are bid auctions, not BIN. Verdicts on BINs are valid
+            # info but they're not snipes — that's a different concept.
+            Auction.buying_options.like('%AUCTION%'),
         )
         .order_by(Auction.end_time.asc())
         .limit(300)

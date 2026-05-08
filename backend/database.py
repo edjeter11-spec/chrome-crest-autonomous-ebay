@@ -484,3 +484,19 @@ def create_tables():
     except Exception as seed_outer:
         import logging
         logging.getLogger("jarvis.db").warning(f"card_sets seed skipped: {seed_outer}")
+    # Index: speeds up /api/auctions?buying=auction filter, was timing out
+    # at 60s+ on production. Partial index on the LIKE pattern dramatically
+    # narrows the scan. Postgres-only — SQLite doesn't support LIKE in
+    # partial index predicates, so the try/except swallows that on local dev.
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_auctions_active_auction "
+                "ON auctions (end_time) "
+                "WHERE status = 'active' AND buying_options LIKE '%AUCTION%'"
+            ))
+            conn.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"index creation skipped: {e}")

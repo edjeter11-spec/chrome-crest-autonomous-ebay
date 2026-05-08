@@ -215,8 +215,14 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
     // 2h window — Eddie's directive: a $1 starting bid on a $1000 card with
     // 3 days left isn't a snipe, it's just an early listing. Real snipes are
     // the urgency window where the price has settled and you can grab cheap.
+    // Snipes are bid auctions, not BIN — STRONG_BUY verdicts on BIN listings
+    // are valid info but they're not "snipes" (different concept).
     return (auctions || [])
-      .filter(a => isBigSnipe(a, 2 * 3600))
+      .filter(a => {
+        const bo = a.buying_options || []
+        if (!bo.includes('AUCTION')) return false
+        return isBigSnipe(a, 2 * 3600)
+      })
       .sort((a, b) => {
         const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
         if (vr !== 0) return vr
@@ -241,6 +247,8 @@ export default function BiggestSnipes({ auctions = [], loading = false }) {
     // picks up the 2h-24h horizon — what to set alerts for next.
     return (auctions || [])
       .filter(a => {
+        const bo = a.buying_options || []
+        if (!bo.includes('AUCTION')) return false
         const secs = secsLeft(a)
         if (secs <= 2 * 3600 || secs > 24 * 3600) return false
         if (inItems.has(a.id)) return false

@@ -6,14 +6,16 @@ import {
   AlertTriangle, ChevronRight, ChevronDown, Shield, BellRing, Target
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
-import CardDetailModal from '../components/CardDetailModal'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
-import EndingStripEmpty from '../components/EndingStripEmpty'
 import { SkeletonBox, SkeletonCard, SkeletonCardRow, SkeletonStat } from '../components/Skeleton'
 // BiggestSnipes hides behind the "Show more analytics" toggle and
 // WelcomeModal only shows once per user — defer both off the critical path.
+// CardDetailModal only renders when a card is clicked (detailAuction != null).
+// EndingStripEmpty only renders when the ending strip has 0 items.
 const BiggestSnipes = lazy(() => import('../components/BiggestSnipes'))
 const WelcomeModal = lazy(() => import('../components/WelcomeModal'))
+const CardDetailModal = lazy(() => import('../components/CardDetailModal'))
+const EndingStripEmpty = lazy(() => import('../components/EndingStripEmpty'))
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { applySeasonFilter } from '../lib/season'
@@ -130,6 +132,13 @@ export default function Dashboard() {
 
   const [auctions, setAuctions] = useState([])
   const [auctionsLoading, setAuctionsLoading] = useState(true)
+  // AUCTION-only feed for the Ending Soonest strip and snipe-style sections.
+  // The mixed `auctions` state is dominated by BIN listings (Hobby Boxes
+  // ending in 11 days, 11-month-future BIN placeholders) which pushes real
+  // sub-1-hour auctions past offset 500. Fetching ?buying=auction in parallel
+  // gives the strip a clean live-auction window without affecting the
+  // BiggestSnipes "Next Big" 2h-24h pool that needs both AUCTION+BIN.
+  const [liveAuctions, setLiveAuctions] = useState([])
 
   const [snipes, setSnipes] = useState([])
   const [snipesLoading, setSnipesLoading] = useState(true)
@@ -306,6 +315,17 @@ export default function Dashboard() {
       }
     )
 
+    // AUCTION-only feed — drives Ending Soonest strip. Without this, BIN
+    // listings dominate the first 500 rows and real sub-1-hour auctions are
+    // never delivered to the dashboard.
+    swrFetch(
+      `${API}/api/auctions/with-verdicts?buying=auction&limit=500`,
+      d => {
+        try { setLiveAuctions(applySeasonFilter(asArray(d, 'auctions')) || []) }
+        catch (err) { console.error('[Dashboard] liveAuctions handler', err); setLiveAuctions([]) }
+      }
+    )
+
     // Try fresh snipes endpoint first (real-time eBay lookups); fall back to cached targets
     Promise.race([
       fetch(`${API}/api/sniper/fresh-snipes/6`).then(r => r.ok ? r.json() : null).catch(() => null),
@@ -442,7 +462,7 @@ export default function Dashboard() {
   // refractors, etc. Use price as primary signal instead.
   const BORING_STRIP = new Set(['Base', 'B&W Ray Wave', 'B&W Lazer', 'Floor It', 'Four & More'])
   const endingStrip = useMemo(() => {
-    return (Array.isArray(auctions) ? auctions : [])
+    return (Array.isArray(liveAuctions) ? liveAuctions : [])
       .filter(a => {
         const s = secsLeft(a)
         if (!a || s <= 0 || s > 86400) return false // 24h window
@@ -462,7 +482,7 @@ export default function Dashboard() {
       .sort((a, b) => secsLeft(a) - secsLeft(b))
       .slice(0, 16)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auctions])
+  }, [liveAuctions])
 
   const hotSnipes = useMemo(() => (Array.isArray(snipes) ? snipes : []).slice(0, 12), [snipes])
 
@@ -503,7 +523,11 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 max-w-[1800px]">
       <Suspense fallback={null}><WelcomeModal /></Suspense>
-      <CardDetailModal auction={detailAuction} onClose={() => setDetailAuction(null)} />
+      {detailAuction && (
+        <Suspense fallback={null}>
+          <CardDetailModal auction={detailAuction} onClose={() => setDetailAuction(null)} />
+        </Suspense>
+      )}
 
       {/* WelcomeBanner: desktop-only — too noisy on mobile */}
       <div className="hidden md:block">
@@ -964,11 +988,13 @@ export default function Dashboard() {
         {auctionsLoading ? (
           <SkeletonCardRow count={4} />
         ) : (endingStrip || []).length === 0 ? (
-          <EndingStripEmpty
-            allAuctions={auctions}
-            lastSyncAt={lastSync}
-            onRefreshed={() => loadAll(true)}
-          />
+          <Suspense fallback={null}>
+            <EndingStripEmpty
+              allAuctions={auctions}
+              lastSyncAt={lastSync}
+              onRefreshed={() => loadAll(true)}
+            />
+          </Suspense>
         ) : (
           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
             {(endingStrip || []).filter(Boolean).map((a, i) => (

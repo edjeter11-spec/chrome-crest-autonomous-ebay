@@ -1,10 +1,12 @@
 import { lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import useKeyboardShortcuts from './lib/useKeyboardShortcuts'
-import ShortcutsHelp from './components/ShortcutsHelp'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import { AuthProvider, useAuth } from './lib/auth'
+
+// ShortcutsHelp only renders when the user presses '?' — defer it.
+const ShortcutsHelp = lazy(() => import('./components/ShortcutsHelp'))
 
 // Auctions/BuyItNow/Login are not the landing route — lazy-load to drop
 // ~30-40KB from the main bundle. Dashboard stays eager since it IS the
@@ -91,7 +93,7 @@ export default function App() {
     <AuthProvider>
     <BrowserRouter>
       <GlobalShortcuts />
-      <ShortcutsHelp />
+      <Suspense fallback={null}><ShortcutsHelp /></Suspense>
       <Routes>
         {/* Standalone routes — no layout chrome */}
         <Route path="/share/watchlist/:token" element={<Suspense fallback={<PageFallback />}><SharedWatchlist /></Suspense>} />

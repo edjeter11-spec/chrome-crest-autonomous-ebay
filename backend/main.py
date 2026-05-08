@@ -868,6 +868,30 @@ async def trigger_card_image_scrape(_admin=Depends(require_admin)):
     return {"status": "scraping started — check logs"}
 
 
+@app.post("/api/admin/clean-bin-end-times")
+def admin_clean_bin_end_times(db: Session = Depends(get_db)):
+    """One-shot: BIN listings with end_time > now+60 days are leftover
+    placeholders from old scraper code that was never updated. eBay BINs
+    are GTC-renewed every 30 days, so anything past that is stale —
+    clamp to now+30d so they sort correctly and the ending-soon view
+    isn't crowded with future-dated junk."""
+    from database import Auction
+    cutoff = datetime.utcnow() + timedelta(days=60)
+    new_end = datetime.utcnow() + timedelta(days=30)
+    updated = (
+        db.query(Auction)
+        .filter(
+            Auction.status == "active",
+            Auction.end_time > cutoff,
+            Auction.buying_options.like('%FIXED_PRICE%'),
+        )
+        .update({"end_time": new_end, "last_updated": datetime.utcnow()},
+                synchronize_session=False)
+    )
+    db.commit()
+    return {"ok": True, "rows_clamped": updated}
+
+
 @app.post("/api/admin/scrape-130point")
 async def admin_scrape_130point(_admin=Depends(require_admin)):
     """Scrape 130point.com sold comps and upsert into SoldCard."""
@@ -1550,9 +1574,18 @@ async def cron_refresh_bids(db: Session = Depends(get_db)):
         return {"ok": False, "reason": "no_credentials"}
 
     now = _dt.utcnow()
+    # AUCTION-only filter — BIN listings have no bid count, so refreshing
+    # them wastes API calls and never updates anything. The previous
+    # version selected ALL active rows, and when the top-50 ending-soonest
+    # were dominated by BINs (the now-fixed display bug), this cron did
+    # ~50 wasted eBay calls per run.
     rows = (
         db.query(_Auction)
-        .filter(_Auction.status == "active", _Auction.end_time > now)
+        .filter(
+            _Auction.status == "active",
+            _Auction.end_time > now,
+            _Auction.buying_options.like('%AUCTION%'),
+        )
         .order_by(_Auction.end_time.asc())
         .limit(50)
         .all()
@@ -1574,8 +1607,14 @@ async def cron_refresh_bids(db: Session = Depends(get_db)):
             if not details:
                 continue
             row_changed = False
-            new_bids = details.get("bidCount", details.get("bid_count", a.bid_count or 0))
-            if new_bids is not None and new_bids != (a.bid_count or 0):
+            # Coalesce None — eBay returns "bidCount": null on BIN-format items
+            # that slip through the AUCTION filter. Don't overwrite with None,
+            # which would wipe legitimate counts.
+            raw_bids = details.get("bidCount")
+            if raw_bids is None:
+                raw_bids = details.get("bid_count")
+            new_bids = raw_bids if raw_bids is not None else (a.bid_count or 0)
+            if raw_bids is not None and new_bids != (a.bid_count or 0):
                 a.bid_count = new_bids
                 row_changed = True
             cbp = details.get("currentBidPrice", {}) or {}
