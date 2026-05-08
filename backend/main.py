@@ -3048,58 +3048,42 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
     added = 0
     updated = 0
     errors = []
+    sessions_seen = 0
     try:
-        # Parallel with bounded concurrency (8) — earlier full-fanout
-        # asyncio.gather overloaded httpx's default connection pool and
-        # silently dropped most calls (only Melbourne ingested out of ~30
-        # sessions). Semaphore bounds it; full pull runs in ~10s.
-        sem = asyncio.Semaphore(8)
-        async def bounded_get(client, url, **kw):
-            async with sem:
-                try:
-                    return await client.get(url, **kw)
-                except Exception as e:
-                    return e
-
-        async with httpx.AsyncClient(timeout=30, limits=httpx.Limits(max_connections=20)) as client:
-            sessions_calls = await asyncio.gather(*[
-                bounded_get(
-                    client,
-                    "https://api.openf1.org/v1/sessions",
-                    params={"session_name": label, "year": 2026},
-                )
-                for label in ("Race", "Sprint")
-            ])
-
+        async with httpx.AsyncClient(timeout=15) as client:
+            # Pull both Race and Sprint session lists
             races_sessions = []
-            for label, resp in zip(("Race", "Sprint"), sessions_calls):
-                if isinstance(resp, Exception) or resp.status_code != 200:
+            for label in ("Race", "Sprint"):
+                try:
+                    r = await client.get(
+                        "https://api.openf1.org/v1/sessions",
+                        params={"session_name": label, "year": 2026},
+                    )
+                    if r.status_code == 200:
+                        for s in r.json():
+                            if s.get("session_name") == label:
+                                s["_label"] = label
+                                races_sessions.append(s)
+                except Exception as _se:
+                    errors.append(f"{label} list: {str(_se)[:120]}")
+
+            # Skip sessions in the future (no results yet)
+            _now = _dt.utcnow()
+            past_sessions = []
+            for s in races_sessions:
+                ds = (s.get("date_start", "") or "")[:19]
+                try:
+                    if _dt.fromisoformat(ds) <= _now:
+                        past_sessions.append(s)
+                except Exception:
                     continue
-                for s in resp.json():
-                    if s.get("session_name") == label:
-                        s["_label"] = label
-                        races_sessions.append(s)
-            sessions = races_sessions
+            sessions = past_sessions
+            sessions_seen = len(sessions)
 
-            # Skip sessions in the future (no results yet) to halve the work.
-            _now_iso = _dt.utcnow().isoformat()
-            sessions = [s for s in sessions if (s.get("date_start", "") or "")[:19] <= _now_iso]
-
-            session_keys = [s.get("session_key") for s in sessions]
-            drv_calls = [
-                bounded_get(client, "https://api.openf1.org/v1/drivers", params={"session_key": sk})
-                for sk in session_keys
-            ]
-            res_calls = [
-                bounded_get(client, "https://api.openf1.org/v1/session_result", params={"session_key": sk})
-                for sk in session_keys
-            ]
-            all_responses = await asyncio.gather(*(drv_calls + res_calls))
-            drv_responses = all_responses[:len(session_keys)]
-            res_responses = all_responses[len(session_keys):]
-
-            # 3. Walk results + upsert
-            for sess, dresp, rresp in zip(sessions, drv_responses, res_responses):
+            # Sequential per-session (parallel bounded gather kept dropping
+            # responses silently). Each session = 2 httpx calls × ~0.5s, so
+            # ~10 sessions in 10s. Vercel default 60s, plenty of margin.
+            for sess in sessions:
                 sk = sess.get("session_key")
                 label = sess.get("_label", "Race")
                 meeting = sess.get("meeting_name") or sess.get("circuit_short_name") or "Race"
@@ -3110,8 +3094,21 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
                 except Exception:
                     continue
 
-                if isinstance(dresp, Exception) or dresp.status_code != 200: continue
-                if isinstance(rresp, Exception) or rresp.status_code != 200: continue
+                try:
+                    dresp = await client.get(
+                        "https://api.openf1.org/v1/drivers",
+                        params={"session_key": sk},
+                    )
+                    rresp = await client.get(
+                        "https://api.openf1.org/v1/session_result",
+                        params={"session_key": sk},
+                    )
+                except Exception as _se:
+                    errors.append(f"sess {sk}: {str(_se)[:80]}")
+                    continue
+
+                if dresp.status_code != 200 or rresp.status_code != 200:
+                    continue
                 drivers = dresp.json()
                 results = rresp.json()
                 drv_map = {d.get("driver_number"): d.get("full_name") for d in drivers if d.get("driver_number")}
@@ -3160,7 +3157,7 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
         db.commit()
     except Exception as e:
         errors.append(str(e)[:200])
-    return {"ok": not errors, "added": added, "updated": updated, "errors": errors}
+    return {"ok": not errors, "added": added, "updated": updated, "sessions_seen": sessions_seen, "errors": errors}
 
 
 @app.get("/api/drivers/form")
