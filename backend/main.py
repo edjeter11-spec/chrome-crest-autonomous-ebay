@@ -40,7 +40,7 @@ def utcnow():
     """Always returns naive UTC for compatibility, but ensures it IS UTC."""
     return _dt_utc.now(_tz_utc.utc).replace(tzinfo=None)
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query as QueryParam, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query as QueryParam, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
