@@ -87,6 +87,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/mark-ended",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/ebay/refresh",
       "schedule": "30 * * * *"
     },

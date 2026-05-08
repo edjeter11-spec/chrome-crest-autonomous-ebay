@@ -105,6 +105,11 @@ def list_auctions(
     q = db.query(Auction).options(joinedload(Auction.card))
     if status:
         q = q.filter(Auction.status == status)
+    # Drop expired-but-not-yet-marked-ended rows for active queries. The
+    # mark-stale job lags behind the cron schedule, so without this guard
+    # past rows occupy the first slots of the ending-soonest sort.
+    if status == "active":
+        q = q.filter(Auction.end_time > datetime.utcnow())
     if driver:
         q = q.join(Card).filter(Card.driver_name.ilike(f"%{driver}%"))
     if snipe_only:
@@ -177,6 +182,13 @@ def list_with_verdicts(
     q = db.query(Auction).options(joinedload(Auction.card))
     if status:
         q = q.filter(Auction.status == status)
+    # When asking for active rows, drop anything whose end_time has already
+    # passed. The 'mark stale auctions as ended' job runs once per Playwright
+    # cycle and can lag — without this guard, expired rows occupy the first
+    # 500 slots of the ending-soonest sort and the dashboard never reaches
+    # actual-live data buried further down.
+    if status == "active":
+        q = q.filter(Auction.end_time > datetime.utcnow())
     if driver:
         q = q.join(Card).filter(Card.driver_name.ilike(f"%{driver}%"))
     if snipe_only:

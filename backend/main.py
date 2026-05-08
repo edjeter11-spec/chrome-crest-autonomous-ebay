@@ -2826,6 +2826,23 @@ async def rebuild_auctions(db: Session = Depends(get_db), _admin=Depends(require
     return {"deleted": deleted, "added": added, "total_active": total}
 
 
+@app.get("/api/cron/mark-ended")
+def cron_mark_ended(db: Session = Depends(get_db)):
+    """Sweep: mark every active auction whose end_time is in the past as
+    'ended'. Runs every 30 min via Vercel cron. Without this, the API's
+    ending-soonest sort puts expired rows before live ones, burying real
+    auctions past row 500."""
+    from database import Auction
+    now = datetime.utcnow()
+    updated = (
+        db.query(Auction)
+        .filter(Auction.status == "active", Auction.end_time < now)
+        .update({"status": "ended", "last_updated": now}, synchronize_session=False)
+    )
+    db.commit()
+    return {"ok": True, "marked_ended": updated}
+
+
 @app.post("/api/extension/verdicts")
 def extension_verdicts(
     payload: dict = Body(...),
