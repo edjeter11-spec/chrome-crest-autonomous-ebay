@@ -3161,14 +3161,20 @@ async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)
     try:
         from sqlalchemy import func as _func
         total_rows = db.query(_func.count(RaceResult.id)).scalar() or 0
-        distinct_dates = db.query(_func.count(_func.distinct(RaceResult.race_date))).scalar() or 0
+        date_rows = db.query(RaceResult.race_date, _func.count(RaceResult.id)).group_by(RaceResult.race_date).all()
+        date_breakdown = [{"date": str(d), "count": int(c)} for d, c in date_rows]
+        # Echo back what we saw from openf1 too
+        seen_dates = sorted({(s.get("date_start","") or "")[:10] for s in past_sessions})
     except Exception:
         total_rows = -1
-        distinct_dates = -1
+        date_breakdown = []
+        seen_dates = []
     return {
         "ok": not errors, "added": added, "updated": updated,
         "sessions_seen": sessions_seen,
-        "total_rows": total_rows, "distinct_race_dates": distinct_dates,
+        "total_rows": total_rows,
+        "date_breakdown": date_breakdown,
+        "openf1_dates_seen": seen_dates,
         "errors": errors,
     }
 
