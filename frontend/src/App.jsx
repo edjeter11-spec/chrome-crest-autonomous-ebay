@@ -5,15 +5,54 @@ import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import { AuthProvider, useAuth } from './lib/auth'
 
+/**
+ * Lazy-import wrapper with chunk-failure recovery.
+ *
+ * Symptom we're fixing: a user has a tab open across a deploy. New deploy
+ * publishes new chunk hashes; the user's bundle still references the old
+ * ones. They click a route, the browser fetches an asset that no longer
+ * exists, lazy() rejects → React error #426 → ErrorBoundary catches it
+ * and the whole app dies.
+ *
+ * Strategy:
+ *   1. retry once after a brief delay (handles transient network blips)
+ *   2. if still failing, force a hard reload — that fetches the fresh
+ *      index.html which references the new chunk hashes
+ *   3. rate-limit reloads via sessionStorage so a genuinely-broken state
+ *      (offline / API down) doesn't loop forever
+ */
+function lazyWithRetry(factory) {
+  return lazy(async () => {
+    try {
+      return await factory()
+    } catch {
+      await new Promise(r => setTimeout(r, 600))
+      try {
+        return await factory()
+      } catch (err2) {
+        const RELOAD_KEY = 'cc_chunk_reload_at'
+        const last = parseInt(sessionStorage.getItem(RELOAD_KEY) || '0', 10)
+        if (Date.now() - last > 30_000) {
+          sessionStorage.setItem(RELOAD_KEY, String(Date.now()))
+          location.reload()
+          // Stub so React doesn't see a pending rejection while we reload.
+          return { default: () => null }
+        }
+        throw err2
+      }
+    }
+  })
+}
+
 // ShortcutsHelp only renders when the user presses '?' — defer it.
-const ShortcutsHelp = lazy(() => import('./components/ShortcutsHelp'))
+const ShortcutsHelp = lazyWithRetry(() => import('./components/ShortcutsHelp'))
 
 // Auctions/BuyItNow/Login are not the landing route — lazy-load to drop
 // ~30-40KB from the main bundle. Dashboard stays eager since it IS the
 // default route and we don't want a Suspense flash on first paint.
-const Auctions = lazy(() => import('./pages/Auctions'))
-const BuyItNow = lazy(() => import('./pages/BuyItNow'))
-const Login = lazy(() => import('./pages/Login'))
+const Auctions = lazyWithRetry(() => import('./pages/Auctions'))
+const BuyItNow = lazyWithRetry(() => import('./pages/BuyItNow'))
+const Login = lazyWithRetry(() => import('./pages/Login'))
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null, info: null } }
@@ -48,34 +87,34 @@ function RequireAuth({ children }) {
 }
 
 // Lazy-loaded pages (code-split to keep initial bundle lean)
-const Portfolio = lazy(() => import('./pages/Portfolio'))
-const Wishlist = lazy(() => import('./pages/Wishlist'))
-const AlertsPage = lazy(() => import('./pages/Alerts'))
-const Drivers = lazy(() => import('./pages/Drivers'))
-const GradedTracker = lazy(() => import('./pages/GradedTracker'))
-const SalesDatabase = lazy(() => import('./pages/SalesDatabase'))
-const GradePredictor = lazy(() => import('./pages/GradePredictor'))
-const SharedWatchlist = lazy(() => import('./pages/SharedWatchlist'))
-const EmbedPrice = lazy(() => import('./pages/EmbedPrice'))
-const CardPage = lazy(() => import('./pages/CardPage'))
-const Compare = lazy(() => import('./pages/Compare'))
-const MyCards = lazy(() => import('./pages/MyCards'))
-const About = lazy(() => import('./pages/About'))
-const FAQ = lazy(() => import('./pages/FAQ'))
-const Terms = lazy(() => import('./pages/Terms'))
-const Privacy = lazy(() => import('./pages/Privacy'))
-const Arbitrage = lazy(() => import('./pages/Arbitrage'))
-const GradeProfit = lazy(() => import('./pages/GradeProfit'))
-const Sniper = lazy(() => import('./pages/Sniper'))
-const Volatility = lazy(() => import('./pages/Volatility'))
-const Releases = lazy(() => import('./pages/Releases'))
-const Indices = lazy(() => import('./pages/Indices'))
-const DriverGuide = lazy(() => import('./pages/DriverGuide'))
-const RaceWeekend = lazy(() => import('./pages/RaceWeekend'))
-const ParallelLanding = lazy(() => import('./pages/ParallelLanding'))
-const AffiliateROI = lazy(() => import('./pages/AffiliateROI'))
-const AdminFeedback = lazy(() => import('./pages/AdminFeedback'))
-const HowWeScore = lazy(() => import('./pages/HowWeScore'))
+const Portfolio = lazyWithRetry(() => import('./pages/Portfolio'))
+const Wishlist = lazyWithRetry(() => import('./pages/Wishlist'))
+const AlertsPage = lazyWithRetry(() => import('./pages/Alerts'))
+const Drivers = lazyWithRetry(() => import('./pages/Drivers'))
+const GradedTracker = lazyWithRetry(() => import('./pages/GradedTracker'))
+const SalesDatabase = lazyWithRetry(() => import('./pages/SalesDatabase'))
+const GradePredictor = lazyWithRetry(() => import('./pages/GradePredictor'))
+const SharedWatchlist = lazyWithRetry(() => import('./pages/SharedWatchlist'))
+const EmbedPrice = lazyWithRetry(() => import('./pages/EmbedPrice'))
+const CardPage = lazyWithRetry(() => import('./pages/CardPage'))
+const Compare = lazyWithRetry(() => import('./pages/Compare'))
+const MyCards = lazyWithRetry(() => import('./pages/MyCards'))
+const About = lazyWithRetry(() => import('./pages/About'))
+const FAQ = lazyWithRetry(() => import('./pages/FAQ'))
+const Terms = lazyWithRetry(() => import('./pages/Terms'))
+const Privacy = lazyWithRetry(() => import('./pages/Privacy'))
+const Arbitrage = lazyWithRetry(() => import('./pages/Arbitrage'))
+const GradeProfit = lazyWithRetry(() => import('./pages/GradeProfit'))
+const Sniper = lazyWithRetry(() => import('./pages/Sniper'))
+const Volatility = lazyWithRetry(() => import('./pages/Volatility'))
+const Releases = lazyWithRetry(() => import('./pages/Releases'))
+const Indices = lazyWithRetry(() => import('./pages/Indices'))
+const DriverGuide = lazyWithRetry(() => import('./pages/DriverGuide'))
+const RaceWeekend = lazyWithRetry(() => import('./pages/RaceWeekend'))
+const ParallelLanding = lazyWithRetry(() => import('./pages/ParallelLanding'))
+const AffiliateROI = lazyWithRetry(() => import('./pages/AffiliateROI'))
+const AdminFeedback = lazyWithRetry(() => import('./pages/AdminFeedback'))
+const HowWeScore = lazyWithRetry(() => import('./pages/HowWeScore'))
 
 const PageFallback = () => (
   <div className="p-6 text-gray-500 text-sm">Loading…</div>
@@ -101,9 +140,9 @@ export default function App() {
 
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
-          <Route path="login" element={<Login />} />
-          <Route path="auctions" element={<Auctions />} />
-          <Route path="bin" element={<BuyItNow />} />
+          <Route path="login" element={<Suspense fallback={<PageFallback />}><Login /></Suspense>} />
+          <Route path="auctions" element={<Suspense fallback={<PageFallback />}><Auctions /></Suspense>} />
+          <Route path="bin" element={<Suspense fallback={<PageFallback />}><BuyItNow /></Suspense>} />
           <Route path="drivers" element={<Suspense fallback={<PageFallback />}><Drivers /></Suspense>} />
           <Route path="portfolio" element={<RequireAuth><Suspense fallback={<PageFallback />}><Portfolio /></Suspense></RequireAuth>} />
           <Route path="my-cards" element={<Navigate to="/portfolio" replace />} />
