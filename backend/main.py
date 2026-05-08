@@ -3008,9 +3008,12 @@ def cron_mark_ended(db: Session = Depends(get_db)):
 
 
 @app.get("/api/cron/sync-race-results")
-async def cron_sync_race_results(db: Session = Depends(get_db)):
+async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)):
     """Pull all 2026 race results from OpenF1 (https://openf1.org) and
-    upsert into race_results. Free public API, no auth."""
+    upsert into race_results. Free public API, no auth.
+
+    ?reset=1 — wipe the table first. Use after a sync logic fix to
+    purge bad rows (e.g. Sprint results misingested as Race results)."""
     import httpx
     from database import RaceResult, engine as _engine
     from datetime import datetime as _dt
@@ -3022,16 +3025,32 @@ async def cron_sync_race_results(db: Session = Depends(get_db)):
     except Exception as _e:
         logger.warning(f"race_results table create skipped: {_e}")
 
+    if request.query_params.get("reset") == "1":
+        try:
+            db.query(RaceResult).delete()
+            db.commit()
+        except Exception as _e:
+            logger.warning(f"race_results reset failed: {_e}")
+            db.rollback()
+
     added = 0
     updated = 0
     errors = []
     try:
         async with httpx.AsyncClient(timeout=30) as client:
+            # OpenF1 returns BOTH the Sprint and the Grand Prix Race under
+            # session_type=Race — filtering only on session_type pulls the
+            # Sprint as if it were the GP, which corrupts form scores
+            # (e.g. for Miami 2026 Sprint had Norris P1 / Antonelli P6, but
+            # the actual Race had Antonelli P1 — totally different
+            # narrative). We want session_name="Race" specifically.
             sessions_resp = await client.get(
                 "https://api.openf1.org/v1/sessions",
-                params={"session_type": "Race", "year": 2026},
+                params={"session_name": "Race", "year": 2026},
             )
             sessions = sessions_resp.json() if sessions_resp.status_code == 200 else []
+            # Defensive: drop anything where session_name isn't exactly "Race"
+            sessions = [s for s in sessions if s.get("session_name") == "Race"]
 
             for sess in sessions:
                 sk = sess.get("session_key")
