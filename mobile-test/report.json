@@ -1,0 +1,172 @@
+{
+  "base": "http://127.0.0.1:5173",
+  "ts": "2026-05-08T03:28:21.239Z",
+  "results": [
+    {
+      "name": "dashboard",
+      "path": "/",
+      "title": "Home · F1 Card Vault",
+      "loadOk": true,
+      "viewportWidth": 393,
+      "scrollWidth": 393,
+      "horizontalScroll": false,
+      "smallTaps": [],
+      "overflowing": [],
+      "skeletonsLeft": 6,
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "issues": [
+        "STUCK_SKELETONS: 6 animate-pulse elements still rendering after 1.5s"
+      ]
+    },
+    {
+      "name": "sales",
+      "path": "/sales",
+      "title": "Sales · F1 Card Vault",
+      "loadOk": true,
+      "viewportWidth": 393,
+      "scrollWidth": 393,
+      "horizontalScroll": false,
+      "smallTaps": [
+        {
+          "tag": "button",
+          "text": "Share",
+          "w": 36,
+          "h": 40,
+          "cls": "ml-auto inline-flex items-center justify-center gap-1.5 px-3"
+        },
+        {
+          "tag": "button",
+          "text": "Advanced",
+          "w": 102,
+          "h": 34,
+          "cls": "flex items-center gap-1 px-3 py-2 rounded-lg bg-gray-800 hov"
+        },
+        {
+          "tag": "button",
+          "text": "Clear",
+          "w": 30,
+          "h": 16,
+          "cls": "ml-auto text-xs text-cyan-400 hover:underline font-medium"
+        },
+        {
+          "tag": "button",
+          "text": "All",
+          "w": 40,
+          "h": 36,
+          "cls": "inline-flex items-center justify-center px-3 py-2 sm:px-2.5 "
+        },
+        {
+          "tag": "button",
+          "text": "eBay",
+          "w": 53,
+          "h": 36,
+          "cls": "inline-flex items-center justify-center px-3 py-2 sm:px-2.5 "
+        },
+        {
+          "tag": "button",
+          "text": "130point",
+          "w": 73,
+          "h": 36,
+          "cls": "inline-flex items-center justify-center px-3 py-2 sm:px-2.5 "
+        },
+        {
+          "tag": "button",
+          "text": "SportsCardsPro",
+          "w": 112,
+          "h": 36,
+          "cls": "inline-flex items-center justify-center px-3 py-2 sm:px-2.5 "
+        },
+        {
+          "tag": "button",
+          "text": "Retry",
+          "w": 56,
+          "h": 32,
+          "cls": "text-xs font-bold px-3 py-2 rounded bg-red-700 hover:bg-red-"
+        }
+      ],
+      "overflowing": [],
+      "skeletonsLeft": 0,
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "issues": []
+    },
+    {
+      "name": "auctions",
+      "path": "/auctions",
+      "title": "Live Auctions · F1 Card Vault",
+      "loadOk": true,
+      "viewportWidth": 393,
+      "scrollWidth": 393,
+      "horizontalScroll": false,
+      "smallTaps": [
+        {
+          "tag": "button",
+          "text": "",
+          "w": 36,
+          "h": 36,
+          "cls": "inline-flex items-center justify-center w-9 h-9 rounded-lg b"
+        }
+      ],
+      "overflowing": [],
+      "skeletonsLeft": 12,
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response"
+      ],
+      "issues": [
+        "STUCK_SKELETONS: 12 animate-pulse elements still rendering after 1.5s"
+      ]
+    },
+    {
+      "name": "sniper",
+      "path": "/sniper",
+      "title": "Auto Bid · F1 Card Vault",
+      "loadOk": true,
+      "viewportWidth": 393,
+      "scrollWidth": 393,
+      "horizontalScroll": false,
+      "smallTaps": [],
+      "overflowing": [],
+      "skeletonsLeft": 0,
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response"
+      ],
+      "issues": []
+    },
+    {
+      "name": "how-we-score",
+      "path": "/how-we-score",
+      "title": "How We Score Auctions — F1 Card Vault",
+      "loadOk": true,
+      "viewportWidth": 393,
+      "scrollWidth": 393,
+      "horizontalScroll": false,
+      "smallTaps": [],
+      "overflowing": [],
+      "skeletonsLeft": 0,
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
+        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response"
+      ],
+      "issues": []
+    }
+  ]
+}

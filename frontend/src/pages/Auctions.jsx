@@ -391,7 +391,7 @@ export default function Auctions() {
             {snipeCount > 0 && (
               <button
                 onClick={() => setF({ filterSnipe: !filterSnipe })}
-                className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl border transition-colors ${filterSnipe ? 'bg-red-600/40 text-red-200 border-red-500/60' : 'bg-red-600/15 text-red-400 border-red-600/30 hover:bg-red-600/25'}`}
+                className={`inline-flex items-center justify-center gap-1 text-xs font-bold px-3 py-2 sm:py-1 min-h-[40px] sm:min-h-0 rounded-xl border transition-colors ${filterSnipe ? 'bg-red-600/40 text-red-200 border-red-500/60' : 'bg-red-600/15 text-red-400 border-red-600/30 hover:bg-red-600/25'}`}
                 aria-pressed={filterSnipe}
                 title="Filter to snipeable auctions only"
               >
@@ -401,7 +401,7 @@ export default function Auctions() {
             {strongBuyCount > 0 && (
               <button
                 onClick={() => setF({ filterStrongBuy: !filterStrongBuy })}
-                className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl border transition-colors ${filterStrongBuy ? 'bg-green-600/40 text-green-200 border-green-500/60' : 'bg-green-600/15 text-green-400 border-green-600/30 hover:bg-green-600/25'}`}
+                className={`inline-flex items-center justify-center gap-1 text-xs font-bold px-3 py-2 sm:py-1 min-h-[40px] sm:min-h-0 rounded-xl border transition-colors ${filterStrongBuy ? 'bg-green-600/40 text-green-200 border-green-500/60' : 'bg-green-600/15 text-green-400 border-green-600/30 hover:bg-green-600/25'}`}
                 aria-pressed={filterStrongBuy}
                 title="Filter to strong buys only"
               >
@@ -448,7 +448,7 @@ export default function Auctions() {
         {/* Premium toggle */}
         <button onClick={() => setF({ filterPremium: !filterPremium })}
           aria-pressed={filterPremium}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+          className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
             filterPremium ? 'bg-amber-600/25 text-amber-300 border border-amber-500/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
           💎 Premium ($100+ bid)
@@ -457,7 +457,7 @@ export default function Auctions() {
         {/* Strong Buys toggle */}
         <button onClick={() => setF({ filterStrongBuy: !filterStrongBuy })}
           aria-pressed={filterStrongBuy}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+          className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
             filterStrongBuy ? 'bg-green-600/20 text-green-400 border border-green-600/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
           🔥 Strong Buys
@@ -472,7 +472,7 @@ export default function Auctions() {
                 setTimeout(() => setCopiedToast(false), 2000)
               } catch {}
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold"
             title="Copy shareable link to this filter view"
           >
             <Share2 size={12} /> Share
@@ -481,7 +481,7 @@ export default function Auctions() {
           {user && hasActiveFilter && (
             <button
               onClick={() => setShowSaveRule(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-600/40 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-600/40 transition-colors"
               title="Save the current filter combination as a Sniper rule"
             >
               <Target size={12} /> Save as Snipe Rule
@@ -546,7 +546,7 @@ export default function Auctions() {
           ].map(({ label, active, key }) => (
             <button key={label} onClick={() => setF({ [key]: !active })}
               aria-pressed={active}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+              className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
                 active ? 'bg-red-600/15 text-red-400 border border-red-600/30' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
               }`}>
               {label}

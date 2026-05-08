@@ -46,14 +46,14 @@ export default function SignedOutBanner() {
       </span>
       <Link
         to="/login"
-        className="shrink-0 px-3 py-1.5 rounded-lg bg-white text-red-800 hover:bg-red-50 text-xs md:text-sm font-black tracking-tight transition-colors shadow"
+        className="shrink-0 inline-flex items-center justify-center px-3 py-2 min-h-[40px] sm:min-h-0 sm:py-1.5 rounded-lg bg-white text-red-800 hover:bg-red-50 text-xs md:text-sm font-black tracking-tight transition-colors shadow"
       >
         Sign in
       </Link>
       <button
         onClick={handleDismiss}
         aria-label="Dismiss"
-        className="shrink-0 p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+        className="shrink-0 inline-flex items-center justify-center w-10 h-10 sm:w-auto sm:h-auto sm:p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
       >
         <X size={16} />
       </button>

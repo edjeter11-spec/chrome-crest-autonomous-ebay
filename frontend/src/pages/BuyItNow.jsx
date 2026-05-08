@@ -243,7 +243,7 @@ export default function BuyItNow() {
         {/* Premium toggle */}
         <button onClick={() => setFilterPremium(!filterPremium)}
           aria-pressed={filterPremium}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+          className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
             filterPremium ? 'bg-amber-600/25 text-amber-300 border border-amber-500/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
           💎 Premium ($150+)
@@ -252,7 +252,7 @@ export default function BuyItNow() {
         {/* Strong Buys toggle */}
         <button onClick={() => setFilterStrongBuy(!filterStrongBuy)}
           aria-pressed={filterStrongBuy}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+          className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
             filterStrongBuy ? 'bg-green-600/25 text-green-400 border border-green-600/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
           🔥 Strong Buys
@@ -315,7 +315,7 @@ export default function BuyItNow() {
           ].map(({ label, active, set }) => (
             <button key={label} onClick={() => set(!active)}
               aria-pressed={active}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+              className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
                 active ? 'bg-green-600/15 text-green-400 border border-green-600/30' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
               }`}>
               {label}

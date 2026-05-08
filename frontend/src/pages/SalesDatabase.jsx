@@ -371,13 +371,13 @@ export default function SalesDatabase() {
               setTimeout(() => setCopiedToast(false), 2000)
             } catch {}
           }}
-          className="ml-auto flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] md:text-xs font-bold transition-colors"
+          className="ml-auto inline-flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 min-h-[40px] sm:min-h-0 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] md:text-xs font-bold transition-colors"
           title="Copy shareable link to this filter view"
         >
           <Share2 size={12} /> <span className="hidden sm:inline">Share</span>
         </button>
         <button onClick={exportCsv}
-          className="flex items-center gap-1.5 px-2.5 md:px-3 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-600/40 text-[11px] md:text-xs font-bold transition-colors">
+          className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 min-h-[40px] sm:min-h-0 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-600/40 text-[11px] md:text-xs font-bold transition-colors">
           <Download size={12} /> <span className="hidden sm:inline">Export </span>CSV
         </button>
         <button onClick={() => load(true)}
@@ -467,7 +467,7 @@ export default function SalesDatabase() {
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <button
           onClick={() => setOnly2025(v => !v)}
-          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+          className={`inline-flex items-center justify-center px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 rounded-full text-xs font-bold border transition-colors ${
             only2025
               ? 'bg-red-600/20 border-red-600/40 text-red-300'
               : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-white'
@@ -477,7 +477,7 @@ export default function SalesDatabase() {
         </button>
         <button
           onClick={() => setOnlyNotable(v => !v)}
-          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+          className={`inline-flex items-center justify-center px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 rounded-full text-xs font-bold border transition-colors ${
             onlyNotable
               ? 'bg-purple-600/20 border-purple-600/40 text-purple-300'
               : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-white'
@@ -491,7 +491,7 @@ export default function SalesDatabase() {
             <button
               key={opt}
               onClick={() => setSource(opt)}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${
+              className={`inline-flex items-center justify-center px-3 py-2 sm:px-2.5 sm:py-1 min-h-[36px] sm:min-h-0 rounded-full text-[11px] font-bold border transition-colors ${
                 source === opt
                   ? 'bg-cyan-600/20 border-cyan-600/40 text-cyan-300'
                   : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-white'

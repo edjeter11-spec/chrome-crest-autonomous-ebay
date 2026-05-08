@@ -154,9 +154,23 @@ export default function Layout() {
 
     function connect() {
       if (closed) return
+      // Vercel serverless can't hold open WebSocket connections — the /ws path
+      // falls through to the SPA's index.html, returning HTTP 200 which the
+      // browser logs as 'WebSocket handshake: Unexpected response code: 200'.
+      // Skip the connection entirely on production unless an explicit WS URL
+      // is configured. The retry every 10s also gets skipped, removing the
+      // spam from the console.
       const apiUrl = import.meta.env.VITE_API_URL || ''
+      const wsExplicit = import.meta.env.VITE_WS_URL || ''
+      const onVercel = !apiUrl && /\.vercel\.app$|f1cardvault\.com$/.test(window.location.host)
+      if (onVercel && !wsExplicit) {
+        setWsStatus('disconnected')
+        return
+      }
       let wsUrl
-      if (apiUrl) {
+      if (wsExplicit) {
+        wsUrl = wsExplicit
+      } else if (apiUrl) {
         wsUrl = apiUrl.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws'
       } else {
         const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -290,7 +304,7 @@ export default function Layout() {
               </button>
             </div>
           ) : (
-            <NavLink to="/login" className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-red-600/10 border border-red-600/30 text-red-400 hover:bg-red-600/20 text-[11px] font-semibold">
+            <NavLink to="/login" className="w-full flex items-center gap-2 px-3 py-2.5 min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-lg bg-red-600/10 border border-red-600/30 text-red-400 hover:bg-red-600/20 text-[11px] font-semibold">
               <LogIn size={12} /> Sign in / Create account
             </NavLink>
           )
@@ -313,7 +327,7 @@ export default function Layout() {
         {(!collapsed || mobile) && (
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-[11px] font-semibold bg-gray-800/60 text-gray-400 hover:text-white border border-gray-700/40 hover:bg-gray-800 transition-colors light:bg-gray-100 light:text-gray-700 light:border-gray-300 light:hover:bg-gray-200 light:hover:text-gray-800"
+            className="w-full flex items-center gap-2 px-3 py-2.5 min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-lg text-[11px] font-semibold bg-gray-800/60 text-gray-400 hover:text-white border border-gray-700/40 hover:bg-gray-800 transition-colors light:bg-gray-100 light:text-gray-700 light:border-gray-300 light:hover:bg-gray-200 light:hover:text-gray-800"
             title="Toggle theme"
           >
             {theme === 'dark' ? <Sun size={12} /> : <Moon size={12} />}
@@ -516,7 +530,7 @@ function TopRightMenu({ user, signOut, onHelp }) {
     <div className="fixed top-3 right-3 md:top-4 md:right-4 z-40 flex items-center gap-2">
       <Link
         to="/login"
-        className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-600/20 text-red-300 border border-red-600/40 hover:bg-red-600/30"
+        className="inline-flex items-center justify-center px-3 py-2 sm:py-1 min-h-[40px] sm:min-h-0 rounded-full text-xs font-semibold bg-red-600/20 text-red-300 border border-red-600/40 hover:bg-red-600/30"
       >Sign in</Link>
       <button
         onClick={onHelp}

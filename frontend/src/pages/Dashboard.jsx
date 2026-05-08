@@ -647,14 +647,14 @@ export default function Dashboard() {
                 <button
                   key={p}
                   onClick={() => navigate(`/sales?parallel=${encodeURIComponent(p)}`)}
-                  className="px-3 py-1.5 rounded-full bg-gray-800/70 hover:bg-cyan-900/40 border border-gray-700/50 hover:border-cyan-600/50 text-xs font-bold text-gray-300 hover:text-cyan-300 transition-colors light:bg-gray-200 light:text-gray-700 light:border-gray-400 light:hover:bg-cyan-100"
+                  className="px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-full bg-gray-800/70 hover:bg-cyan-900/40 border border-gray-700/50 hover:border-cyan-600/50 text-xs font-bold text-gray-300 hover:text-cyan-300 transition-colors light:bg-gray-200 light:text-gray-700 light:border-gray-400 light:hover:bg-cyan-100 inline-flex items-center justify-center"
                 >
                   {p}
                 </button>
               ))}
               <button
                 onClick={() => navigate('/graded?grade=10')}
-                className="px-3 py-1.5 rounded-full bg-amber-900/30 hover:bg-amber-900/50 border border-amber-700/50 hover:border-amber-500/70 text-xs font-black text-amber-300 transition-colors flex items-center gap-1"
+                className="px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded-full bg-amber-900/30 hover:bg-amber-900/50 border border-amber-700/50 hover:border-amber-500/70 text-xs font-black text-amber-300 transition-colors inline-flex items-center justify-center gap-1"
               >
                 <Shield size={10} /> PSA 10 sales
               </button>

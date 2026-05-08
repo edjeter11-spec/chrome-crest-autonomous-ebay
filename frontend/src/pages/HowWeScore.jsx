@@ -152,7 +152,7 @@ export default function HowWeScore() {
           <p className="text-[11px] text-gray-500">Last updated: {lastUpdated}</p>
           <Link
             to="/"
-            className="text-xs font-black px-4 py-2 rounded bg-red-600 hover:bg-red-500 text-white transition-colors"
+            className="inline-flex items-center justify-center text-xs font-black px-4 py-2.5 sm:py-2 min-h-[40px] sm:min-h-0 rounded bg-red-600 hover:bg-red-500 text-white transition-colors"
           >
             ← Back to Dashboard
           </Link>
