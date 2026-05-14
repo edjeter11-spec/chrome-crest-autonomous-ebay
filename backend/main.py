@@ -1894,14 +1894,17 @@ async def cron_keepalive(request: Request):
             return {"ok": False, "error": "unauthorized"}
 
     base = "https://f1cardvault.com"
+    # Minimal warming: hit the two heavy endpoints + sales/stats. These three
+    # are the cold-start spikes users actually feel (3.8s + 2.0s respectively).
+    # Earlier version warmed 4 endpoints every 4 min = 1,800 invocations/day.
+    # This one warms 3 every 4 min = 1,080/day, still cheap.
     targets = [
-        "/api/auctions/with-verdicts?limit=500",
-        "/api/auctions/with-verdicts?limit=100",
-        "/api/sales?limit=500&year=2025",
-        "/api/sales/stats",
+        "/api/auctions/with-verdicts?buying=auction&limit=500",  # Ending Soonest strip
+        "/api/sales/stats",                                       # Sales dashboard summary
+        "/api/health",                                            # Cheap baseline ping
     ]
     results = []
-    async with _httpx.AsyncClient(timeout=30.0) as client:
+    async with _httpx.AsyncClient(timeout=20.0) as client:
         for path in targets:
             try:
                 r = await client.get(f"{base}{path}", headers={"User-Agent": "vercel-cron-keepalive/1.0"})

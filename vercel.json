@@ -88,6 +88,10 @@
   ],
   "crons": [
     {
+      "path": "/api/cron/keepalive",
+      "schedule": "*/4 * * * *"
+    },
+    {
       "path": "/api/cron/sync",
       "schedule": "0 */2 * * *"
     },
