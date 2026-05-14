@@ -1634,8 +1634,23 @@ async def _do_imminent_sync(db: Session, window_min: int = 90) -> dict:
     """Shared implementation for both the cron and the user-triggered refresh.
     Pulls 2025 F1 auctions ending in the next `window_min` minutes (server-side
     filtered via itemEndDate), then upserts via scraper._upsert_listings.
-    Returns {fetched, added, updated, ending_in_30m}."""
-    from ebay_api import search_f1_cards, parse_ebay_item, _is_valid_2025_f1_listing
+
+    Coverage strategy (May 2026 fix — Eddie's "missing ending-soon" report):
+    Loops EVERY query in SEARCH_QUERIES (not just the long-form one) and
+    paginates each up to 5 pages × 200 = 1000 items. Pagination breaks early
+    on partial / empty pages so realistic API spend stays low — typical fire
+    hits ~2-3 calls (one page per query, both empty after the first batch).
+    Worst case: len(SEARCH_QUERIES) × 5 = 10 calls/fire × 96 fires/day = 960
+    calls/day, but the early-break + 90-min window keeps real spend ~150-300.
+
+    Returns {fetched, added, updated, ending_in_30m, api_calls}."""
+    from ebay_api import (
+        search_f1_cards,
+        parse_ebay_item,
+        _is_valid_2025_f1_listing,
+        _is_rate_limited,
+        SEARCH_QUERIES,
+    )
     from scraper import _upsert_listings, recompute_snipe_eligibility
     from datetime import datetime as _dt, timedelta as _td, timezone as _tz
 
@@ -1646,28 +1661,39 @@ async def _do_imminent_sync(db: Session, window_min: int = 90) -> dict:
 
     all_items: list = []
     seen_ids: set = set()
-    for page in range(3):  # max 3 pages × 200 = 600 items
-        try:
-            items = await search_f1_cards(
-                query="2025 Topps Chrome Formula 1",
-                limit=200,
-                sort="endingSoonest",
-                buying_options_filter="buyingOptions:{AUCTION}",
-                offset=page * 200,
-                extra_filter=time_filter,
+    api_calls = 0
+    MAX_PAGES_PER_QUERY = 5  # 5 × 200 = 1000 items per query (eBay caps at 200/page)
+
+    for query in SEARCH_QUERIES:
+        if _is_rate_limited():
+            import logging as _log
+            _log.getLogger("imminent").warning(
+                f"rate-limit cooldown active — aborting at query '{query}'"
             )
-        except Exception:
             break
-        if not items:
-            break
-        for it in items:
-            iid = it.get("itemId", "")
-            title = it.get("title", "")
-            if iid and iid not in seen_ids and _is_valid_2025_f1_listing(title):
-                seen_ids.add(iid)
-                all_items.append(parse_ebay_item(it))
-        if len(items) < 200:
-            break
+        for page in range(MAX_PAGES_PER_QUERY):
+            try:
+                items = await search_f1_cards(
+                    query=query,
+                    limit=200,
+                    sort="endingSoonest",
+                    buying_options_filter="buyingOptions:{AUCTION}",
+                    offset=page * 200,
+                    extra_filter=time_filter,
+                )
+                api_calls += 1
+            except Exception:
+                break
+            if not items:
+                break
+            for it in items:
+                iid = it.get("itemId", "")
+                title = it.get("title", "")
+                if iid and iid not in seen_ids and _is_valid_2025_f1_listing(title):
+                    seen_ids.add(iid)
+                    all_items.append(parse_ebay_item(it))
+            if len(items) < 200:
+                break  # last page for this query
 
     added, updated = _upsert_listings(db, all_items)
     db.commit()
@@ -1696,6 +1722,8 @@ async def _do_imminent_sync(db: Session, window_min: int = 90) -> dict:
         "updated": updated,
         "ending_in_30m": ending_in_30m,
         "window_min": window_min,
+        "api_calls": api_calls,
+        "queries_used": len(SEARCH_QUERIES),
     }
 
 

@@ -519,13 +519,16 @@ async def fetch_all_live_auctions(max_pages: int = 10) -> list[dict]:
     (Kimi Portrait Refractor etc) and the previous endingSoonest pass capped
     at 200 items per query, mixing AUCTION+BIN.
 
-    This function uses ONE broad query with strict server-side filters:
+    Strategy (May 2026 expansion): loop EVERY query in SEARCH_QUERIES (long
+    + short-form) with strict server-side filters:
       - buyingOptions: AUCTION only (no BIN noise)
       - itemEndDate: [now..now+7d] (only what's actually ending soon)
       - sort: endingSoonest
-      - paginate up to max_pages × 200 = 1000 items
+      - paginate up to max_pages × 200 = 1000 items per query
 
-    Cost: max_pages calls per run × hourly = ~120 calls/day. Quota: 5000/day.
+    Cost: max_pages × len(SEARCH_QUERIES) calls per run. With 2 queries × 10
+    pages = 20 calls/run × 12 runs/day (every 2h) = 240 calls/day worst case.
+    Quota: 5000/day. Realistic spend: ~60-100/day after early-page-empty break.
     """
     if _is_rate_limited():
         logger.warning("fetch_all_live_auctions: rate-limited, skipping")
@@ -539,41 +542,54 @@ async def fetch_all_live_auctions(max_pages: int = 10) -> list[dict]:
     all_items: list[dict] = []
     seen_ids: set[str] = set()
 
-    for page in range(max_pages):
+    for query in SEARCH_QUERIES:
         if _is_rate_limited():
-            logger.warning(f"fetch_all_live_auctions: rate-limited mid-pagination at page {page}")
+            logger.warning(f"fetch_all_live_auctions: rate-limited — aborting at query '{query}'")
             break
-        offset = page * 200
-        try:
-            items = await search_f1_cards(
-                query="2025 Topps Chrome Formula 1",
-                limit=200,
-                sort="endingSoonest",
-                buying_options_filter="buyingOptions:{AUCTION}",
-                offset=offset,
-                extra_filter=time_filter,
+        for page in range(max_pages):
+            if _is_rate_limited():
+                logger.warning(
+                    f"fetch_all_live_auctions: rate-limited mid-pagination "
+                    f"at query '{query}' page {page}"
+                )
+                break
+            offset = page * 200
+            try:
+                items = await search_f1_cards(
+                    query=query,
+                    limit=200,
+                    sort="endingSoonest",
+                    buying_options_filter="buyingOptions:{AUCTION}",
+                    offset=offset,
+                    extra_filter=time_filter,
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"fetch_all_live_auctions: query '{query}' page {page} failed: {exc}"
+                )
+                break
+
+            if not items:
+                logger.info(
+                    f"fetch_all_live_auctions: query '{query}' page {page} empty — next query"
+                )
+                break
+
+            new_count = 0
+            for item in items:
+                item_id = item.get("itemId", "")
+                title = item.get("title", "")
+                if item_id and item_id not in seen_ids and _is_valid_2025_f1_listing(title):
+                    seen_ids.add(item_id)
+                    all_items.append(parse_ebay_item(item))
+                    new_count += 1
+            logger.info(
+                f"fetch_all_live_auctions: '{query}' page {page} → {len(items)} raw, {new_count} new F1"
             )
-        except Exception as exc:
-            logger.warning(f"fetch_all_live_auctions: page {page} failed: {exc}")
-            break
 
-        if not items:
-            logger.info(f"fetch_all_live_auctions: page {page} empty — stopping")
-            break
-
-        new_count = 0
-        for item in items:
-            item_id = item.get("itemId", "")
-            title = item.get("title", "")
-            if item_id and item_id not in seen_ids and _is_valid_2025_f1_listing(title):
-                seen_ids.add(item_id)
-                all_items.append(parse_ebay_item(item))
-                new_count += 1
-        logger.info(f"fetch_all_live_auctions: page {page} → {len(items)} raw, {new_count} new F1")
-
-        if len(items) < 200:
-            break  # Last page — no more results
-        await asyncio.sleep(0.3)
+            if len(items) < 200:
+                break  # Last page for this query
+            await asyncio.sleep(0.3)
 
     logger.info(f"fetch_all_live_auctions: total {len(all_items)} live F1 auctions ending in 7d")
     return all_items

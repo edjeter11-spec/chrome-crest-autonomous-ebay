@@ -151,7 +151,7 @@ export default function Dashboard() {
   const [ticker, setTicker] = useState([])
   const [bigWins, setBigWins] = useState([])
   const [bigWinsLoading, setBigWinsLoading] = useState(true)
-  const [alertsData, setAlertsData] = useState([])
+  // alertsData state removed — was set by /api/alerts fetch but never read.
   const [recent24hCount, setRecent24hCount] = useState(null)
 
   const [nowTick, setNowTick] = useState(Date.now())
@@ -293,25 +293,17 @@ export default function Dashboard() {
       }
     )
 
-    // Progressive fetch + ALL active listings (auction + BIN). The dashboard
-    // was filtering buying=auction, leaving only ~11 rows after today's
-    // phantom cleanup — 'Next Big Auctions' had no data in its 6-48h window.
-    // Including BIN gives BiggestSnipes a much richer pool to filter from.
+    // Single fetch for ALL active listings (auction + BIN). Was previously a
+    // progressive limit=200 → limit=500 pair, but limit=500 is server-cached
+    // (s-maxage) so the smaller "fast" call only added DB pressure during the
+    // initial burst (8→1 success on cold pool). Going straight to limit=500
+    // cuts a parallel request and the cached payload streams just as fast.
     swrFetch(
-      `${API}/api/auctions/with-verdicts?limit=200`,
+      `${API}/api/auctions/with-verdicts?limit=500`,
       d => {
         try { setAuctions(applySeasonFilter(asArray(d, 'auctions')) || []) }
         catch (err) { console.error('[Dashboard] auctions handler', err); setAuctions([]) }
         finally { setAuctionsLoading(false) }
-        setTimeout(() => {
-          swrFetch(
-            `${API}/api/auctions/with-verdicts?limit=500`,
-            d2 => {
-              try { setAuctions(applySeasonFilter(asArray(d2, 'auctions')) || []) }
-              catch {}
-            }
-          )
-        }, 1500)
       }
     )
 
@@ -357,13 +349,10 @@ export default function Dashboard() {
     // Sales-derived state (ticker, bigWins, recent24hCount) is set inside
     // the consolidated /api/sales?limit=500 handler above. No separate fetches.
 
-    swrFetch(
-      `${API}/api/alerts`,
-      d => {
-        try { setAlertsData(asArray(d, 'alerts')) }
-        catch (err) { console.error('[Dashboard] alerts handler', err); setAlertsData([]) }
-      }
-    )
+    // /api/alerts fetch removed — alertsData was set but never read in render.
+    // The deferred welcome-back block (line ~205) still hits /api/alerts to
+    // compute the "new alerts since last visit" delta; that's gated behind
+    // a 1.5s setTimeout so it doesn't compete with the cold-burst.
 
     setEbayLimited(false)
     setRefreshing(false)

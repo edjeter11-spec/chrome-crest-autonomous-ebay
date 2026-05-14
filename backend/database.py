@@ -7,6 +7,26 @@ import os as _os
 _pg_url = _os.environ.get("DATABASE_URL", "")
 if _pg_url:
     DATABASE_URL = _pg_url.replace("postgres://", "postgresql://", 1)
+    # Auto-route through Neon's PgBouncer endpoint (transparent connection
+    # pooling at the provider level). Neon's free tier has only ~5 direct
+    # connections; on serverless every request opens its own, so 8 parallel
+    # dashboard fetches saturate the cap and the rest stall waiting → 30s
+    # timeouts (Eddie's '45s to load' bug). The pooler endpoint multiplexes
+    # thousands of clients onto few real DB connections — perfect for
+    # serverless. Detection: Neon hosts look `ep-xxx.<region>.<cloud>.neon.tech`,
+    # pooled is `ep-xxx-pooler...`. Rewrite only when (a) it IS a Neon URL
+    # and (b) -pooler isn't already there. Set DATABASE_URL to the pooler
+    # URL yourself or to a non-Neon DB to opt out.
+    import re as _re
+    _neon_match = _re.match(
+        r"(postgresql://[^@]+@)(ep-[a-z0-9]+)((?<!-pooler)\.[^/]+\.neon\.tech)(/.*)",
+        DATABASE_URL,
+    )
+    if _neon_match:
+        DATABASE_URL = (
+            f"{_neon_match.group(1)}{_neon_match.group(2)}-pooler"
+            f"{_neon_match.group(3)}{_neon_match.group(4)}"
+        )
     import time as _time
     import psycopg2 as _psycopg2
 
