@@ -5,7 +5,7 @@ Enables closed-loop feedback: "Was this a win?" buttons on sold cards.
 import json
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, case
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -203,8 +203,10 @@ def verdict_leaderboard(
             SoldCard.parallel,
             SoldCard.grade,
             func.count(VerdictFeedback.id).label("total"),
+            # case() not func.case — SQLAlchemy's case is a top-level
+            # construct, not a function. The misuse made this endpoint 500.
             func.sum(
-                func.case(
+                case(
                     (VerdictFeedback.feedback == "up", 1),
                     else_=0,
                 )

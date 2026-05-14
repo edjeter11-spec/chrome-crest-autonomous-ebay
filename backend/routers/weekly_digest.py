@@ -211,7 +211,9 @@ async def _send_email(to: str, subject: str, html: str) -> dict:
         return {"sent": False, "reason": "request_failed", "error": str(e)[:100]}
 
 
-@router.post("/digest")
+# GET + POST — Vercel cron sends GET. POST-only meant Monday digests
+# never sent (request fell through to SPA index.html).
+@router.api_route("/digest", methods=["GET", "POST"])
 async def send_weekly_digest(request: Request, db: Session = Depends(get_db)):
     """
     Cron endpoint: Sent Monday 9am UTC. Iterates all users with watchlists,

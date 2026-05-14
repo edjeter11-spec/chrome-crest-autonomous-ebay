@@ -65,7 +65,11 @@ def drivers_summary(db: Session = Depends(get_db)):
         Card.image_url,
         Card.base_value,
         func.max(Card.investment_score).label("investment_score"),
-        func.max(func.coalesce(Card.is_legend, False)).label("is_legend"),
+        # bool_or instead of max(boolean) — Postgres doesn't define max() over
+        # boolean. Returns True if ANY card for this driver is flagged as a
+        # legend. Without this fix the entire endpoint 500'd and the Drivers
+        # page sat on an infinite spinner.
+        func.bool_or(func.coalesce(Card.is_legend, False)).label("is_legend"),
     ).filter(Card.grade == "Raw", Card.parallel == "Base").group_by(
         Card.driver_name, Card.team, Card.team_color, Card.nationality,
         Card.career_wins, Card.championships, Card.card_number,
@@ -157,15 +161,10 @@ def get_card(card_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{card_id}/price-history")
 def price_history(card_id: int, db: Session = Depends(get_db)):
-    from sqlalchemy import text
-    from database import PriceHistory, engine
-    # Ensure column exists (idempotent — Vercel lambdas may skip startup event)
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE price_history ADD COLUMN ebay_item_id VARCHAR(64)"))
-            conn.commit()
-    except Exception:
-        pass
+    from database import PriceHistory
+    # Note: ebay_item_id column added via startup migration in main.py;
+    # the per-request ALTER TABLE that used to live here was wasteful
+    # (one extra Postgres round-trip on every public read).
     history = db.query(PriceHistory).filter(
         PriceHistory.card_id == card_id
     ).order_by(PriceHistory.sale_date.asc()).all()

@@ -46,7 +46,9 @@ def _admin_ok(request: Request) -> bool:
     return qtoken == admin_token or header_token == admin_token
 
 
-@router.post("/card-lots")
+# GET + POST — Vercel cron sends GET. POST-only meant the daily 5:05am
+# scheduled fire fell through to the SPA catch-all and silently no-op'd.
+@router.api_route("/card-lots", methods=["GET", "POST"])
 def sweep_card_lots(request: Request, db: Session = Depends(get_db)):
     """
     Sweep all active Auction rows, flip bundle/lot titles to status='ended'.
