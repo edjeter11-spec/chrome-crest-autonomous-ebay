@@ -126,14 +126,27 @@ TEAMS = [
 ]
 
 
+# Try to import the shared canonical normalizer. The runner is invoked from
+# the repo root in CI, so adding `backend` to sys.path keeps this self-
+# contained without changing the workflow file.
+try:
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _backend = os.path.join(os.path.dirname(_here), "backend")
+    if _backend not in sys.path:
+        sys.path.insert(0, _backend)
+    from lib.driver_norm import normalize_driver as _normalize_driver
+except Exception:
+    _normalize_driver = lambda x: x  # noqa: E731 — fail-open if helper missing
+
+
 def driver_from_title(title: str):
     t = title.lower()
     for d in DRIVERS:
         if d.lower() in t:
-            return d
+            return _normalize_driver(d)
         last = d.split()[-1].lower()
         if len(last) > 4 and re.search(rf"\b{re.escape(last)}\b", t):
-            return d
+            return _normalize_driver(d)
     # No driver found — fall back to team name if title contains a team identifier.
     for canonical, aliases in TEAMS:
         if any(a in t for a in aliases):

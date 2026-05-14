@@ -133,16 +133,63 @@ def list_auctions(
 # cron runs, so a 5-minute TTL is safe and makes `with-verdicts` ~50x faster.
 _MEDIAN_CACHE: dict = {}
 _MEDIAN_TTL_SEC = 300
+# Persistent precomputed-median table is fresh enough to trust for 48h.
+# Refresh cron at /api/cron/refresh-comp-medians runs daily at 04:15 UTC.
+_COMP_MEDIAN_MAX_AGE_SEC = 48 * 3600
 
 def _cached_median(db, driver, parallel, grade):
+    """Return (median_total, n_comps) for this (driver, parallel, grade).
+
+    Lookup order (fastest → slowest):
+      1. In-process TTL cache (5 min) — hot path for repeated calls in
+         the same lambda instance.
+      2. Persistent `comp_medians` table — populated nightly by
+         /api/cron/refresh-comp-medians. Trusted if computed_at < 48h ago.
+      3. Live `median_comp_price()` against `sold_cards` — fallback when
+         the precompute is missing or stale. Result is written back to
+         `comp_medians` so the next call within 48h hits step 2.
+    """
     from scraper import median_comp_price
-    now = datetime.utcnow().timestamp()
+    from database import CompMedian
+    now_dt = datetime.utcnow()
+    now = now_dt.timestamp()
     k = (driver, parallel, grade)
     hit = _MEDIAN_CACHE.get(k)
     if hit and hit[2] > now:
         return (hit[0], hit[1])
+
+    # Step 2: persistent precomputed table.
+    med = None
+    n = 0
+    try:
+        row = (
+            db.query(CompMedian)
+            .filter(
+                CompMedian.driver_name == driver,
+                CompMedian.parallel == parallel,
+                CompMedian.grade == grade,
+                CompMedian.days == 90,
+            )
+            .first()
+        )
+        if row and row.computed_at and (now_dt - row.computed_at).total_seconds() < _COMP_MEDIAN_MAX_AGE_SEC:
+            med, n = float(row.median_total), int(row.n_comps)
+            _MEDIAN_CACHE[k] = (med, n, now + _MEDIAN_TTL_SEC)
+            return (med, n)
+    except Exception as _cm_err:
+        import logging
+        logging.getLogger("auctions").debug(f"comp_medians lookup failed: {_cm_err}")
+
+    # Step 3: fallback to live computation, then backfill comp_medians so the
+    # next caller hits the persistent layer.
     med, n = median_comp_price(db, driver, parallel, grade)
     _MEDIAN_CACHE[k] = (med, n, now + _MEDIAN_TTL_SEC)
+    if med is not None and n > 0:
+        try:
+            _upsert_comp_median(db, driver, parallel, grade, med, n, 90, now_dt)
+        except Exception as _wb_err:
+            import logging
+            logging.getLogger("auctions").debug(f"comp_medians backfill skipped: {_wb_err}")
     # Bound the cache so it can't grow without bound.
     if len(_MEDIAN_CACHE) > 5000:
         # Drop expired entries first, then half of the rest if still oversized.
@@ -153,6 +200,51 @@ def _cached_median(db, driver, parallel, grade):
             for kk in list(_MEDIAN_CACHE.keys())[:2500]:
                 _MEDIAN_CACHE.pop(kk, None)
     return (med, n)
+
+
+def _upsert_comp_median(db, driver, parallel, grade, median_total, n_comps, days, computed_at):
+    """Insert or update one row in `comp_medians`. Postgres uses ON CONFLICT;
+    SQLite falls back to a SELECT-then-INSERT/UPDATE so local dev still works."""
+    from sqlalchemy import text
+    from database import CompMedian, engine as _engine
+    is_pg = "postgresql" in str(_engine.url)
+    if is_pg:
+        db.execute(
+            text(
+                "INSERT INTO comp_medians (driver_name, parallel, grade, median_total, n_comps, days, computed_at) "
+                "VALUES (:dn, :par, :gr, :med, :n, :days, :ts) "
+                "ON CONFLICT ON CONSTRAINT uq_comp_med_combo DO UPDATE SET "
+                "median_total = EXCLUDED.median_total, "
+                "n_comps = EXCLUDED.n_comps, "
+                "computed_at = EXCLUDED.computed_at"
+            ),
+            {"dn": driver, "par": parallel, "gr": grade,
+             "med": float(median_total), "n": int(n_comps),
+             "days": int(days), "ts": computed_at},
+        )
+        db.commit()
+    else:
+        existing = (
+            db.query(CompMedian)
+            .filter(
+                CompMedian.driver_name == driver,
+                CompMedian.parallel == parallel,
+                CompMedian.grade == grade,
+                CompMedian.days == days,
+            )
+            .first()
+        )
+        if existing:
+            existing.median_total = float(median_total)
+            existing.n_comps = int(n_comps)
+            existing.computed_at = computed_at
+        else:
+            db.add(CompMedian(
+                driver_name=driver, parallel=parallel, grade=grade,
+                median_total=float(median_total), n_comps=int(n_comps),
+                days=int(days), computed_at=computed_at,
+            ))
+        db.commit()
 
 
 @router.get("/with-verdicts")

@@ -68,6 +68,19 @@
       "dest": "frontend/dist/sw.js",
       "headers": { "Content-Type": "application/javascript" }
     },
+    { "src": "/auctions/?", "dest": "frontend/dist/auctions/index.html" },
+    { "src": "/bin/?", "dest": "frontend/dist/bin/index.html" },
+    { "src": "/sales/?", "dest": "frontend/dist/sales/index.html" },
+    { "src": "/drivers/?", "dest": "frontend/dist/drivers/index.html" },
+    { "src": "/sniper/?", "dest": "frontend/dist/sniper/index.html" },
+    { "src": "/portfolio/?", "dest": "frontend/dist/portfolio/index.html" },
+    { "src": "/wishlist/?", "dest": "frontend/dist/wishlist/index.html" },
+    { "src": "/graded/?", "dest": "frontend/dist/graded/index.html" },
+    { "src": "/grade/?", "dest": "frontend/dist/grade/index.html" },
+    { "src": "/compare/?", "dest": "frontend/dist/compare/index.html" },
+    { "src": "/how-we-score/?", "dest": "frontend/dist/how-we-score/index.html" },
+    { "src": "/about/?", "dest": "frontend/dist/about/index.html" },
+    { "src": "/faq/?", "dest": "frontend/dist/faq/index.html" },
     {
       "src": "/(.*)",
       "dest": "frontend/dist/index.html"
@@ -137,6 +150,14 @@
     {
       "path": "/api/cron/sync-race-results",
       "schedule": "0 6 * * 1,4"
+    },
+    {
+      "path": "/api/cron/refresh-comp-medians",
+      "schedule": "15 4 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-basket-history",
+      "schedule": "30 4 * * *"
     }
   ],
   "env": {

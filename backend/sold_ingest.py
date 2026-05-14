@@ -19,6 +19,7 @@ from ebay_finding_api import (
     fetch_sold_for_driver, fetch_sold_for_query, fetch_active_for_query,
 )
 from ebay_api import _is_valid_2025_f1_listing, extract_driver_from_title
+from lib.driver_norm import normalize_driver
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +104,9 @@ def _match_driver(title: str) -> Optional[str]:
     for driver in F1_DRIVERS:
         last = driver.split()[-1].lower()
         if last in t:
-            return driver
+            return normalize_driver(driver)
     # Fallback to ebay_api extractor (wider driver list)
-    return extract_driver_from_title(title)
+    return normalize_driver(extract_driver_from_title(title))
 
 
 def _extract_image_url(ebay_item_id: str) -> Optional[str]:
@@ -180,7 +181,7 @@ async def ingest_sold_for_driver(driver_name: str, db: Session) -> dict:
 
         sale_date = item.get("sale_date") or datetime.utcnow()
         grade = _grade_from_title(title)
-        matched_driver = _match_driver(title) or driver_name
+        matched_driver = _match_driver(title) or normalize_driver(driver_name)
 
         is_dupe = _has_matching_fingerprint(db, matched_driver, parallel, grade, sale_date, price)
 
@@ -283,7 +284,7 @@ async def _upsert_sold_item(item: dict, db: Session, fallback_driver: Optional[s
         return "dupe"
     sale_date = item.get("sale_date") or datetime.utcnow()
     grade_val = _grade_from_title(title)
-    driver_val = _match_driver(title) or fallback_driver
+    driver_val = _match_driver(title) or normalize_driver(fallback_driver)
     is_dupe = _has_matching_fingerprint(db, driver_val, parallel, grade_val, sale_date, price)
     db.add(SoldCard(
         ebay_item_id=ebay_item_id,

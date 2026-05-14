@@ -8,8 +8,16 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 from database import Card, Auction, PriceHistory, Alert
-from ebay_api import fetch_all_f1_listings, extract_driver_from_title
+from ebay_api import fetch_all_f1_listings, extract_driver_from_title as _raw_extract_driver_from_title
+from lib.driver_norm import normalize_driver
 import logging
+
+
+def extract_driver_from_title(title):
+    """Wrap ebay_api's extractor through normalize_driver so any title-derived
+    driver name comes out canonical. Keeps the lookup-against-cards path
+    robust to variants like 'LEWIS HAMILTON' that legends sometimes appear as."""
+    return normalize_driver(_raw_extract_driver_from_title(title))
 
 logger = logging.getLogger(__name__)
 

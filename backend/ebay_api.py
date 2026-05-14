@@ -725,13 +725,20 @@ def extract_driver_from_title(title: str) -> Optional[str]:
         "Mario Andretti", "Phil Hill",
     ]
 
+    # Late import — avoids a circular when ebay_api is loaded during boot
+    # before lib/ is on sys.path in some entry points.
+    try:
+        from lib.driver_norm import normalize_driver as _norm
+    except Exception:
+        _norm = lambda x: x  # noqa: E731 — fail-open if helper missing
+
     for driver in drivers:
         last = driver.split()[-1]
         # Use word boundaries on the last name to avoid substring traps like
         # "hill" matching inside "anthill" — Python re for surgical match.
         import re as _re
         if driver.lower() in title_lower or _re.search(rf"\b{_re.escape(last.lower())}\b", title_lower):
-            return driver
+            return _norm(driver)
 
     return None
 
