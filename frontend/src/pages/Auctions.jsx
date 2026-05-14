@@ -163,7 +163,6 @@ export default function Auctions() {
       d => {
         const list = applySeasonFilter(d.auctions || d || [])
         setAuctions(list)
-        setLoading(false)
         // Stale-data nudge: if the freshest listing is >10 min old, fire a
         // fire-and-forget background eBay refresh. Server-side rate-limits
         // per-IP to 1/5min, so spamming is harmless.
@@ -195,7 +194,10 @@ export default function Auctions() {
           )
         }, 1500)
       },
-      () => setRefreshing(false)
+      // ALWAYS clear page-level loading + refreshing in onDone so the skeleton
+      // grid doesn't get stuck if the API errors (success path also routes
+      // through onDone after onData fires).
+      () => { setLoading(false); setRefreshing(false) }
     )
   }, [])
 

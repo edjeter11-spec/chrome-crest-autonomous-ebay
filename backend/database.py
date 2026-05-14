@@ -70,7 +70,10 @@ class Auction(Base):
     __tablename__ = "auctions"
     id = Column(Integer, primary_key=True, index=True)
     card_id = Column(Integer, ForeignKey("cards.id"))
-    ebay_listing_id = Column(String, unique=True, index=True)
+    # NOTE: column is *not* declared unique=True at the SQLAlchemy level — uniqueness
+    # is enforced via a partial index (`ix_auctions_ebay_listing_id_notnull`)
+    # created in create_tables() so multiple NULLs are allowed without surprise.
+    ebay_listing_id = Column(String, unique=False, index=True)
     title = Column(String)
     current_price = Column(Float)
     buy_now_price = Column(Float, nullable=True)
@@ -511,6 +514,48 @@ def create_tables():
     except Exception as seed_outer:
         import logging
         logging.getLogger("jarvis.db").warning(f"card_sets seed skipped: {seed_outer}")
+    # Migration: replace the legacy `unique=True` constraint on auctions.ebay_listing_id
+    # with a partial unique index that ignores NULLs. SQLAlchemy's column-level
+    # `unique=True` produced a surprising constraint name (`auctions_ebay_listing_id_key`
+    # in Postgres) and a regular unique index that allowed multiple NULLs anyway
+    # — confusing. Partial index makes the semantics explicit. Postgres-only;
+    # SQLite ignores partial-unique constructs in DDL and the try/except swallows it.
+    try:
+        from sqlalchemy import text
+        if "postgresql" in str(engine.url):
+            with engine.begin() as conn:
+                # Drop the auto-generated unique constraint if present. Name pattern is
+                # `<table>_<col>_key` for unique= on a column. Wrapped per-stmt try/except
+                # because the constraint may already be gone on fresh DBs.
+                for drop_sql in (
+                    "ALTER TABLE auctions DROP CONSTRAINT IF EXISTS auctions_ebay_listing_id_key",
+                    # Older SQLAlchemy versions sometimes emitted this name instead.
+                    "ALTER TABLE auctions DROP CONSTRAINT IF EXISTS uq_auctions_ebay_listing_id",
+                    # The non-unique btree index from `index=True` is still useful for lookups
+                    # — leave `ix_auctions_ebay_listing_id` in place (don't drop).
+                ):
+                    try:
+                        conn.execute(text(drop_sql))
+                    except Exception as drop_err:
+                        import logging
+                        logging.getLogger("jarvis.db").debug(
+                            f"ebay_listing_id constraint drop skipped: {drop_err}"
+                        )
+                # Create the partial unique index — multiple NULLs allowed, but no
+                # duplicate non-NULL values. IF NOT EXISTS keeps it idempotent.
+                try:
+                    conn.execute(text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_auctions_ebay_listing_id_notnull "
+                        "ON auctions(ebay_listing_id) WHERE ebay_listing_id IS NOT NULL"
+                    ))
+                except Exception as create_err:
+                    import logging
+                    logging.getLogger("jarvis.db").warning(
+                        f"partial unique index create skipped: {create_err}"
+                    )
+    except Exception as e:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"ebay_listing_id migration skipped: {e}")
     # Index: speeds up /api/auctions?buying=auction filter, was timing out
     # at 60s+ on production. Partial index on the LIKE pattern dramatically
     # narrows the scan. Postgres-only — SQLite doesn't support LIKE in
@@ -539,6 +584,21 @@ def create_tables():
     except Exception as e:
         import logging
         logging.getLogger("jarvis.db").warning(f"race_results index creation: {e}")
+    # Index: ensure sold_cards.driver_name has an index (the model declares
+    # `index=True`, so Base.metadata.create_all already covers fresh DBs, but
+    # this catches any historical Postgres DB where the column was added
+    # without the auto-index). Idempotent — no-op if it already exists.
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_sold_cards_driver_name "
+                "ON sold_cards (driver_name)"
+            ))
+            conn.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"sold_cards driver_name index: {e}")
     # Mark historic / Legends-set drivers so the UI can section them apart
     # from the current grid. Eddie's directive: legends are usually less
     # liquid in the raw market and shouldn't lead the drivers list.

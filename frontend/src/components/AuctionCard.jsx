@@ -1107,9 +1107,11 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           </div>
         )}
 
-        {/* Title */}
+        {/* Title — fall back to em-dash if data is genuinely absent rather than
+            holding a permanent pulse. Server-side rows that ship without a title
+            previously left two skeleton bars pulsing forever. */}
         <p className="text-xs text-gray-400 leading-snug line-clamp-2 min-h-[2.5rem]">
-          {auction.title || <><span className="skeleton h-3 rounded w-full mb-1 block" /><span className="skeleton h-3 rounded w-3/4 block" /></>}
+          {auction.title || <span className="text-gray-600 italic">Untitled listing</span>}
         </p>
 
         {/* End time + bid count row */}
@@ -1185,10 +1187,12 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           </div>
         )}
 
-        {/* Seller row */}
+        {/* Seller row — em-dash fallback so a row with no seller doesn't keep
+            an animate-pulse running forever (was the source of stuck per-card
+            skeletons on /auctions mobile audit). */}
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-gray-400 font-semibold truncate max-w-[160px]">
-            {auction.seller || <span className="skeleton w-16 h-2.5 rounded" />}
+            {auction.seller || <span className="text-gray-600">—</span>}
           </span>
           <SellerBadge feedback={auction.seller_feedback} />
           {auction.last_updated && (

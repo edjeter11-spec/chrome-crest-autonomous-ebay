@@ -80,13 +80,16 @@ app = FastAPI(title="F1 Chrome Crest", version="2.0.0")
 _refresh_imminent_rate: dict = {}
 
 # --- CORS lockdown (security) ---------------------------------------------
-# Previously `allow_origins=["*"]` with credentials — unsafe. Lock to prod
-# domains + Vercel preview wildcard; loosen to localhost only outside prod.
+# Previously `allow_origins=["*"]` with credentials — unsafe. Then loosened to
+# any *.vercel.app preview URL with credentials=True — still unsafe (CSRF-with-
+# cookies if an attacker guesses a preview URL). Now: credentials=TRUE only for
+# the prod hosts + the canonical Vercel deployment. Preview deploys must hit
+# the API without credentials (they don't need cookies for testing). Localhost
+# stays in the allowlist for dev.
 ALLOWED_ORIGINS = [
     "https://f1cardvault.com",
     "https://www.f1cardvault.com",
     "https://chrome-crest-autonomous-ebay.vercel.app",
-    # Vercel preview URLs use a wildcard subdomain — match via regex below
 ]
 
 # Dev-only: when not running on Vercel, allow local dev origins.
@@ -96,7 +99,9 @@ if os.getenv("VERCEL") != "1":
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://chrome-crest-autonomous-ebay-.*\.vercel\.app",  # for preview deploys
+    # Preview wildcard regex removed deliberately — keeps credentials=True safe.
+    # Preview deploys can still call the API without cookies (browser will just
+    # CORS-block credentialed requests to a preview URL, which is what we want).
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -113,6 +118,13 @@ import logging as _root_log
 from fastapi.responses import JSONResponse as _JSONResp
 from fastapi.requests import Request as _ReqType
 
+# Module-level logger — several call sites below reference `logger.warning(...)`
+# and `logger.error(...)` (e.g. line ~1819, ~2261) but it was never defined.
+# Those would raise NameError if reached, but the surrounding `try/except` swallowed
+# them, hiding the bug. Defining it here makes those existing log lines work AND
+# powers the new visibility logging added to previously-silent except blocks.
+logger = _root_log.getLogger("main")
+
 @app.exception_handler(Exception)
 async def _graceful_500_handler(request: _ReqType, exc: Exception):
     _root_log.getLogger("api").exception(f"unhandled error on {request.url.path}: {exc}")
@@ -120,22 +132,29 @@ async def _graceful_500_handler(request: _ReqType, exc: Exception):
     if SENTRY_DSN:
         sentry_sdk.capture_exception(exc)
     path = request.url.path or ""
+    # Cron endpoints self-report their partial-failure state in the JSON body
+    # (errors[]/ok flags). Returning 200 keeps Vercel's cron dashboard from
+    # marking the run failed when only one of many sub-tasks died. Everything
+    # else returns 502 so Sentry/uptime/devtools surface the real failure
+    # while the friendly degraded body still keeps the UI from crashing.
+    is_cron = "/api/cron/" in path
+    status = 200 if is_cron else 502
     # Choose an empty shape that matches what the frontend expects so it
     # renders an empty list rather than a crashing JSON parse.
     if "/auctions" in path:
-        return _JSONResp({"total": 0, "auctions": [], "verdict_counts": {"STRONG_BUY": 0, "GOOD_BUY": 0, "with_comps": 0}, "_degraded": True}, status_code=200)
+        return _JSONResp({"total": 0, "auctions": [], "verdict_counts": {"STRONG_BUY": 0, "GOOD_BUY": 0, "with_comps": 0}, "_degraded": True}, status_code=status)
     if "/sales" in path:
-        return _JSONResp({"sales": [], "total": 0, "_degraded": True}, status_code=200)
+        return _JSONResp({"sales": [], "total": 0, "_degraded": True}, status_code=status)
     if "/indices" in path:
-        return _JSONResp({"indices": [], "_degraded": True}, status_code=200)
+        return _JSONResp({"indices": [], "_degraded": True}, status_code=status)
     if "/snipe" in path or "/sniper" in path:
-        return _JSONResp({"targets": [], "snipes": [], "_degraded": True}, status_code=200)
+        return _JSONResp({"targets": [], "snipes": [], "_degraded": True}, status_code=status)
     if "/alerts" in path:
-        return _JSONResp({"alerts": [], "_degraded": True}, status_code=200)
+        return _JSONResp({"alerts": [], "_degraded": True}, status_code=status)
     if "/portfolio" in path or "/wishlist" in path:
-        return _JSONResp([], status_code=200)
+        return _JSONResp([], status_code=status)
     # Default: explicit error JSON instead of opaque 500
-    return _JSONResp({"error": str(exc)[:200], "path": path, "_degraded": True}, status_code=200)
+    return _JSONResp({"error": str(exc)[:200], "path": path, "_degraded": True}, status_code=status)
 
 
 # --- Admin auth gate -------------------------------------------------------
@@ -210,8 +229,10 @@ def migrate_shared_watchlists(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort SQLAlchemy create_all — explicit SQL below is the real
+        # work. Common to fail on perms/conflicts; safe to swallow.
+        logger.warning(f"shared_watchlists create_all skipped: {_e}")
     results = []
     try:
         from database import engine as _engine
@@ -249,8 +270,9 @@ def migrate_watch_rules(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort SQLAlchemy create_all — explicit SQL below is the real work.
+        logger.warning(f"watch_rules create_all skipped: {_e}")
     results = []
     try:
         from database import engine as _engine
@@ -289,8 +311,9 @@ def migrate_bid_intents(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort SQLAlchemy create_all — explicit SQL below is the real work.
+        logger.warning(f"bid_intents create_all skipped: {_e}")
     results = []
     try:
         from database import engine as _engine
@@ -335,8 +358,9 @@ def migrate_scraper_runs(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort SQLAlchemy create_all — explicit SQL below is the real work.
+        logger.warning(f"scraper_runs create_all skipped: {_e}")
     results = []
     try:
         from database import engine as _engine
@@ -351,6 +375,37 @@ def migrate_scraper_runs(_admin=Depends(require_admin)):
     except Exception as e:
         return {"status": "error", "error": str(e)[:300]}
     return {"status": "done", "results": results}
+
+
+@app.post("/api/admin/clean-null-driver-sold")
+def clean_null_driver_sold(db: Session = Depends(get_db), _admin=Depends(require_admin)):
+    """One-shot data cleanup: delete sold_cards rows whose driver_name is NULL.
+    Audit found ~5% of sold_cards have no driver_name attached — they never
+    aggregate into anything useful and dilute medians on edge queries.
+
+    Idempotent: safe to call multiple times. Second call deletes 0 rows and
+    returns the current totals. Returns {deleted, remaining} so Eddie can
+    sanity-check the diff against the pre-cleanup count.
+    """
+    from database import SoldCard
+    try:
+        # Count first so the response includes the size of the operation, even
+        # if the delete itself returns rowcount via the ORM.
+        to_delete = db.query(SoldCard).filter(SoldCard.driver_name.is_(None)).count()
+        deleted = 0
+        if to_delete:
+            # synchronize_session=False — we don't reuse the session after this,
+            # and it dramatically speeds up bulk delete on Postgres.
+            deleted = db.query(SoldCard).filter(
+                SoldCard.driver_name.is_(None)
+            ).delete(synchronize_session=False)
+            db.commit()
+        remaining = db.query(SoldCard).count()
+        return {"ok": True, "deleted": int(deleted), "remaining": int(remaining)}
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"clean-null-driver-sold failed: {e}")
+        return {"ok": False, "error": str(e)[:200]}
 
 
 @app.get("/api/admin/scraper-health")
@@ -528,8 +583,9 @@ def migrate_sold_source(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort SQLAlchemy create_all — explicit SQL below is the real work.
+        logger.warning(f"sold_cards.source create_all skipped: {_e}")
     results = []
     try:
         from database import engine as _engine
@@ -558,8 +614,9 @@ def migrate_dedup_flag(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort SQLAlchemy create_all — explicit SQL below is the real work.
+        logger.warning(f"sold_cards.is_duplicate create_all skipped: {_e}")
     results = []
     try:
         from database import engine as _engine
@@ -607,8 +664,9 @@ def migrate_push_subscriptions(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort SQLAlchemy create_all — explicit SQL below is the real work.
+        logger.warning(f"push_subscriptions create_all skipped: {_e}")
     results = []
     try:
         from database import engine as _engine
@@ -714,8 +772,9 @@ def migrate_sold_cards(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort dev-parity create_all — explicit SQL below is the real work.
+        logger.warning(f"sold_cards create_all skipped: {_e}")
 
     results = []
     try:
@@ -781,8 +840,9 @@ def migrate_psa_tables(_admin=Depends(require_admin)):
     try:
         from database import Base, engine as _engine
         Base.metadata.create_all(bind=_engine)
-    except Exception:
-        pass
+    except Exception as _e:
+        # Best-effort SQLAlchemy create_all — explicit SQL below is the real work.
+        logger.warning(f"psa_sales create_all skipped: {_e}")
 
     results = []
     try:
@@ -1803,8 +1863,10 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
                     _a.end_time = _fresh_end
                 _a.last_updated = datetime.utcnow()
                 updated += 1
-            except Exception:
-                pass
+            except Exception as _e:
+                # Per-auction failure — keep refreshing the rest, but log so
+                # repeated failures (eBay rate-limit, schema drift) are visible.
+                logger.warning(f"refresh-bids item {_a.id}: {_e}")
         db.commit()
         return {"ok": True, "updated": updated, "ended": ended, "message": f"Refreshed {updated} top auctions, marked {ended} ended"}
     except Exception as e:
@@ -1900,8 +1962,9 @@ async def audit_auto_fix(request: Request, db: Session = Depends(get_db)):
                     a.bid_count = item.get("bid_count", a.bid_count)
                     a.last_updated = now
                     r += 1
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    # Per-auction failure — log so eBay rate-limits / schema drift surface.
+                    logger.warning(f"keepalive {label} item {a.id}: {_exc}")
             return r, e
 
         # Pass A: stale PREMIUM ($50+) — these matter most
@@ -2658,8 +2721,10 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
             .update({"status": "ended"}, synchronize_session=False)
         )
         db.commit()
-    except Exception:
-        pass
+    except Exception as _exp_e:
+        # Sweep is best-effort — never fail the overall refresh — but log so a
+        # repeatedly-failing sweep (DB lock, schema drift) doesn't stay invisible.
+        logger.warning(f"expired-auction sweep failed: {_exp_e}")
 
     # Recompute snipe_eligible now that prices/end_times are fresh — this is the
     # catch-up pass that flips newly-eligible auctions on without waiting for the
@@ -2668,8 +2733,9 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
     try:
         from scraper import recompute_snipe_eligibility
         snipe_recompute = recompute_snipe_eligibility(db)
-    except Exception:
-        pass
+    except Exception as _sr_e:
+        # Best-effort recompute — log so a broken scraper module is visible.
+        logger.warning(f"snipe recompute (refresh) failed: {_sr_e}")
 
     total_active = db.query(Auction).filter(Auction.status == "active").count()
     return {
@@ -2821,6 +2887,7 @@ def seed_all_drivers(db: Session = Depends(get_db), _admin=Depends(require_admin
                 conn.execute(text(stmt))
                 conn.commit()
         except Exception:
+            # Idempotent ALTER — almost always "column already exists". Safe to swallow.
             pass
     from seed_data import seed_missing_drivers
     added = seed_missing_drivers(db)
@@ -3235,6 +3302,7 @@ def driver_form_scores(response: Response = None, db: Session = Depends(get_db))
     try:
         RaceResult.__table__.create(bind=_engine, checkfirst=True)
     except Exception:
+        # Idempotent create_all-style call — race condition or already exists. Safe to swallow.
         pass
 
     if response is not None:
@@ -3554,8 +3622,10 @@ def og_card(slug: str, db: Session = Depends(get_db)):
                     verdict = "FAIR"
                 else:
                     verdict = "OVERPRICED"
-        except Exception:
-            pass
+        except Exception as _ve:
+            # Verdict computation is decorative for the OG image — fall back to
+            # default but log so consistently-empty verdicts surface upstream bugs.
+            logger.warning(f"og-image verdict compute failed: {_ve}")
 
     # Build 1200x630 image
     W, H = 1200, 630
@@ -3734,8 +3804,10 @@ async def startup_event():
                     conn.commit()
                 except Exception:
                     pass  # Column already exists
-    except Exception:
-        pass
+    except Exception as _mig_e:
+        # Outer wrapper around startup column migrations — best-effort, but log
+        # so a broken DB connection at startup doesn't stay invisible.
+        logger.warning(f"startup column migrations skipped: {_mig_e}")
 
     import os
     is_vercel = bool(os.environ.get("VERCEL"))
@@ -3765,8 +3837,9 @@ async def startup_event():
                 seed_all(db)
             finally:
                 db.close()
-        except Exception:
-            pass
+        except Exception as _seed_e:
+            # Local-dev seed — log so a broken seed_all doesn't silently leave an empty DB.
+            logger.warning(f"local-dev startup seed skipped: {_seed_e}")
         start_scheduler()
         # Scrape real card images from eBay public search (no API key needed)
         asyncio.create_task(_scrape_card_images())
