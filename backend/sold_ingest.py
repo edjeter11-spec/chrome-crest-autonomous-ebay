@@ -54,8 +54,26 @@ def _grade_from_title(title: str) -> Optional[str]:
 
 
 def _parallel_from_title(title: str) -> str:
+    """Extract canonical parallel from sold-card title.
+
+    Hierarchy (most -> least specific):
+      1. SuperFractor 1/1
+      2. Print-run numbered parallels (/5, /10, /25, ...)
+      3. Autograph  <-- moved ABOVE named-insert loop so "Floor It Auto"
+                       tags as Autograph (joins Auto comp pool instead of
+                       diluting the named-insert raw median)
+      4. Named insert parallels
+      5. Named visual parallels (Ray Wave, Lazer, Checker Flag, Prism)
+      6. Refractor (generic) — only if nothing above matched
+      7. Base
+    """
     t = title.upper()
-    if "1/1" in t or "SUPERFRACTOR" in t: return "Superfractor 1/1"
+
+    # 1. SuperFractor — beats Autograph too ("SuperFractor Auto" -> 1/1).
+    if "1/1" in t or "1 OF 1" in t or "SUPERFRACTOR" in t or "SUPER FRACTOR" in t:
+        return "Superfractor 1/1"
+
+    # 2. Print-run numbered parallels.
     if "/5" in t and "RED" in t: return "Red /5"
     if "/10" in t and "BLACK" in t: return "Black /10"
     if "/25" in t and "ORANGE" in t: return "Orange /25"
@@ -66,7 +84,17 @@ def _parallel_from_title(title: str) -> str:
     if "/199" in t and "AQUA" in t: return "Aqua /199"
     if "/250" in t and "PINK" in t: return "Pink /250"
     if "/299" in t and "TEAL" in t: return "Teal /299"
-    # Inserts (named)
+
+    # 3. Autograph — moved above named-insert loop. "Refractor Auto"
+    #    -> Autograph (this is the fix for the Antonelli STRONG_BUY bug:
+    #    auto-only sales were getting tagged as the named-insert base or
+    #    plain Refractor, dragging that median down — then a $3,150 auto
+    #    listing parsed AS "Refractor" looked like a deep discount.)
+    if (" AUTO " in t or t.endswith(" AUTO") or "AUTOGRAPH" in t
+            or "#CAC-" in t or " SIGNED" in t):
+        return "Autograph"
+
+    # 4. Named insert parallels.
     for insert_name, label in [
         ("VEGAS AT NIGHT", "Vegas at Night"),
         ("NEON NATIONS", "Neon Nations"),
@@ -85,16 +113,22 @@ def _parallel_from_title(title: str) -> str:
         ("HELMET COLLECTION", "Helmet Collection"),
         ("SPEED DEMONS", "Speed Demons"),
         ("ACE OF TRADES", "Ace of Trades"),
+        ("LOGO FRACTOR", "Logo Fractor"),
+        ("LOGOFRACTOR", "Logo Fractor"),
     ]:
         if insert_name in t:
             return label
-    if " AUTO " in t or t.endswith(" AUTO") or "AUTOGRAPH" in t or "#CAC-" in t:
-        return "Autograph"
+
+    # 5. Named visual parallels.
     if "PRIZM" in t or "PRISM" in t: return "Prism Refractor"
     if "RAY WAVE" in t or "B&W RAY" in t: return "B&W Ray Wave"
     if "LAZER" in t or "LASER" in t: return "B&W Lazer"
     if "CHECKER FLAG" in t or "CHECKERED FLAG" in t: return "Checker Flag"
+
+    # 6. Refractor — generic, only reached if none of the above matched.
     if "REFRACTOR" in t: return "Refractor"
+
+    # 7. Base — fallthrough.
     return "Base"
 
 

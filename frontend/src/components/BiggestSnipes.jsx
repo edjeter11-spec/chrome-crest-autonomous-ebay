@@ -58,12 +58,16 @@ function parsePrintRun(title) {
   if (numbered) {
     const total = parseInt(numbered[2], 10)
     const num = parseInt(numbered[1], 10)
+    // Suppress "00/00 Error" ghosts: zero on either side is never a real
+    // serial number. (Bug 2 from user audit.)
+    if (num <= 0 || total <= 0) return ''
     if (total >= 5 && num <= total) return `#${num}/${total}`
   }
   // Total-only: "/150", "/99", "/10". Same lower bound.
   const totalOnly = t.match(/(?:^|\s)\/(\d{1,4})\b/)
   if (totalOnly) {
     const total = parseInt(totalOnly[1], 10)
+    if (total <= 0) return ''
     if (total >= 5 && total <= 9999) return `/${total}`
   }
   return ''
@@ -94,7 +98,7 @@ function isBigSnipe(a, maxSecs) {
   return false
 }
 
-function SnipeImage({ src, driverName }) {
+function SnipeImage({ src, driverName, teamColor }) {
   // Pre-upscale eBay CDN URLs for sharper thumbs at the same render size.
   const upscaled = src ? upscaleEbayImage(src, 500) : ''
   const [stage, setStage] = useState('initial') // initial | retry | failed
@@ -107,11 +111,23 @@ function SnipeImage({ src, driverName }) {
     setLoaded(false)
   }, [upscaled])
 
+  // Max-wait timer: if neither onLoad nor onError fires within 3s (silent
+  // lazy-load stall, blocked CDN, dropped decode), fall through to the
+  // placeholder instead of leaving a dark grey pulse box forever. Mirrors
+  // CardImage's safety net — was missing here, which is why Biggest Snipes
+  // rows showed grey boxes that never resolved.
+  useEffect(() => {
+    if (!upscaled || loaded || stage === 'failed') return
+    const id = setTimeout(() => setStage('failed'), 3000)
+    return () => clearTimeout(id)
+  }, [upscaled, loaded, stage])
+
   if (!upscaled || stage === 'failed') {
     return (
       <div className="w-16 h-20 rounded shrink-0 overflow-hidden">
         <CardImagePlaceholder
           driverName={driverName}
+          teamColor={teamColor}
           labelClassName="text-[10px] font-black tracking-widest"
         />
       </div>
@@ -159,7 +175,10 @@ function AuctionRow({ a, nowTick, freshOverride, onOpen }) {
   // Prefer freshly-fetched price/bids over the (possibly stale) prop.
   const livePrice = freshOverride?.current_price ?? a.current_price
   const liveBids = freshOverride?.bid_count ?? a.bid_count
-  const pctBelow = median && livePrice ? Math.round((1 - livePrice / median) * 100) : null
+  // Compare TOTAL cost (price + shipping) to median — sellers love $0.99 +
+  // $4.99 ship listings that look like 95% off but are 40% off after shipping.
+  const liveTotal = (livePrice || 0) + (a.shipping_cost || 0)
+  const pctBelow = median && liveTotal ? Math.round((1 - liveTotal / median) * 100) : null
   // Prefer the title-derived driver — covers F1 Legends (card_id NULL) and
   // legacy mislabeled rows where the joined card disagrees with the title.
   const driverName = a.title_driver || a.driver_name || a.driver || a.card?.driver_name
@@ -199,7 +218,7 @@ function AuctionRow({ a, nowTick, freshOverride, onOpen }) {
       tabIndex={clickable ? 0 : undefined}
       aria-label={clickable ? `Open details for ${driverName || 'auction'}` : undefined}
     >
-      <SnipeImage src={a.image_url} driverName={driverName} />
+      <SnipeImage src={a.image_url} driverName={driverName} teamColor={a.card?.team_color} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           {clickable ? (

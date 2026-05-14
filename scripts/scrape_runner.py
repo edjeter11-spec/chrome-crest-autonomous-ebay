@@ -41,8 +41,24 @@ if not DB_URL:
 
 GRADE_RE = re.compile(r"\b(PSA|BGS|SGC|CGC)\s*(10|9\.5|9|8\.5|8|7|6)\b", re.I)
 
+# Parser hierarchy — MORE-SPECIFIC parallels MUST win over generic ones.
+# Order:
+#   1. SuperFractor (1/1) — always highest
+#   2. Print-run numbered parallels (Red /5, Black /10, ...) — explicit /N
+#   3. Autograph — \bauto(graph)?\b / signed
+#   4. Named insert parallels (Neon Nations, Helix, Ultrasonic, ...)
+#   5. Named visual parallels (Checker Flag, Ray Wave, Lazer, Diamond)
+#   6. Refractor — generic, ONLY if none of the above matched
+#   7. Base — last resort (caller default)
+#
+# NOTE: Refractor used to sit ABOVE Autograph, which silently mis-tagged
+# "Refractor Auto" listings as "Refractor" — poisoning the comp median
+# for the base Refractor and producing wildly wrong verdicts. (See
+# Antonelli Refractor STRONG_BUY incident.)
 PARALLEL_PATTERNS = [
-    ("SuperFractor", re.compile(r"super ?fractor", re.I)),
+    # 1. SuperFractor — highest priority
+    ("SuperFractor", re.compile(r"super ?fractor|\b1\s*\/\s*1\b", re.I)),
+    # 2. Print-run numbered parallels
     ("Red /5", re.compile(r"\bred\b.*\/\s*5\b|\/\s*5\b.*\bred", re.I)),
     ("Black /10", re.compile(r"\bblack\b.*\/\s*10\b|\/\s*10\b.*\bblack", re.I)),
     ("Orange /25", re.compile(r"\borange\b.*\/\s*25\b|\/\s*25\b.*\borange", re.I)),
@@ -53,6 +69,10 @@ PARALLEL_PATTERNS = [
     ("Aqua /199", re.compile(r"\baqua\b.*\/\s*199\b|\/\s*199\b.*\baqua", re.I)),
     ("Pink /250", re.compile(r"\bpink\b.*\/\s*250\b|\/\s*250\b.*\bpink", re.I)),
     ("Teal /299", re.compile(r"\bteal\b.*\/\s*299\b|\/\s*299\b.*\bteal", re.I)),
+    # 3. Autograph — moved ABOVE Refractor so "Refractor Auto" -> Autograph,
+    #    not Refractor. This is the core misclassification fix.
+    ("Autograph", re.compile(r"\bauto(graph)?\b|\bsigned\b", re.I)),
+    # 4. Named insert parallels
     ("Vegas at Night", re.compile(r"vegas at night|vegas ?night", re.I)),
     ("Neon Nations", re.compile(r"neon nations?", re.I)),
     ("Floor It", re.compile(r"floor ?it", re.I)),
@@ -69,10 +89,13 @@ PARALLEL_PATTERNS = [
     ("Helmet Collection", re.compile(r"helmet collection|helmet collectors", re.I)),
     ("Speed Demons", re.compile(r"speed demons?", re.I)),
     ("Ace of Trades", re.compile(r"ace of trades?", re.I)),
+    # 5. Named visual parallels
     ("Checker Flag", re.compile(r"checker ?flag|checkered ?flag", re.I)),
-    ("Prism Refractor", re.compile(r"prism ?refractor|prizm ?refractor", re.I)),
+    ("B&W Ray Wave", re.compile(r"ray ?wave|b&w ray|black ?& ?white ray", re.I)),
+    ("B&W Lazer", re.compile(r"b&w lazer|black ?& ?white lazer|\blazer\b", re.I)),
+    ("Prism Refractor", re.compile(r"prism ?refractor|prizm ?refractor|prizm", re.I)),
+    # 6. Refractor — generic, lowest priority before Base
     ("Refractor", re.compile(r"refractor", re.I)),
-    ("Autograph", re.compile(r"\bauto(graph)?\b|\bsigned\b", re.I)),
 ]
 
 DRIVERS = [

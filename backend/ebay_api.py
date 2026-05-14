@@ -744,32 +744,83 @@ def extract_driver_from_title(title: str) -> Optional[str]:
 
 
 def extract_parallel_from_title(title: str) -> str:
-    """Extract card parallel/variant from title."""
-    title_upper = title.upper()
+    """Extract card parallel/variant from title.
 
-    if "SUPERFRACTOR" in title_upper or "1/1" in title_upper:
+    Parser hierarchy — MORE-SPECIFIC parallels MUST win:
+      1. SuperFractor (incl. 1/1) — always highest
+      2. Print-run numbered parallels
+      3. Autograph
+      4. Named insert parallels
+      5. Named visual parallels
+      6. Refractor — generic, only if nothing above matched
+      7. Base — fallthrough
+
+    Compound parallels:
+      - "Refractor Auto"    -> Autograph (more specific)
+      - "SuperFractor Auto" -> SuperFractor 1/1 (rarity dominates)
+    """
+    t = title.upper()
+
+    # 1. SuperFractor — highest priority. Checked BEFORE Autograph so
+    #    "SuperFractor Auto" -> SuperFractor not Autograph.
+    if "SUPERFRACTOR" in t or "SUPER FRACTOR" in t \
+            or "1/1" in t or "1 OF 1" in t:
         return "Superfractor 1/1"
-    if "GOLD" in title_upper and "/10" in title_upper:
-        return "Gold /10"
-    if "RED" in title_upper and "/25" in title_upper:
-        return "Red /25"
-    if "ORANGE" in title_upper and "/50" in title_upper:
-        return "Orange /50"
-    if "GREEN" in title_upper and "/99" in title_upper:
-        return "Green /99"
-    if "BLUE" in title_upper and "/150" in title_upper:
-        return "Blue /150"
-    if "PURPLE" in title_upper and "/250" in title_upper:
-        return "Purple /250"
-    if "PINK" in title_upper and "/199" in title_upper:
-        return "Pink /199"
-    if "PRISM" in title_upper or "PRIZM" in title_upper:
-        return "Prism Refractor"
-    if "AUTO" in title_upper or "AUTOGRAPH" in title_upper:
+
+    # 2. Print-run numbered parallels — colour + matching /N.
+    if "RED" in t and "/5" in t: return "Red /5"
+    if "GOLD" in t and "/10" in t: return "Gold /10"
+    if "BLACK" in t and "/10" in t: return "Black /10"
+    if "RED" in t and "/25" in t: return "Red /25"
+    if "ORANGE" in t and "/25" in t: return "Orange /25"
+    if "ORANGE" in t and "/50" in t: return "Orange /50"
+    if "GOLD" in t and "/50" in t: return "Gold /50"
+    if "/75" in t and ("75TH" in t or "F1 75" in t or "ANNIVERSARY" in t): return "F1 75th /75"
+    if "GREEN" in t and "/99" in t: return "Green /99"
+    if "BLUE" in t and "/150" in t: return "Blue /150"
+    if "PINK" in t and "/199" in t: return "Pink /199"
+    if "AQUA" in t and "/199" in t: return "Aqua /199"
+    if "PURPLE" in t and "/250" in t: return "Purple /250"
+    if "PINK" in t and "/250" in t: return "Pink /250"
+    if "TEAL" in t and "/299" in t: return "Teal /299"
+
+    # 3. Autograph — checked BEFORE Refractor so "Refractor Auto" wins
+    #    Autograph (the trust-killer bug Eddie hit on Antonelli).
+    if "AUTOGRAPH" in t or " AUTO " in t or t.endswith(" AUTO") \
+            or "#CAC-" in t or "CHROME AUTO" in t or " SIGNED" in t:
         return "Autograph"
-    if "REFRACTOR" in title_upper:
+
+    # 4. Named insert parallels.
+    if "VEGAS AT NIGHT" in t: return "Vegas at Night"
+    if "NEON NATIONS" in t: return "Neon Nations"
+    if "FLOOR IT" in t: return "Floor It"
+    if "SPEED WHEELS" in t: return "Speed Wheels"
+    if "TOP SPEED" in t: return "Top Speed"
+    if "FOUR & MORE" in t or "FOUR AND MORE" in t: return "Four & More"
+    if "DIAMOND 75" in t: return "Diamond 75th"
+    if "HELIX" in t: return "Helix"
+    if "ULTRASONIC" in t: return "Ultrasonic"
+    if "THE GRAIL" in t: return "The Grail"
+    if "FUTURO" in t: return "Futuro"
+    if "THE CHAIN" in t: return "The Chain"
+    if "THE GRID" in t: return "The Grid"
+    if "HELMET COLLECTION" in t: return "Helmet Collection"
+    if "SPEED DEMONS" in t: return "Speed Demons"
+    if "ACE OF TRADES" in t: return "Ace of Trades"
+    if "LOGO FRACTOR" in t or "LOGOFRACTOR" in t: return "Logo Fractor"
+
+    # 5. Named visual parallels.
+    if "CHECKER FLAG" in t or "CHECKERED FLAG" in t: return "Checker Flag"
+    if "RAY WAVE" in t or "RAYWAVE" in t: return "B&W Ray Wave"
+    if "LAZER" in t: return "B&W Lazer"
+    if "PRISM" in t or "PRIZM" in t: return "Prism Refractor"
+
+    # 6. Refractor — generic. Only reached if none of the above matched.
+    if "REFRACTOR" in t:
         return "Refractor"
-    if "CHROME" in title_upper:
+
+    # 7. Base — fallthrough.
+    if "CHROME" in t:
         return "Base Chrome"
     return "Base"
 

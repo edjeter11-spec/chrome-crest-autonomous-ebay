@@ -431,14 +431,69 @@ def recompute_snipe_eligibility(db: Session) -> dict:
 
 
 def _parallel_from_title(title: str) -> str:
+    """Extract canonical parallel from an eBay title.
+
+    Parser hierarchy — MORE-SPECIFIC parallels MUST win:
+      1. SuperFractor (incl. 1/1) — always highest
+      2. Print-run numbered parallels (Red /5, Black /10, ...)
+      3. Autograph (including numbered auto variants — auto + /N)
+      4. Named insert parallels (Neon Nations, Helix, ...)
+      5. Named visual parallels (Checker Flag, Ray Wave, Lazer, Diamond)
+      6. Refractor — ONLY if none of the above matched
+      7. Base — last resort
+
+    Compound parallels:
+      - "Refractor Auto"      -> Autograph (more specific wins)
+      - "SuperFractor Auto"   -> SuperFractor (1/1 wins — auto is implicit)
+
+    NOTE: Pre-fix this function checked Autograph BEFORE SuperFractor, so
+    a "SuperFractor Auto" listing got tagged as "Autograph" — polluting
+    the Autograph median and starving SuperFractor of comps. The reverse
+    bug ("Refractor Auto" -> "Refractor") happened in sister parsers; see
+    Antonelli Refractor STRONG_BUY incident.
+    """
     t = title.lower()
-    # Insert sets (check before generic refractor/auto)
+
+    # 1. SuperFractor — highest priority. Catches 1/1, "1 of 1", and the
+    #    word "superfractor" itself. Note we check this BEFORE Autograph
+    #    so "SuperFractor Auto" wins SuperFractor (the rarity dominates).
+    if "superfractor" in t or "super fractor" in t \
+            or "1/1" in t or "1 of 1" in t:
+        return "SuperFractor"
+
+    # 2. Print-run numbered parallels — explicit /N with matching color.
+    if (" /5 " in t or t.endswith(" /5") or t.endswith("/5")) and "red" in t: return "Red /5"
+    if "/10" in t and "black" in t: return "Black /10"
+    if "/25" in t and "orange" in t: return "Orange /25"
+    if "/50" in t and "gold" in t: return "Gold /50"
+    if "/75" in t and ("75th" in t or "f1 75" in t or "anniversary" in t): return "F1 75th /75"
+    if "/99" in t and "green" in t: return "Green /99"
+    if "/150" in t and "blue" in t: return "Blue /150"
+    if "/199" in t and "aqua" in t: return "Aqua /199"
+    if "/250" in t and "pink" in t: return "Pink /250"
+    if "/299" in t and "teal" in t: return "Teal /299"
+
+    # 3. Autograph — explicit signature/auto markers. We check BEFORE
+    #    named inserts so "Floor It Auto" -> Autograph (still tracked,
+    #    just under the Auto bucket which has more comps). Numbered autos
+    #    get the print-run sub-label.
+    is_auto = ("autograph" in t or " auto " in t or t.endswith(" auto")
+               or "#cac-" in t or "chrome auto" in t or " signed " in t
+               or t.endswith(" signed"))
+    if is_auto:
+        if " /5 " in t or t.endswith("/5"): return "Auto Red /5"
+        if "/10" in t and "black" in t: return "Auto Black /10"
+        if "/25" in t: return "Auto Orange /25"
+        if "/50" in t: return "Auto Gold /50"
+        if "/99" in t: return "Auto Green /99"
+        if "/150" in t: return "Auto Blue /150"
+        return "Autograph"
+
+    # 4. Named insert parallels.
     if "vegas at night" in t: return "Vegas at Night"
     if "neon nations" in t: return "Neon Nations"
-    if "floor it" in t and "auto" not in t: return "Floor It"
-    if "floor it" in t: return "Floor It Auto"
-    if "speed wheels" in t and "auto" not in t: return "Speed Wheels"
-    if "speed wheels" in t: return "Speed Wheels Auto"
+    if "floor it" in t: return "Floor It"
+    if "speed wheels" in t: return "Speed Wheels"
     if "top speed" in t: return "Top Speed"
     if "four & more" in t or "four and more" in t or "4 & more" in t: return "Four & More"
     if "diamond 75" in t or "d75-" in t or "#d75" in t: return "Diamond 75th"
@@ -451,36 +506,23 @@ def _parallel_from_title(title: str) -> str:
     if "helmet collection" in t or "#hc-" in t: return "Helmet Collection"
     if "speed demons" in t or "#sd-" in t: return "Speed Demons"
     if "ace of trades" in t or "#sca-" in t or "#aca-" in t: return "Ace of Trades"
-    if "checker flag" in t: return "Checker Flag"
+    if "logo fractor" in t or "logofractor" in t: return "Logo Fractor"
+    if "grand prix winner" in t: return "Grand Prix Winner"
+
+    # 5. Named visual parallels.
+    if "checker flag" in t or "checkered flag" in t: return "Checker Flag"
     if "b&w ray wave" in t or "raywave" in t or "ray wave" in t or "black & white ray" in t: return "B&W Ray Wave"
     if "b&w lazer" in t or "black & white lazer" in t or "lazer" in t: return "B&W Lazer"
-    if "grand prix winner" in t: return "Grand Prix Winner"
-    # Autograph detection
-    if "autograph" in t or " auto " in t or t.endswith(" auto") or "#cac-" in t or "chrome auto" in t:
-        # Numbered auto parallels
-        if " /5 " in t or t.endswith("/5"): return "Auto Red /5"
-        if "/10" in t and "black" in t: return "Auto Black /10"
-        if "/25" in t: return "Auto Orange /25"
-        if "/50" in t: return "Auto Gold /50"
-        if "/99" in t: return "Auto Green /99"
-        if "/150" in t: return "Auto Blue /150"
-        return "Autograph"
-    # Numbered base parallels
-    if (" /5 " in t or t.endswith(" /5")) and "red" in t: return "Red /5"
-    if "/10" in t and "black" in t: return "Black /10"
-    if "/25" in t: return "Orange /25"
-    if "/50" in t: return "Gold /50"
-    if "/75" in t: return "F1 75th /75"
-    if "/99" in t: return "Green /99"
-    if "/150" in t: return "Blue /150"
-    if "/199" in t or "aqua" in t: return "Aqua /199"
-    if "/250" in t and "pink" in t: return "Pink /250"
-    if "/299" in t or "teal" in t: return "Teal /299"
-    if "superfractor" in t or "1/1" in t: return "SuperFractor"
     if "prism refractor" in t or "prizm" in t: return "Prism Refractor"
-    if "refractor" in t or "sapphire" in t or "hyper" in t or "xfractor" in t \
-            or "speckle" in t or "logofractor" in t or "portrait" in t:
+
+    # 6. Refractor — generic, lowest priority. Sapphire/Xfractor/hyper/
+    #    speckle/portrait are Topps Chrome refractor variants that share
+    #    the base-refractor pricing tier.
+    if ("refractor" in t or "sapphire" in t or "hyper" in t
+            or "xfractor" in t or "speckle" in t or "portrait" in t):
         return "Refractor"
+
+    # 7. Base — fallthrough.
     return "Base"
 
 

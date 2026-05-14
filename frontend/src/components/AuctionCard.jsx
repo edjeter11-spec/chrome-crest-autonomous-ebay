@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   ExternalLink, Zap, Clock, Tag, BookmarkPlus, BookmarkCheck,
   ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2,
-  BadgeCheck, Award, RotateCw, X, Twitter, RefreshCw
+  BadgeCheck, Award, RotateCw, X, Twitter, RefreshCw, Heart
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { scarcityBadgeStyle, resolveWatchingState, toggleLocalWatchlist } from '../lib/hooks'
@@ -1221,7 +1221,12 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           </div>
         )}
 
-        {/* Place Bid (snipe executor) — gated behind auth */}
+        {/* Place Bid (snipe executor) — gated behind auth.
+            Signed-in: full-width "Place Snipe Bid" CTA.
+            Signed-out: shrunk to a single heart icon (was a loud red banner
+            stacked on every card, per Eddie's audit — too pushy). The icon
+            still routes to /login with a returnTo deep-link, and the tooltip
+            carries the intent for users who hover/long-press. */}
         {auction.snipe_eligible && (
           user ? (
             <button
@@ -1232,12 +1237,13 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             </button>
           ) : (
             <Link
-              to="/login"
+              to="/login?next=/auctions"
               onClick={(e) => { e.stopPropagation() }}
-              className="w-full min-h-[44px] sm:min-h-0 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold bg-red-600/30 hover:bg-red-600/50 text-red-200 border border-red-600/40 transition-colors"
-              title="Sign in to set a snipe bid"
+              aria-label="Sign in to set snipe bid"
+              title="Sign in to set snipe bid"
+              className="self-end shrink-0 min-h-[32px] min-w-[32px] py-1.5 px-2 rounded-lg flex items-center justify-center text-red-300/70 hover:text-red-300 hover:bg-red-900/20 border border-transparent hover:border-red-700/30 transition-colors"
             >
-              <Zap size={11} /> Sign in to set snipe bid
+              <Heart size={14} />
             </Link>
           )
         )}

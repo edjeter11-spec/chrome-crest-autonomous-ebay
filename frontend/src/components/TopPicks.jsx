@@ -143,8 +143,11 @@ function Heading() {
 
 function PickCard({ auction: a }) {
   const price = Number(a.current_price || 0)
+  // Compare TOTAL cost (price + shipping) to median so a $1 + $5 ship listing
+  // isn't falsely flagged "90% below median". See Bug 1 (Hot Snipes audit).
+  const total = price + Number(a.shipping_cost || 0)
   const median = Number(a.median_price || a.base_value || 0)
-  const pctBelow = median > 0 && price < median ? Math.round(((median - price) / median) * 100) : null
+  const pctBelow = median > 0 && total < median ? Math.round(((median - total) / median) * 100) : null
   const img = a.image_url || a.primary_image_url
   const url = a.ebay_url || a.item_web_url || (a.ebay_item_id ? `https://www.ebay.com/itm/${a.ebay_item_id}` : '#')
   const verdict = a.verdict

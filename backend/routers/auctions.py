@@ -317,25 +317,44 @@ def list_with_verdicts(
                 median, n_comps = None, 0
             if median and n_comps >= 3:
                 cur_total = (a.current_price or 0) + (a.shipping_cost or 0)
-                ratio = cur_total / median
-                # Tighter confidence: STRONG_BUY requires n_comps >= 10. With
-                # only 3-9 comps a "<=0.6 of median" ratio is too noisy to
-                # endorse as STRONG_BUY — demote to GOOD_BUY's range.
-                if ratio <= 0.6 and n_comps >= 10:
+                ratio = cur_total / median if median > 0 else 0
+                # SANITY BOUND — listing is wildly above the comp median.
+                # In practice this means the listing's parallel was MISPARSED
+                # (e.g. a SuperFractor Auto detected as plain "Refractor"
+                # because both words appear in the title). The median is
+                # then misleading and any verdict would be unsafe. Surface
+                # the raw price with no verdict and no comp block — honest
+                # silence beats a wrong STRONG_BUY. (See Antonelli Refractor
+                # $3,150 vs $35 median trust-killer incident.)
+                if cur_total >= median * 5 and median > 0:
+                    verdict_key = None
+                    comp_block = None
+                # Tighter confidence: STRONG_BUY requires n_comps >= 10 AND
+                # a non-trivial listing price ($5+) to avoid math-volatility
+                # on penny auctions. With only 3-9 comps a "<=0.6 of median"
+                # ratio is too noisy to endorse as STRONG_BUY — demote to
+                # GOOD_BUY's range.
+                elif ratio <= 0.6 and n_comps >= 10 and cur_total >= 5:
                     verdict_key = "STRONG_BUY"; strong_buy += 1
-                elif ratio <= 0.8:
-                    verdict_key = "GOOD_BUY"; good_buy += 1
-                elif ratio <= 1.05:
-                    verdict_key = "FAIR"
-                elif ratio <= 1.25:
-                    verdict_key = "OVERPRICED"
+                    comp_block = {
+                        "median_total": round(median, 2),
+                        "n": n_comps,
+                        "low_confidence": n_comps < 10,
+                    }
                 else:
-                    verdict_key = "PASS"
-                comp_block = {
-                    "median_total": round(median, 2),
-                    "n": n_comps,
-                    "low_confidence": n_comps < 10,
-                }
+                    if ratio <= 0.8:
+                        verdict_key = "GOOD_BUY"; good_buy += 1
+                    elif ratio <= 1.05:
+                        verdict_key = "FAIR"
+                    elif ratio <= 1.25:
+                        verdict_key = "OVERPRICED"
+                    else:
+                        verdict_key = "PASS"
+                    comp_block = {
+                        "median_total": round(median, 2),
+                        "n": n_comps,
+                        "low_confidence": n_comps < 10,
+                    }
             elif median:
                 comp_block = {
                     "median_total": round(median, 2),

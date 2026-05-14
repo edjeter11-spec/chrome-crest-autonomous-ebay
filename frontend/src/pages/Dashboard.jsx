@@ -396,13 +396,24 @@ export default function Dashboard() {
     const bo = a.buying_options || []
     return bo.includes('AUCTION') || (a.bid_count || 0) > 0 || !bo.length
   }
+  // Single source of truth for "Hurry" / "Ending ≤ 1h" — used by BOTH the
+  // KPI counter AND the strip's underlying data. Prior bug: counter pulled
+  // from `auctions` (mixed AUCTION+BIN, stale buying_options) while the
+  // strip pulled from `liveAuctions` (AUCTION-only fetch), so "2 Hurry"
+  // would render alongside 0 visible <1h cards. Now both consult the same
+  // array + predicate.
+  const isHurryRow = (a) => {
+    if (!isLiveAuctionRow(a)) return false
+    const s = secsLeft(a)
+    return s > 0 && s < 3600
+  }
   const endingSoonCount = useMemo(
-    () => (Array.isArray(auctions) ? auctions : []).filter(a => isLiveAuctionRow(a) && secsLeft(a) < 3600).length,
-    [auctions]
+    () => (Array.isArray(liveAuctions) ? liveAuctions : []).filter(isHurryRow).length,
+    [liveAuctions]
   )
   const endingSoonList = useMemo(
-    () => (Array.isArray(auctions) ? auctions : []).filter(isLiveAuctionRow).sort((a,b) => secsLeft(a) - secsLeft(b)).slice(0, 5),
-    [auctions]
+    () => (Array.isArray(liveAuctions) ? liveAuctions : []).filter(isLiveAuctionRow).sort((a,b) => secsLeft(a) - secsLeft(b)).slice(0, 5),
+    [liveAuctions]
   )
   const priceTrending = useMemo(() => {
     const list = Array.isArray(sales) ? sales : []
@@ -493,13 +504,11 @@ export default function Dashboard() {
   }, [auctions])
 
   // New enthusiast-row derivations.
-  // Use the loose isLiveAuctionRow check: backend filters to rows with
-  // buying_options LIKE '%AUCTION%', but some rows still land with an empty
-  // buying_options array (cache/legacy), and the strict isAuction check was
-  // dropping them — making the count look artificially low (e.g. "only 5").
+  // Mirrors `endingSoonCount` — both feed off liveAuctions via the shared
+  // `isHurryRow` predicate so KPI tile and strip can never diverge.
   const endingUnderHour = useMemo(
-    () => (Array.isArray(auctions) ? auctions : []).filter(a => { const s = secsLeft(a); return isLiveAuctionRow(a) && s > 0 && s < 3600 }).length,
-    [auctions]
+    () => (Array.isArray(liveAuctions) ? liveAuctions : []).filter(isHurryRow).length,
+    [liveAuctions]
   )
   // Active snipes = count of tracked snipe targets. The prior filter
   // (alertsData with urgency=critical|high && !triggered) was over-restrictive
@@ -772,129 +781,14 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* NEW: Live ticker strip */}
-      {!salesLoading && ticker.length === 0 && (
-        <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl">
-          <EmptyRow text="No recent sales in feed yet" />
-        </div>
-      )}
-      {Array.isArray(ticker) && ticker.length > 0 && (
-        <div className="relative overflow-hidden bg-gray-900/70 border border-gray-800/60 rounded-2xl">
-          <div className="flex gap-3 px-3 py-2.5 ticker-track whitespace-nowrap">
-            {[...ticker, ...ticker].filter(Boolean).map((s, i) => (
-              <a
-                key={i}
-                href={s?.ebay_url ? ebayAffiliateUrl(s.ebay_url) : (s?.driver_name ? `/sales?driver=${encodeURIComponent(s.driver_name)}` : '#')}
-                target={s?.ebay_url ? '_blank' : undefined}
-                rel={s?.ebay_url ? 'sponsored noopener' : undefined}
-                className="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-800/70 hover:bg-gray-800 border border-gray-700/40 text-xs text-gray-300 transition-colors"
-                title={s?.title || ''}
-              >
-                <span className="text-red-400 font-black">●</span>
-                <span className="text-gray-500 text-[10px] uppercase tracking-wide font-bold">Just sold</span>
-                <span className="text-white font-semibold">{s?.driver_name || '—'}</span>
-                {s?.parallel && <span className="text-cyan-400">{s.parallel}</span>}
-                {s?.grade && s.grade !== 'Raw' && <span className="text-amber-400 font-bold">{s.grade}</span>}
-                <span className="text-emerald-400 font-black">${Number(s?.sale_price ?? 0).toFixed(0)}</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Live ticker + "Just Sold — Big Wins" carousel removed Apr 2026:
+          three near-identical sales feeds (ticker, big-wins carousel, Latest
+          Sales table) all surfaced the same ~10 datapoints. Kept only the
+          full Latest Sales feed below — it carries price + parallel + grade
+          + title + date, the other two were lossy duplicates. Components
+          still exist on disk; just unmounted from Dashboard. */}
 
-      {/* Just Sold — Big Wins (>=$100) — horizontal scroll on mobile, grid on desktop */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-black text-white flex items-center gap-2">
-            <span className="text-lg">💰</span>
-            Just Sold — Big Wins
-            {!bigWinsLoading && <span className="text-[10px] text-gray-500 font-mono">({bigWins.length})</span>}
-          </h2>
-          <button
-            onClick={() => navigate('/sales')}
-            className="min-h-[44px] sm:min-h-0 px-2 -mr-2 sm:px-0 sm:mr-0 text-xs text-emerald-400 hover:underline font-medium flex items-center gap-1"
-          >
-            All sales <ChevronRight size={11} />
-          </button>
-        </div>
-        {bigWinsLoading ? (
-          <div className="flex gap-3 overflow-hidden">
-            {Array(5).fill(0).map((_, i) => (
-              <div key={i} className="w-48 shrink-0 bg-gradient-to-br from-emerald-900/20 to-gray-900 border border-emerald-700/30 rounded-2xl p-3 flex flex-col gap-2">
-                <div className="flex items-start gap-2">
-                  <SkeletonBox className="w-12 h-16 shrink-0" />
-                  <div className="flex-1 min-w-0 space-y-1.5">
-                    <SkeletonBox className="h-3 w-3/4" />
-                    <SkeletonBox className="h-2.5 w-1/2" />
-                  </div>
-                </div>
-                <div className="flex items-end justify-between mt-auto">
-                  <SkeletonBox className="h-6 w-16" />
-                  <SkeletonBox className="h-2.5 w-10" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : bigWins.length === 0 ? (
-          <div className="bg-gray-900/50 border border-gray-800/60 rounded-2xl">
-            <EmptyRow text="No big wins ($100+) in the latest sales yet" />
-          </div>
-        ) : (
-          <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1 md:grid md:grid-cols-3 lg:grid-cols-5 md:overflow-visible md:mx-0 md:px-0">
-            {(Array.isArray(bigWins) ? bigWins : []).filter(Boolean).map((s, i) => {
-              const driver = s?.driver_name || ''
-              const parallel = s?.parallel || ''
-              const slugBase = `${driver}${parallel ? ' ' + parallel : ''}`
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-|-$/g, '')
-              const to = slugBase ? `/card/${slugBase}` : '/sales'
-              return (
-                <Link
-                  key={s?.id ?? i}
-                  to={to}
-                  className="shrink-0 w-48 md:w-auto snap-start bg-gradient-to-br from-emerald-900/30 to-gray-900 border border-emerald-700/40 hover:border-emerald-500/70 rounded-2xl p-3 transition-colors flex flex-col gap-2 no-underline"
-                >
-                  <div className="flex items-start gap-2">
-                    {s?.image_url && !String(s.image_url).includes('placehold') ? (
-                      <img
-                        src={s.image_url}
-                        alt=""
-                        className="w-12 h-16 object-cover rounded border border-gray-800 shrink-0"
-                        onError={e => { e.currentTarget.style.display = 'none' }}
-                      />
-                    ) : (
-                      <div className="w-12 h-16 bg-gray-800/70 rounded border border-gray-800 shrink-0 flex items-center justify-center text-lg">🏎</div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-white truncate">{driver || '—'}</div>
-                      {parallel && (
-                        <div className="text-[10px] text-cyan-300 font-semibold truncate">{parallel}</div>
-                      )}
-                      {s?.grade && s.grade !== 'Raw' && (
-                        <span className="inline-block mt-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400 border border-amber-800/40 font-bold">
-                          {s.grade}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-end justify-between mt-auto">
-                    <div className="text-xl font-black text-emerald-400 tabular-nums leading-none">
-                      ${Math.round(Number(s?.sale_price ?? 0)).toLocaleString()}
-                    </div>
-                    <div className="text-[10px] text-gray-500 font-mono">
-                      {relTime(s?.scraped_at || s?.sale_date)}
-                    </div>
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Latest Sales feed — Biggest Snipes was promoted out of this grid into
-          the always-visible top section, so this is now a single full-width column. */}
+      {/* Latest Sales feed — single source of truth for "what just sold". */}
       <div>
 
         {/* What sold today */}

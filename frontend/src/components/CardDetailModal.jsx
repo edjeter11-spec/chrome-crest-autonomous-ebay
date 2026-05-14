@@ -115,11 +115,15 @@ export default function CardDetailModal({ auction, onClose, onWatchlistChange })
     if (m) {
       const total = parseInt(m[2], 10)
       const num = parseInt(m[1], 10)
+      // Suppress "00/00 Error" ghosts: zero on either side is never a real
+      // serial number. (Bug 2 from user audit.)
+      if (num <= 0 || total <= 0) return ''
       if (total >= 5 && num <= total) return `#${num}/${total}`
     }
     const m2 = t.match(/(?:^|\s)\/(\d{1,4})\b/)
     if (m2) {
       const total = parseInt(m2[1], 10)
+      if (total <= 0) return ''
       if (total >= 5 && total <= 9999) return `/${total}`
     }
     return ''

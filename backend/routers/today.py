@@ -162,9 +162,16 @@ def today(since: Optional[str] = Query(None), db: Session = Depends(get_db)):
             if key not in cache:
                 cache[key] = median_comp_price(db, key[0], key[1], key[2])
             median, n = cache[key]
-            if median and n >= 3:
+            if median and n >= 10:
                 total = (a.current_price or 0) + (a.shipping_cost or 0)
-                if median > 0 and total / median <= 0.6:
+                # Mirror /with-verdicts: ratio<=0.6 AND total>=$5 AND not
+                # a wild outlier (>=5x median = mis-parse, not deep deal).
+                if (
+                    median > 0
+                    and total >= 5
+                    and total / median <= 0.6
+                    and total < median * 5
+                ):
                     new_strong_buys_count += 1
     except Exception:
         pass

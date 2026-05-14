@@ -1740,11 +1740,13 @@ async def refresh_imminent_user(request: Request, db: Session = Depends(get_db))
 
 @app.get("/api/cron/refresh-bids")
 async def cron_refresh_bids(db: Session = Depends(get_db)):
-    """Refresh bid_count + current_price on the top 50 auctions ending soonest.
+    """Refresh bid_count + current_price on the top 100 auctions ending soonest.
     Most rows show bids=0 because Browse search doesn't include live bid counts
     reliably; the per-item /buy/browse/v1/item/{id} endpoint does. Runs every
-    10 min so the dashboard's bid columns stay fresh on the most actionable
-    auctions."""
+    5 min so the dashboard's bid columns stay fresh on the most actionable
+    auctions — fixes "Updated 4h ago" complaint for live sniping. (Bug 3 from
+    user audit.) 100 rows × ~0.3s eBay item-detail call ≈ 30s/run, well under
+    Vercel's 60s function timeout."""
     from database import Auction as _Auction
     from ebay_api import get_item_details
     from datetime import datetime as _dt
@@ -1766,7 +1768,7 @@ async def cron_refresh_bids(db: Session = Depends(get_db)):
             _Auction.buying_options.like('%AUCTION%'),
         )
         .order_by(_Auction.end_time.asc())
-        .limit(50)
+        .limit(100)
         .all()
     )
 
@@ -3979,8 +3981,27 @@ def extension_verdicts(
             })
             continue
 
-        ratio = price / median
-        if ratio <= 0.6 and n_comps >= 10:
+        ratio = price / median if median > 0 else 0
+        # SANITY BOUND: a price >=5x the comp median almost always means the
+        # listing's parallel got misparsed (e.g. a SuperFractor Auto tagged
+        # as plain "Refractor"). Don't issue a verdict — show the raw price
+        # and let the user judge. Suppressing the median too so we don't
+        # imply confidence in a number that's about to look ridiculous.
+        if price >= median * 5 and median > 0:
+            out.append({
+                "verdict": None,
+                "median": None,
+                "n_comps": n_comps,
+                "ratio": None,
+                "driver": driver,
+                "parallel": parallel,
+                "reason": "price_vs_median_outlier",
+            })
+            continue
+
+        # STRONG_BUY: needs n_comps>=10 (already), AND price>=$5 to avoid
+        # math volatility on penny-auction listings.
+        if ratio <= 0.6 and n_comps >= 10 and price >= 5:
             verdict = "STRONG_BUY"
         elif ratio <= 0.8:
             verdict = "GOOD_BUY"
