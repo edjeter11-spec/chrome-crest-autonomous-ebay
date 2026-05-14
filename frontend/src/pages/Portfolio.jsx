@@ -344,13 +344,15 @@ function AddCardForm({ onAdd, onCancel, drivers }) {
     quantity: 1, notes: '',
   })
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
 
   const submit = async (e) => {
     e.preventDefault()
     if (!form.driver || !form.purchase_price) return
     setBusy(true)
+    setErr(null)
     try {
-      await fetch(`${API}/api/portfolio`, {
+      const res = await fetch(`${API}/api/portfolio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -363,7 +365,15 @@ function AddCardForm({ onAdd, onCancel, drivers }) {
           notes: form.notes || null,
         }),
       })
+      // Surface backend failures — previously the form just closed and
+      // pretended the card was saved.
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        throw new Error(`Save failed (${res.status}) — ${body.slice(0, 120)}`)
+      }
       onAdd()
+    } catch (e) {
+      setErr(e?.message || 'Save failed — try again')
     } finally {
       setBusy(false)
     }
@@ -421,6 +431,11 @@ function AddCardForm({ onAdd, onCancel, drivers }) {
         <input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
           className="w-full bg-gray-800 text-white text-sm rounded px-2 py-1.5 border border-gray-700" />
       </div>
+      {err && (
+        <div className="text-xs text-red-300 bg-red-950/40 border border-red-800/60 rounded px-3 py-2">
+          {err}
+        </div>
+      )}
       <div className="flex gap-2 justify-end">
         <button type="button" onClick={onCancel} className="px-3 py-1.5 text-xs text-gray-400 hover:text-white">Cancel</button>
         <button disabled={busy} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg">

@@ -59,7 +59,9 @@ export async function subscribePush() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subscription: sub.toJSON() }),
   })
-  localStorage.setItem('cc_push_subscribed', '1')
+  // Wrap — Safari Private Mode throws QuotaExceededError on setItem,
+  // which would kill the entire subscribe flow with an unhandled rejection.
+  try { localStorage.setItem('cc_push_subscribed', '1') } catch {}
   return sub
 }
 
@@ -76,5 +78,5 @@ export async function unsubscribePush() {
       body: JSON.stringify({ endpoint }),
     }).catch(() => {})
   }
-  localStorage.removeItem('cc_push_subscribed')
+  try { localStorage.removeItem('cc_push_subscribed') } catch {}
 }

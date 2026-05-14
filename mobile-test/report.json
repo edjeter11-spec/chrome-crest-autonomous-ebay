@@ -1,32 +1,21 @@
 {
-  "base": "http://127.0.0.1:5173",
-  "ts": "2026-05-08T03:28:21.239Z",
+  "base": "https://f1cardvault.com",
+  "ts": "2026-05-14T01:55:11.325Z",
   "results": [
     {
       "name": "dashboard",
       "path": "/",
-      "title": "Home · F1 Card Vault",
-      "loadOk": true,
-      "viewportWidth": 393,
-      "scrollWidth": 393,
+      "title": "",
+      "loadOk": false,
+      "viewportWidth": 0,
+      "scrollWidth": 0,
       "horizontalScroll": false,
       "smallTaps": [],
       "overflowing": [],
-      "skeletonsLeft": 6,
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
-      ],
+      "skeletonsLeft": 0,
+      "consoleErrors": [],
       "issues": [
-        "STUCK_SKELETONS: 6 animate-pulse elements still rendering after 1.5s"
+        "EXCEPTION: page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://f1cardvault.com/\", waiting until \"networkidle\"\u001b[22m\n"
       ]
     },
     {
@@ -89,67 +78,71 @@
         },
         {
           "tag": "button",
-          "text": "Retry",
-          "w": 56,
+          "text": "",
+          "w": 20,
+          "h": 20,
+          "cls": "inline-flex items-center justify-center w-5 h-5 rounded tran"
+        },
+        {
+          "tag": "button",
+          "text": "",
+          "w": 32,
           "h": 32,
-          "cls": "text-xs font-bold px-3 py-2 rounded bg-red-700 hover:bg-red-"
+          "cls": "ml-auto inline-flex items-center justify-center w-8 h-8 roun"
+        },
+        {
+          "tag": "button",
+          "text": "",
+          "w": 32,
+          "h": 32,
+          "cls": "inline-flex items-center justify-center w-8 h-8 rounded-lg b"
+        },
+        {
+          "tag": "a",
+          "text": "",
+          "w": 32,
+          "h": 32,
+          "cls": "inline-flex items-center justify-center w-8 h-8 rounded-lg b"
         }
       ],
       "overflowing": [],
-      "skeletonsLeft": 0,
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
-      ],
-      "issues": []
+      "skeletonsLeft": 178,
+      "consoleErrors": [],
+      "issues": [
+        "STUCK_SKELETONS: 178 animate-pulse elements still rendering after 1.5s"
+      ]
     },
     {
       "name": "auctions",
       "path": "/auctions",
-      "title": "Live Auctions · F1 Card Vault",
-      "loadOk": true,
-      "viewportWidth": 393,
-      "scrollWidth": 393,
+      "title": "",
+      "loadOk": false,
+      "viewportWidth": 0,
+      "scrollWidth": 0,
       "horizontalScroll": false,
-      "smallTaps": [
-        {
-          "tag": "button",
-          "text": "",
-          "w": 36,
-          "h": 36,
-          "cls": "inline-flex items-center justify-center w-9 h-9 rounded-lg b"
-        }
-      ],
+      "smallTaps": [],
       "overflowing": [],
-      "skeletonsLeft": 12,
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response"
-      ],
+      "skeletonsLeft": 0,
+      "consoleErrors": [],
       "issues": [
-        "STUCK_SKELETONS: 12 animate-pulse elements still rendering after 1.5s"
+        "EXCEPTION: page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://f1cardvault.com/auctions\", waiting until \"networkidle\"\u001b[22m\n"
       ]
     },
     {
       "name": "sniper",
       "path": "/sniper",
-      "title": "Auto Bid · F1 Card Vault",
-      "loadOk": true,
-      "viewportWidth": 393,
-      "scrollWidth": 393,
+      "title": "",
+      "loadOk": false,
+      "viewportWidth": 0,
+      "scrollWidth": 0,
       "horizontalScroll": false,
       "smallTaps": [],
       "overflowing": [],
       "skeletonsLeft": 0,
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response"
-      ],
-      "issues": []
+      "consoleErrors": [],
+      "issues": [
+        "EXCEPTION: page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://f1cardvault.com/sniper\", waiting until \"networkidle\"\u001b[22m\n"
+      ]
     },
     {
       "name": "how-we-score",
@@ -161,11 +154,8 @@
       "horizontalScroll": false,
       "smallTaps": [],
       "overflowing": [],
-      "skeletonsLeft": 0,
-      "consoleErrors": [
-        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)",
-        "WebSocket connection to 'ws://127.0.0.1:5173/ws' failed: Connection closed before receiving a handshake response"
-      ],
+      "skeletonsLeft": 1,
+      "consoleErrors": [],
       "issues": []
     }
   ]

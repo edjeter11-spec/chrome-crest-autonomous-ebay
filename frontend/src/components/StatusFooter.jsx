@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react'
 import { Activity, Keyboard } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-const API = import.meta.env.VITE_API_BASE || ''
+// Fix: every other module uses VITE_API_URL; using VITE_API_BASE made
+// /api/health silently hit a relative URL on prod where only VITE_API_URL
+// is defined — the health dot would read 'Offline' for everyone.
+const API = import.meta.env.VITE_API_URL || ''
 
 /**
  * Always-visible site status footer. Two jobs:

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { RefreshCw, Clock } from 'lucide-react'
 
-const API = import.meta.env.VITE_API_BASE || ''
+// Match every other module — was VITE_API_BASE which is undefined in prod;
+// the 'Pull live from eBay' button was POST'ing to a relative URL → broken.
+const API = import.meta.env.VITE_API_URL || ''
 
 function fmtUntil(secs) {
   if (secs == null || secs <= 0) return ''
