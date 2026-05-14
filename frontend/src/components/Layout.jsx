@@ -530,7 +530,7 @@ function TopRightMenu({ user, signOut, onHelp }) {
     <div className="fixed top-3 right-3 md:top-4 md:right-4 z-40 flex items-center gap-2">
       <Link
         to="/login"
-        className="inline-flex items-center justify-center px-3 py-2 sm:py-1 min-h-[40px] sm:min-h-0 rounded-full text-xs font-semibold bg-red-600/20 text-red-300 border border-red-600/40 hover:bg-red-600/30"
+        className="inline-flex items-center justify-center px-4 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 rounded-full text-xs font-bold bg-red-600 text-white border border-red-500 hover:bg-red-500 shadow-md shadow-red-900/40"
       >Sign in</Link>
       <button
         onClick={onHelp}

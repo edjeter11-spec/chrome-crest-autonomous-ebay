@@ -72,18 +72,40 @@ export default function Login() {
     }
   }
 
+  // Show context for WHY the user got bounced here. Without this, /portfolio
+  // and /wishlist redirected here look identical — just a generic Sign in
+  // form. With it, the user understands what they're unlocking.
+  const intentMap = {
+    '/portfolio': {
+      title: 'Sign in to track your collection',
+      sub: '$0 cost basis tracking, P&L by card, sell-recommendations from real comps.',
+    },
+    '/wishlist': {
+      title: 'Sign in to set price alerts',
+      sub: 'Add cards you want, get pinged the moment one drops below your max.',
+    },
+    '/alerts': {
+      title: 'Sign in to manage your alerts',
+      sub: 'Snipe alerts, ending-soon, STRONG_BUY pushes — all in one feed.',
+    },
+  }
+  const intent = intentMap[next] || {
+    title: mode === 'signin' ? 'Sign in' : 'Create account',
+    sub: 'Save your collection across devices',
+  }
+
   return (
     <div className="max-w-md mx-auto mt-8 md:mt-16 px-4">
       <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-6 md:p-8">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-lg">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shrink-0">
             <LogIn size={18} className="text-white" />
           </div>
-          <div>
-            <h1 className="text-xl font-black text-white">
-              {mode === 'signin' ? 'Sign in' : 'Create account'}
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-black text-white leading-tight">
+              {intent.title}
             </h1>
-            <p className="text-xs text-gray-500">Save your collection across devices</p>
+            <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{intent.sub}</p>
           </div>
         </div>
 
