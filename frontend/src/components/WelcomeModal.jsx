@@ -12,7 +12,15 @@ export default function WelcomeModal() {
   // Check the localStorage gate after mount (avoids SSR / hydration mismatch).
   useEffect(() => {
     try {
-      if (!localStorage.getItem('cc_welcomed_v1')) setOpen(true)
+      if (!localStorage.getItem('cc_welcomed_v1')) {
+        setOpen(true)
+        // Modal-collision guard: WelcomeModal and OnboardingTour both fire on first home
+        // visit. Stamp the tour's dismissed-key now so it doesn't stack on top — the user
+        // can still trigger the tour later from the help button.
+        if (!localStorage.getItem('cc_onboarding_v2_dismissed')) {
+          localStorage.setItem('cc_onboarding_v2_dismissed', String(Date.now()))
+        }
+      }
     } catch {
       // localStorage blocked (private mode etc.) — just don't show.
     }

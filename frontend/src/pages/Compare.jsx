@@ -4,6 +4,7 @@ import { Heart, TrendingUp, TrendingDown, Award, Scale, Save, Link2, Check } fro
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
 import { TOP_PARALLELS } from './CardPage'
 import { ALL_PARALLELS } from '../lib/parallels'
+import CardImagePlaceholder from '../components/CardImagePlaceholder'
 
 const API = import.meta.env.VITE_API_URL || ''
 const ALL_DRIVERS = [...DRIVERS_F1, ...DRIVERS_F2, ...DRIVERS_F3, ...DRIVERS_LEGENDS]
@@ -125,6 +126,11 @@ function useCardData(driver, parallel) {
 }
 
 function Column({ side, driver, parallel, data, loading }) {
+  // Track image-load failure so we can swap in the F1-themed placeholder instead
+  // of leaving an empty grey square (the previous behavior — `display:none` on
+  // the <img> left the rounded `bg-gray-900` div visually empty).
+  const [imgFailed, setImgFailed] = useState(false)
+  useEffect(() => { setImgFailed(false) }, [driver])
   const med = data.median?.median_total
   const nComps = data.median?.n || 0
   const highest = data.median?.max_total
@@ -154,12 +160,18 @@ function Column({ side, driver, parallel, data, loading }) {
   return (
     <div className="panel p-5 space-y-4">
       <div className="flex items-start gap-3">
-        <img
-          src={`${API}/api/drivers/photo?name=${encodeURIComponent(driver || '')}`}
-          alt={driver}
-          className="w-16 h-16 rounded-xl object-cover border border-gray-800 bg-gray-900"
-          onError={(e) => { e.currentTarget.style.display = 'none' }}
-        />
+        {driver && !imgFailed ? (
+          <img
+            src={`${API}/api/drivers/photo?name=${encodeURIComponent(driver)}`}
+            alt={driver}
+            className="w-16 h-16 rounded-xl object-cover border border-gray-800 bg-gray-900"
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-800 shrink-0">
+            <CardImagePlaceholder driverName={driver || '—'} labelClassName="text-[10px] font-black tracking-widest" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Side {side}</div>
           <h2 className="text-lg font-black text-white truncate">{driver || '—'}</h2>

@@ -74,9 +74,9 @@ export default function FeedbackWidget() {
           onClick={() => setOpen(true)}
           aria-label="Suggest an improvement or report a problem"
           title="Suggest / report"
-          className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 py-2 rounded-full bg-gray-900/90 hover:bg-gray-800 text-gray-200 border border-gray-700 shadow-lg backdrop-blur text-xs font-bold transition-colors"
+          className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 py-2 rounded-full bg-gray-700 hover:bg-gray-600 text-white border border-gray-600 shadow-lg backdrop-blur text-xs font-bold transition-colors"
         >
-          <MessageSquarePlus size={14} />
+          <MessageSquarePlus size={18} className="text-white" />
           <span className="hidden sm:inline">Suggest</span>
         </button>
       )}

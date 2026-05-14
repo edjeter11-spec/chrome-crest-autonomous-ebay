@@ -104,7 +104,7 @@ def list_portfolio(
 async def add_to_portfolio(
     body: dict,
     db: Session = Depends(get_db),
-    user_id: Optional[str] = Depends(get_user_id),
+    user_id: str = Depends(require_user_id),
 ):
     """
     Accepts either:
@@ -168,7 +168,7 @@ async def add_to_portfolio(
 def bulk_add(
     body: dict,
     db: Session = Depends(get_db),
-    user_id: Optional[str] = Depends(get_user_id),
+    user_id: str = Depends(require_user_id),
 ):
     """
     Bulk import from CSV. Accepts {rows: [{driver, parallel, grade, purchase_price,
@@ -252,13 +252,14 @@ def update_portfolio_item(
     item_id: int,
     body: dict,
     db: Session = Depends(get_db),
-    user_id: Optional[str] = Depends(get_user_id),
+    user_id: str = Depends(require_user_id),
 ):
     item = db.query(Portfolio).filter(Portfolio.id == item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")
-    # Ownership check: if the row has an owner, caller must match it
-    if item.user_id and item.user_id != user_id:
+    # Ownership check: caller must own the row. Orphan rows (user_id=None)
+    # are legacy/read-only and not mutable by any authed user.
+    if item.user_id != user_id:
         raise HTTPException(403, "forbidden")
     allowed = {"quantity", "purchase_price", "notes", "current_value"}
     for k, v in body.items():
@@ -273,12 +274,12 @@ def update_portfolio_item(
 def remove_from_portfolio(
     item_id: int,
     db: Session = Depends(get_db),
-    user_id: Optional[str] = Depends(get_user_id),
+    user_id: str = Depends(require_user_id),
 ):
     item = db.query(Portfolio).filter(Portfolio.id == item_id).first()
     if not item:
         raise HTTPException(404, "Item not found")
-    if item.user_id and item.user_id != user_id:
+    if item.user_id != user_id:
         raise HTTPException(403, "forbidden")
     db.delete(item)
     db.commit()

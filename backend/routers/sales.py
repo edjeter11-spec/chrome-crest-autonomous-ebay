@@ -1,7 +1,7 @@
 """
 Sales Database — queries against the SoldCard table.
 """
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
@@ -138,6 +138,69 @@ def list_sales(
         "include_duplicates": include_duplicates,
         "sales": [_sold_to_dict(s) for s in sales],
     }
+
+
+@router.post("/lookup-batch")
+def lookup_sales_batch(
+    body: dict,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Batched per-card recent-sales lookup. Body:
+        {"queries": [{driver, parallel, grade?}, ...]}
+
+    For each query tuple returns the latest 5 matching sales (id, sale_date,
+    sale_price, total_cost). Result is keyed by the input index as a string,
+    so the frontend can fan results back into per-card UI without a join key.
+
+    Eliminates the N+1 fetch where Portfolio's scanned-card section calls
+    `/api/sales?driver=...&parallel=...` once per card.
+    """
+    queries = body.get("queries") or []
+    if not isinstance(queries, list):
+        raise HTTPException(400, "queries must be a list")
+    # Hard cap to keep one request bounded.
+    queries = queries[:200]
+
+    out: dict[str, list] = {}
+    for i, q in enumerate(queries):
+        if not isinstance(q, dict):
+            out[str(i)] = []
+            continue
+        driver = q.get("driver") or q.get("driver_name")
+        parallel = q.get("parallel")
+        grade = q.get("grade")
+        if not driver:
+            out[str(i)] = []
+            continue
+
+        sub = db.query(SoldCard).filter(
+            SoldCard.is_duplicate == False,  # noqa: E712
+            SoldCard.driver_name.ilike(f"%{driver}%"),
+        )
+        if parallel:
+            sub = sub.filter(SoldCard.parallel == parallel)
+        if grade:
+            if str(grade).lower() == "raw":
+                sub = sub.filter(SoldCard.grade.is_(None))
+            elif str(grade).lower() == "graded":
+                sub = sub.filter(SoldCard.grade.isnot(None))
+            else:
+                sub = sub.filter(SoldCard.grade == grade)
+        rows = sub.order_by(desc(SoldCard.sale_date)).limit(5).all()
+        out[str(i)] = [
+            {
+                "id": r.id,
+                "sale_date": r.sale_date.isoformat() if r.sale_date else None,
+                "sale_price": float(r.sale_price) if r.sale_price is not None else None,
+                "total": round(_total_cost(r), 2),
+            }
+            for r in rows
+        ]
+
+    # Edge cache 60s — sale data only updates on cron, fine to share across users.
+    response.headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300"
+    return out
 
 
 @router.get("/stats")
@@ -408,12 +471,26 @@ def export_csv(
     date_to: Optional[str] = None,
     is_auction: Optional[bool] = None,
     include_duplicates: bool = False,
+    limit: int = 10000,
     db: Session = Depends(get_db),
 ):
+    """Export sold-card rows as CSV.
+
+    `limit` controls the max number of rows returned. Default is 10000;
+    values above the hard cap of 50000 are clamped down. This protects
+    the public endpoint from unbounded scans that would balloon memory
+    and response time on large date ranges.
+    """
+    # Clamp limit to [1, 50000] — public endpoint, can't trust the caller.
+    if limit is None or limit < 1:
+        limit = 10000
+    if limit > 50000:
+        limit = 50000
+
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, min_price, max_price,
                        date_from, date_to, is_auction, include_duplicates)
-    sales = q.order_by(desc(SoldCard.sale_date)).limit(50000).all()
+    sales = q.order_by(desc(SoldCard.sale_date)).limit(limit).all()
 
     buf = io.StringIO()
     writer = csv.writer(buf)

@@ -33,11 +33,19 @@ function ChangeBadge({ pct, label }) {
   )
 }
 
-function IndexChart({ slug }) {
-  const [points, setPoints] = useState(null)
-  const [loading, setLoading] = useState(true)
+function IndexChart({ slug, series }) {
+  // Backward-compat: if a `series` prop is provided (Indices page batches all
+  // histories in a single request), use it directly. Otherwise fall back to
+  // the per-slug fetch so other callers keep working.
+  const [points, setPoints] = useState(series ?? null)
+  const [loading, setLoading] = useState(series == null)
 
   useEffect(() => {
+    if (series != null) {
+      setPoints(series)
+      setLoading(false)
+      return
+    }
     if (!slug) return
     setLoading(true)
     swrFetch(
@@ -45,7 +53,7 @@ function IndexChart({ slug }) {
       (data) => { if (data?.points) setPoints(data.points) },
       () => setLoading(false),
     )
-  }, [slug])
+  }, [slug, series])
 
   const cleanPoints = (points || []).filter(p => p.value !== null && p.value !== undefined)
 
@@ -93,6 +101,8 @@ export default function Indices() {
   const [indices, setIndices] = useState(null)
   const [asOf, setAsOf] = useState(null)
   const [loading, setLoading] = useState(true)
+  // { [slug]: [{date, value}, ...] } — single batched fetch instead of one per chart.
+  const [historyBySlug, setHistoryBySlug] = useState({})
 
   useEffect(() => {
     setLoading(true)
@@ -105,6 +115,18 @@ export default function Indices() {
       () => setLoading(false),
     )
   }, [])
+
+  // Once we know which slugs to render, batch-fetch all histories in one call.
+  useEffect(() => {
+    if (!indices || indices.length === 0) return
+    const slugs = indices.map(i => i.slug).join(',')
+    swrFetch(
+      `${API}/api/indices/history?days=90&slugs=${encodeURIComponent(slugs)}`,
+      (data) => {
+        if (data && typeof data === 'object') setHistoryBySlug(data)
+      },
+    )
+  }, [indices])
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
@@ -170,7 +192,7 @@ export default function Indices() {
               </div>
             </div>
 
-            <IndexChart slug={idx.slug} />
+            <IndexChart slug={idx.slug} series={historyBySlug[idx.slug]} />
           </div>
         ))}
       </div>

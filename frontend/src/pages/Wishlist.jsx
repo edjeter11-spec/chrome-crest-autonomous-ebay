@@ -10,6 +10,7 @@ import ShareWatchlistModal from '../components/ShareWatchlistModal'
 import SmartRules from '../components/SmartRules'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import CardImage from '../components/CardImage'
+import { supabase } from '../lib/supabase'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -120,12 +121,21 @@ export default function Watchlist() {
     }
   }
 
+  // Single bulk endpoint replaces N round-trips: 30 selected = 1 request, not 30.
   const bulkDelete = async () => {
     if (!window.confirm(`Delete ${selectedIds.size} card${selectedIds.size !== 1 ? 's' : ''} from wishlist? This cannot be undone.`)) return
     try {
-      await Promise.all(Array.from(selectedIds).map(id =>
-        fetch(`${API}/api/wishlist/${id}`, { method: 'DELETE' })
-      ))
+      const ids = Array.from(selectedIds)
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      await fetch(`${API}/api/wishlist/bulk`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ ids }),
+      })
       setWishlist(prev => prev.filter(i => !selectedIds.has(i.id)))
       setSelectedIds(new Set())
       load()
@@ -139,13 +149,17 @@ export default function Watchlist() {
     setBulkUpdating(true)
     try {
       const newPrice = parseFloat(bulkPriceValue)
-      await Promise.all(Array.from(selectedIds).map(id =>
-        fetch(`${API}/api/wishlist/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ max_price: newPrice })
-        })
-      ))
+      const ids = Array.from(selectedIds)
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      await fetch(`${API}/api/wishlist/bulk`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ ids, patch: { max_price: newPrice } }),
+      })
       setWishlist(prev => prev.map(i =>
         selectedIds.has(i.id) ? { ...i, max_price: newPrice } : i
       ))

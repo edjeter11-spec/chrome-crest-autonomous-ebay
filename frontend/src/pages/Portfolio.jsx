@@ -132,27 +132,40 @@ function ScannedCardsBlock({ refreshKey, onCount }) {
       setCards(rows)
       setLoading(false)
       onCount?.(rows.length)
-      for (const c of rows) {
-        const params = new URLSearchParams()
-        if (c.driver_name) params.set('driver', c.driver_name)
-        if (c.parallel) params.set('parallel', c.parallel)
-        if (c.grade) params.set('grade', c.grade)
-        params.set('limit', '50')
+      // Single batched lookup replaces N per-card /api/sales calls.
+      if (rows.length > 0) {
         try {
-          const r = await fetch(`${API}/api/sales?${params}`)
-          if (!r.ok) continue
-          const d = await r.json()
-          const salesArr = Array.isArray(d) ? d : (d.sales || d.results || [])
-          const prices = salesArr.map(x => Number(x.sale_price ?? x.price ?? x.total_cost)).filter(Boolean)
-          const m = median(prices)
-          const last30 = salesArr.filter(s => {
-            const ts = new Date(s.sale_date || s.scraped_at || 0).getTime()
-            return ts && (Date.now() - ts) < 30 * 86400 * 1000
-          }).length
-          if (!cancelled) setComps(prev => ({
-            ...prev,
-            [c.id]: { med: m, n: prices.length, last30, hi: Math.max(...prices, 0), lo: Math.min(...prices.filter(p => p > 0).concat(Infinity)) },
+          const queries = rows.map(c => ({
+            driver: c.driver_name || '',
+            parallel: c.parallel || null,
+            grade: c.grade || null,
           }))
+          const r = await fetch(`${API}/api/sales/lookup-batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ queries }),
+          })
+          if (!r.ok) return
+          const batch = await r.json() || {}
+          if (cancelled) return
+          const next = {}
+          rows.forEach((c, i) => {
+            const salesArr = batch[String(i)] || []
+            const prices = salesArr.map(x => Number(x.sale_price ?? x.total)).filter(Boolean)
+            const m = median(prices)
+            const last30 = salesArr.filter(s => {
+              const ts = new Date(s.sale_date || 0).getTime()
+              return ts && (Date.now() - ts) < 30 * 86400 * 1000
+            }).length
+            next[c.id] = {
+              med: m,
+              n: prices.length,
+              last30,
+              hi: Math.max(...prices, 0),
+              lo: Math.min(...prices.filter(p => p > 0).concat(Infinity)),
+            }
+          })
+          if (!cancelled) setComps(next)
         } catch {}
       }
     })()
@@ -526,23 +539,32 @@ export default function Portfolio() {
       } catch {}
     }
 
-    // Enrich scans with comp median from /api/sales (driver+parallel, no grade).
-    const enriched = await Promise.all(scans.map(async c => {
-      let medPrice = null
-      let n = 0
+    // Enrich scans with comp median. Previously fired one /api/sales request
+    // per scanned card (50 cards = 50 requests on mount). Now a single
+    // /api/sales/lookup-batch call returns the latest sales per query tuple.
+    let batchResults = {}
+    if (scans.length > 0) {
       try {
-        const params = new URLSearchParams()
-        if (c.driver_name) params.set('driver', c.driver_name)
-        if (c.parallel) params.set('parallel', c.parallel)
-        params.set('limit', '50')
-        const r = await fetch(`${API}/api/sales?${params}`)
-        if (r.ok) {
-          const d = await r.json()
-          const rows = Array.isArray(d) ? d : (d.sales || d.results || [])
-          const prices = rows.map(x => Number(x.sale_price ?? x.price ?? x.total_cost)).filter(Boolean)
-          medPrice = median(prices); n = prices.length
-        }
+        const queries = scans.map(c => ({
+          driver: c.driver_name || '',
+          parallel: c.parallel || null,
+          // grade intentionally omitted — see comment below; AI-predicted
+          // grade is not reliable for raw cards.
+        }))
+        const r = await fetch(`${API}/api/sales/lookup-batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ queries }),
+        })
+        if (r.ok) batchResults = await r.json() || {}
       } catch {}
+    }
+
+    const enriched = scans.map((c, i) => {
+      const rows = batchResults[String(i)] || []
+      const prices = rows.map(x => Number(x.sale_price ?? x.total)).filter(Boolean)
+      const medPrice = median(prices)
+      const n = prices.length
       const paid = c.purchase_price != null ? Number(c.purchase_price) : 0
       const val = medPrice || 0
       const pnl = val - paid
@@ -562,7 +584,7 @@ export default function Portfolio() {
         card: { driver_name: c.driver_name, parallel: c.parallel || 'Base', grade: 'Raw' },
         comps_n: n,
       }
-    }))
+    })
 
     setItems([...enriched, ...manual])
     setLoading(false)

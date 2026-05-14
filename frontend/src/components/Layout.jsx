@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, Link } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
@@ -7,10 +7,12 @@ import {
   ArrowLeftRight, Calculator, Sun, Moon, Target, Activity, Home, Flame
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
-import Tutorial from './Tutorial'
-import OnboardingTour from './OnboardingTour'
-import SignedOutBanner from './SignedOutBanner'
-import FeedbackWidget from './FeedbackWidget'
+// Heavy one-off modals: lazy-loaded so first paint doesn't pay for code 99% of users never see.
+// Tutorial is gated behind `cc_tutorial_seen`, OnboardingTour behind `cc_onboarding_v2_dismissed`,
+// and FeedbackWidget only renders interactive UI when the user clicks it.
+const Tutorial = lazy(() => import('./Tutorial'))
+const OnboardingTour = lazy(() => import('./OnboardingTour'))
+const FeedbackWidget = lazy(() => import('./FeedbackWidget'))
 import StatusFooter from './StatusFooter'
 import { useAuth } from '../lib/auth'
 import { LogIn, LogOut } from 'lucide-react'
@@ -420,8 +422,7 @@ export default function Layout() {
         )}
 
         <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-24 md:pb-6">
-          <OnboardingTour />
-          <SignedOutBanner />
+          <Suspense fallback={null}><OnboardingTour /></Suspense>
           <Outlet />
           {/* FTC-required affiliate disclosure */}
           <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-gray-800/60 light:border-gray-300">
@@ -444,7 +445,7 @@ export default function Layout() {
           </div>
           <StatusFooter />
         </main>
-        <FeedbackWidget />
+        <Suspense fallback={null}><FeedbackWidget /></Suspense>
 
         {/* Mobile bottom tab bar — 4 key routes, iOS/Android-style tap targets */}
         <nav
@@ -475,7 +476,11 @@ export default function Layout() {
         </nav>
       </div>
 
-      {showTutorial && <Tutorial onClose={dismissTutorial} />}
+      {showTutorial && (
+        <Suspense fallback={null}>
+          <Tutorial onClose={dismissTutorial} />
+        </Suspense>
+      )}
 
       {!showTutorial && <TopRightMenu user={user} signOut={signOut} onHelp={() => setShowTutorial(true)} />}
     </div>

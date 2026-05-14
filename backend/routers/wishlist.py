@@ -46,7 +46,7 @@ def list_wishlist(
 def add_to_wishlist(
     body: dict,
     db: Session = Depends(get_db),
-    user_id: Optional[str] = Depends(get_user_id),
+    user_id: str = Depends(require_user_id),
 ):
     """Accepts either {card_id, ...} OR {driver_name, parallel, grade?, ...}.
     The driver-name path looks up an existing matching Card, or creates a
@@ -100,17 +100,80 @@ def add_to_wishlist(
     return item_to_dict(item)
 
 
+# --- Bulk endpoints ----------------------------------------------------------
+# These MUST be registered before the `/{item_id}` routes below or FastAPI
+# treats "bulk" as an item_id and 422s on path parsing.
+
+@router.delete("/bulk")
+def bulk_delete_wishlist(
+    body: dict,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(require_user_id),
+):
+    """Delete many wishlist rows in one call. Body: {"ids": [1,2,3,...]}.
+    Only rows owned by the caller are touched (user_id == JWT.sub).
+    """
+    ids = body.get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids must be a non-empty list")
+    # Cap to avoid pathological deletes
+    ids = [int(i) for i in ids if isinstance(i, (int, str)) and str(i).isdigit()][:1000]
+    if not ids:
+        return {"deleted": 0}
+    deleted = (
+        db.query(Wishlist)
+        .filter(Wishlist.id.in_(ids), Wishlist.user_id == user_id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"deleted": int(deleted or 0)}
+
+
+@router.patch("/bulk")
+def bulk_update_wishlist(
+    body: dict,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(require_user_id),
+):
+    """Apply a single patch to many wishlist rows in one call.
+    Body: {"ids": [...], "patch": {"max_price": 50, "priority": 4, ...}}.
+    Only the caller's rows are touched. Whitelisted fields only.
+    """
+    ids = body.get("ids") or []
+    patch = body.get("patch") or {}
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, "ids must be a non-empty list")
+    if not isinstance(patch, dict) or not patch:
+        raise HTTPException(400, "patch must be a non-empty object")
+    ids = [int(i) for i in ids if isinstance(i, (int, str)) and str(i).isdigit()][:1000]
+    # Only allow patching mutable user-controlled columns; never user_id/card_id.
+    ALLOWED = {"max_price", "priority", "notes", "auto_snipe"}
+    clean = {k: v for k, v in patch.items() if k in ALLOWED}
+    if not clean:
+        raise HTTPException(400, "no patchable fields in patch")
+    if not ids:
+        return {"updated": 0}
+    updated = (
+        db.query(Wishlist)
+        .filter(Wishlist.id.in_(ids), Wishlist.user_id == user_id)
+        .update(clean, synchronize_session=False)
+    )
+    db.commit()
+    return {"updated": int(updated or 0)}
+
+
 @router.patch("/{item_id}")
 def update_wishlist_item(
     item_id: int,
     body: dict,
     db: Session = Depends(get_db),
-    user_id: Optional[str] = Depends(get_user_id),
+    user_id: str = Depends(require_user_id),
 ):
     item = db.query(Wishlist).filter(Wishlist.id == item_id).first()
     if not item:
         raise HTTPException(404, "Not found")
-    if item.user_id and item.user_id != user_id:
+    # Caller must own the row; orphan rows (user_id=None) are not mutable.
+    if item.user_id != user_id:
         raise HTTPException(403, "forbidden")
     # Don't let callers overwrite user_id via body
     for k, v in body.items():
@@ -126,12 +189,12 @@ def update_wishlist_item(
 def delete_wishlist_item(
     item_id: int,
     db: Session = Depends(get_db),
-    user_id: Optional[str] = Depends(get_user_id),
+    user_id: str = Depends(require_user_id),
 ):
     item = db.query(Wishlist).filter(Wishlist.id == item_id).first()
     if not item:
         raise HTTPException(404, "Not found")
-    if item.user_id and item.user_id != user_id:
+    if item.user_id != user_id:
         raise HTTPException(403, "forbidden")
     db.delete(item)
     db.commit()

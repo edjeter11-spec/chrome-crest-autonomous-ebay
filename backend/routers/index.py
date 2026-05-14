@@ -8,6 +8,7 @@ Exposes:
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+from typing import Optional
 
 from database import get_db, SoldCard
 
@@ -93,6 +94,51 @@ def list_indices(response: Response, db: Session = Depends(get_db)):
         })
     response.headers["Cache-Control"] = "public, s-maxage=600"
     return {"indices": out, "as_of": now.isoformat() + "Z"}
+
+
+@router.get("/history")
+def indices_history_batch(
+    days: int = 90,
+    slugs: Optional[str] = None,
+    response: Response = None,
+    db: Session = Depends(get_db),
+):
+    """Batched daily history for many baskets in one call.
+
+    Query params:
+      days  — chart window in days (default 90)
+      slugs — comma-separated basket slugs (omit/empty = all known baskets)
+
+    Returns: { "<slug>": [{date, value}, ...], ... }
+    Eliminates the N+1 fetch where the Indices page would hit
+    `/api/indices/{slug}/history` once per basket.
+    """
+    if slugs:
+        wanted = [s.strip() for s in slugs.split(",") if s.strip()]
+    else:
+        wanted = list(BASKETS.keys())
+
+    now = datetime.utcnow()
+    # Pre-compute the set of (slug, on_date) we need. Sample dates are shared
+    # across baskets so we walk them once per basket (basket value is cheap).
+    sample_offsets = list(range(days, -1, -3))  # same cadence as single-slug endpoint
+
+    out: dict[str, list] = {}
+    for slug in wanted:
+        basket = BASKETS.get(slug)
+        if not basket:
+            out[slug] = []
+            continue
+        points = []
+        for d in sample_offsets:
+            on_date = now - timedelta(days=d)
+            val = _basket_value(db, basket, on_date)
+            points.append({"date": on_date.strftime("%Y-%m-%d"), "value": val})
+        out[slug] = points
+
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=600"
+    return out
 
 
 @router.get("/{slug}/history")
