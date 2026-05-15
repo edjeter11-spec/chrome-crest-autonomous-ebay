@@ -46,6 +46,8 @@ function lazyWithRetry(factory) {
 
 // ShortcutsHelp only renders when the user presses '?' — defer it.
 const ShortcutsHelp = lazyWithRetry(() => import('./components/ShortcutsHelp'))
+// ToastHost is tiny + visible from any action — eager (no Suspense flash on first toast).
+import ToastHost from './components/ToastHost'
 
 // Auctions/BuyItNow/Login are not the landing route — lazy-load to drop
 // ~30-40KB from the main bundle. Dashboard stays eager since it IS the
@@ -132,6 +134,7 @@ export default function App() {
     <BrowserRouter>
       <GlobalShortcuts />
       <Suspense fallback={null}><ShortcutsHelp /></Suspense>
+      <ToastHost />
       <Routes>
         {/* Standalone routes — no layout chrome */}
         <Route path="/share/watchlist/:token" element={<Suspense fallback={<PageFallback />}><SharedWatchlist /></Suspense>} />

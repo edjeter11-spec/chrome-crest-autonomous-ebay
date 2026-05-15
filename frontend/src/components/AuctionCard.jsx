@@ -13,6 +13,7 @@ import { useAuth } from '../lib/auth'
 import { teamColor as resolveTeamColor } from '../lib/teamColors'
 import VerdictBadge from './VerdictBadge'
 import LastUpdatedLabel from './LastUpdatedLabel'
+import { toast } from '../lib/toast'
 import ScoreExplain from './ScoreExplain'
 import InfoTooltip from './InfoTooltip'
 import Countdown from './Countdown'
@@ -724,7 +725,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   const { user } = useAuth() || { user: null }
   const [watching, setWatching] = useState(() => resolveWatchingState({ user, auction }))
   const [watchLoading, setWatchLoading] = useState(false)
-  const [shareToast, setShareToast] = useState(false)
+  // shareToast state removed — uses global toast system now (lib/toast).
   const [expandedPanel, setExpandedPanel] = useState(null)
   const [comp, setComp] = useState(null)
   const [bidIntentOpen, setBidIntentOpen] = useState(false)
@@ -886,24 +887,30 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
       const nextWatching = toggleLocalWatchlist(auction.id)
       setWatching(nextWatching)
       onWatchlistChange?.(auction.id, nextWatching)
-      if (nextWatching) {
-        // Soft sign-in gate — only on add, and only once per session.
-        try {
-          if (!sessionStorage.getItem('cc_watchlist_gate_shown')) {
-            sessionStorage.setItem('cc_watchlist_gate_shown', '1')
-            setTimeout(() => alert('Saved locally. Sign in to sync across devices and get price alerts.'), 50)
-          }
-        } catch {}
-      }
+      toast[nextWatching ? 'success' : 'info'](
+        nextWatching ? 'Saved locally — sign in to sync across devices' : 'Removed from watchlist',
+      )
       return
     }
+    // Optimistic — flip immediately, reconcile after API.
+    const prevWatching = watching
+    const nextOptimistic = !prevWatching
+    setWatching(nextOptimistic)
     setWatchLoading(true)
     try {
       const res = await fetch(`${API}/api/auctions/${auction.id}/watch`, { method: 'POST' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setWatching(data.watching)
       onWatchlistChange?.(auction.id, data.watching)
-    } catch {}
+      toast[data.watching ? 'success' : 'info'](
+        data.watching ? 'Added to watchlist' : 'Removed from watchlist',
+      )
+    } catch (err) {
+      // Roll back the optimistic flip on failure.
+      setWatching(prevWatching)
+      toast.error('Watchlist save failed — try again')
+    }
     setWatchLoading(false)
   }
 
@@ -926,9 +933,10 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     } catch { /* user cancelled */ return }
     try {
       await navigator.clipboard.writeText(url)
-      setShareToast(true)
-      setTimeout(() => setShareToast(false), 2000)
-    } catch {}
+      toast.success('Link copied to clipboard')
+    } catch {
+      toast.error('Could not copy link')
+    }
   }
 
   // Parallel/grade badge from card data
@@ -1292,11 +1300,6 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             className="relative shrink-0 min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 py-1.5 px-2.5 rounded-lg bg-gray-800/60 hover:bg-gray-800 text-gray-500 hover:text-gray-200 border border-gray-700/30 transition-colors flex items-center justify-center"
           >
             <Share2 size={11} />
-            {shareToast && (
-              <span className="absolute -top-8 right-0 text-[10px] bg-emerald-600 text-white font-bold px-2 py-1 rounded whitespace-nowrap shadow-lg">
-                Link copied!
-              </span>
-            )}
           </button>
           <button
             onClick={shareToX}
