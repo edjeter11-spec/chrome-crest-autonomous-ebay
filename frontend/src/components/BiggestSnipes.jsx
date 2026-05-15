@@ -91,8 +91,10 @@ function isBigSnipe(a, maxSecs) {
 }
 
 function SnipeImage({ src, driverName, teamColor }) {
-  // Pre-upscale eBay CDN URLs for sharper thumbs at the same render size.
-  const upscaled = src ? upscaleEbayImage(src, 500) : ''
+  // 200px source for a 64x80 render — already 2.5× retina density. 500px was
+  // 6× density, costing ~4-7× the bytes per thumbnail with no visible quality
+  // win at this size. Bandwidth math: 16 thumbs × ~25KB instead of ~110KB.
+  const upscaled = src ? upscaleEbayImage(src, 200) : ''
   const [stage, setStage] = useState('initial') // initial | retry | failed
   const [url, setUrl] = useState(upscaled)
   const [loaded, setLoaded] = useState(false)

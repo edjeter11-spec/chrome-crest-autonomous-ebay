@@ -19,6 +19,7 @@ const EndingStripEmpty = lazy(() => import('../components/EndingStripEmpty'))
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
 import { hasImage } from '../lib/hasImage'
+import { upscaleEbayImage } from '../lib/imageUrl'
 import { applySeasonFilter } from '../lib/season'
 import { ebayAffiliateUrl, trackClick } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
@@ -830,9 +831,11 @@ export default function Dashboard() {
                 className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors no-underline"
               >
                 <img
-                  src={s?.image_url}
+                  src={upscaleEbayImage(s?.image_url, 200)}
                   alt=""
                   className="w-10 h-14 object-cover rounded border border-gray-800 shrink-0"
+                  loading="lazy"
+                  decoding="async"
                   onError={e => { try { e.target.closest('a').style.display = 'none' } catch {} }}
                 />
                 <div className="flex-1 min-w-0">

@@ -67,7 +67,10 @@ def auction_to_dict(a: Auction) -> dict:
         "shipping_cost": a.shipping_cost,
         "is_real_ebay": a.is_real_ebay,
         "buying_options": json.loads(a.buying_options) if a.buying_options else [],
-        "extra_images": json.loads(a.extra_images) if getattr(a, 'extra_images', None) else [],
+        # extra_images intentionally NOT included here — only the modal needs them,
+        # and the /details endpoint overwrites this field on open. Including it on
+        # every list row added ~400 bytes/row × 500 rows = ~200KB to with-verdicts
+        # for data that is invisible in list view.
         "scarcity_tier": sc["tier"],
         "scarcity_count": sc["count"],
         "scarcity_rank": sc["rank"],

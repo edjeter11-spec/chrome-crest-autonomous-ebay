@@ -14,8 +14,10 @@ export default function CardImage({
   className = '',
   // Tailwind aspect-ratio fallback when a placeholder is shown standalone
   aspect = '3/4',
-  // Pixel size hint for eBay upscaling
-  size = 500,
+  // Pixel size hint for eBay upscaling. 300 is enough for every list/thumbnail
+  // use across the app (largest is ~200px tile in ParallelLanding, smallest is
+  // 32px in GradedTracker). Modal hero shots explicitly pass size={800}.
+  size = 300,
   // Driver context drives the placeholder label + accent
   driverName,
   teamColor,
