@@ -39,14 +39,14 @@ export default function CardImage({
     setLoaded(false)
   }, [upscaled])
 
-  // Max-wait timer: if the image doesn't fire onLoad OR onError within 3s
-  // (slow proxy, blocked CDN, dropped connection, scrolled-out lazy image
-  // never decoded) — give up and show the placeholder instead of an
-  // infinite skeleton. This was the source of the 100+ stuck per-row
-  // pulses on /sales mobile audit.
+  // Max-wait timer: if the image doesn't fire onLoad OR onError within
+  // 10s (was 3s — too aggressive on slow eBay CDN, killed images that
+  // would have loaded fine in 4-5s; users saw placeholder grey on rows
+  // whose image worked perfectly in the modal). 10s still rescues genuine
+  // dead URLs from infinite skeleton state.
   useEffect(() => {
     if (!upscaled || loaded || failed) return
-    const id = setTimeout(() => setFailed(true), 3000)
+    const id = setTimeout(() => setFailed(true), 10000)
     return () => clearTimeout(id)
   }, [upscaled, loaded, failed])
 

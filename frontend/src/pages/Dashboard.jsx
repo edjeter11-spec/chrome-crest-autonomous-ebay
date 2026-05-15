@@ -18,6 +18,7 @@ const CardDetailModal = lazy(() => import('../components/CardDetailModal'))
 const EndingStripEmpty = lazy(() => import('../components/EndingStripEmpty'))
 import { swrFetch } from '../lib/cache'
 import { useVisibilityInterval } from '../lib/hooks'
+import { hasImage } from '../lib/hasImage'
 import { applySeasonFilter } from '../lib/season'
 import { ebayAffiliateUrl, trackClick } from '../lib/ebay'
 import { useAuth } from '../lib/auth'
@@ -401,7 +402,10 @@ export default function Dashboard() {
     [liveAuctions]
   )
   const endingSoonList = useMemo(
-    () => (Array.isArray(liveAuctions) ? liveAuctions : []).filter(isLiveAuctionRow).sort((a,b) => secsLeft(a) - secsLeft(b)).slice(0, 5),
+    () => (Array.isArray(liveAuctions) ? liveAuctions : [])
+      .filter(a => isLiveAuctionRow(a) && hasImage(a))
+      .sort((a,b) => secsLeft(a) - secsLeft(b))
+      .slice(0, 5),
     [liveAuctions]
   )
   const priceTrending = useMemo(() => {
@@ -467,6 +471,8 @@ export default function Dashboard() {
         const s = secsLeft(a)
         if (!a || s <= 0 || s > 86400) return false // 24h window
         if (!isLiveAuctionRow(a)) return false
+        // Eddie's directive: hide rows without a real card photo.
+        if (!hasImage(a)) return false
         const parallel = a.card?.parallel || a.parallel || ''
         if (BORING_STRIP.has(parallel)) return false
         const price = a.current_price || 0
@@ -484,7 +490,12 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveAuctions])
 
-  const hotSnipes = useMemo(() => (Array.isArray(snipes) ? snipes : []).slice(0, 12), [snipes])
+  // Filter snipes that lack a real card image — Eddie's directive: every
+  // visible row must show the actual card, not a placeholder.
+  const hotSnipes = useMemo(
+    () => (Array.isArray(snipes) ? snipes : []).filter(hasImage).slice(0, 12),
+    [snipes],
+  )
 
   // Deprecated: BiggestSnipes does its own comprehensive filtering.
   // Just check if there are ANY auctions to avoid showing empty state prematurely.

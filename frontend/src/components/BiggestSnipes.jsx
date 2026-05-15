@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Target, Clock } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { upscaleEbayImage } from '../lib/imageUrl'
+import { hasImage } from '../lib/hasImage'
 import CardImagePlaceholder from './CardImagePlaceholder'
 
 const API = import.meta.env.VITE_API_URL || ''
@@ -38,17 +39,8 @@ const BORING_PARALLELS = new Set([
 ])
 const RARE_PRINT_RUN_RE = /\/(5|10|15|20|25|50|75)\b/
 
-/**
- * Pull the serial number ("22/150") OR just the print-run total ("/150")
- * out of an eBay title. Returns "#22/150", "/150", or '' when neither is
- * present. Intentionally tight so we don't false-positive on card numbers
- * like "#143" or release dates.
- *
- * Preferred patterns:
- *   "22/150" → "#22/150" (numbered to total)
- *   "/150"   → "/150"   (print-run total only)
- *   "#22/150" → "#22/150"
- */
+// Re-exported from lib/printRun for backwards compatibility — extracted
+// so Latest Sales (Dashboard.jsx) can render the same '#22/150' format.
 function parsePrintRun(title) {
   if (!title) return ''
   const t = String(title)
@@ -111,14 +103,16 @@ function SnipeImage({ src, driverName, teamColor }) {
     setLoaded(false)
   }, [upscaled])
 
-  // Max-wait timer: if neither onLoad nor onError fires within 3s (silent
-  // lazy-load stall, blocked CDN, dropped decode), fall through to the
-  // placeholder instead of leaving a dark grey pulse box forever. Mirrors
-  // CardImage's safety net — was missing here, which is why Biggest Snipes
-  // rows showed grey boxes that never resolved.
+  // Max-wait timer: if neither onLoad nor onError fires within 10s
+  // (slow eBay CDN edge, blocked decode), fall through to placeholder.
+  // Was 3s — too aggressive: lazy-loaded off-screen images never decoded
+  // in time and got marked failed even though the URL worked. Eddie's
+  // report: "Hadjar Refractor with no image, but click and the modal has
+  // the picture". Bumped to 10s + dropped loading="lazy" since these are
+  // small thumbnails in a short visible list (12-16 rows max).
   useEffect(() => {
     if (!upscaled || loaded || stage === 'failed') return
-    const id = setTimeout(() => setStage('failed'), 3000)
+    const id = setTimeout(() => setStage('failed'), 10000)
     return () => clearTimeout(id)
   }, [upscaled, loaded, stage])
 
@@ -139,7 +133,6 @@ function SnipeImage({ src, driverName, teamColor }) {
       <img
         src={url}
         alt=""
-        loading="lazy"
         decoding="async"
         className={`w-full h-full object-cover transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
         onLoad={() => setLoaded(true)}
@@ -315,6 +308,8 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
     // are valid info but they're not "snipes" (different concept).
     return (auctions || [])
       .filter(a => {
+        // Eddie's directive: hide rows that don't have a real card photo.
+        if (!hasImage(a)) return false
         const bo = a.buying_options || []
         if (!bo.includes('AUCTION')) return false
         return isBigSnipe(a, 2 * 3600)
@@ -343,6 +338,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
     // picks up the 2h-24h horizon — what to set alerts for next.
     return (auctions || [])
       .filter(a => {
+        if (!hasImage(a)) return false
         const bo = a.buying_options || []
         if (!bo.includes('AUCTION')) return false
         const secs = secsLeft(a)
