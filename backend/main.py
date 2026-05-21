@@ -69,7 +69,6 @@ from routers import seo_pages as seo_pages_router
 from routers import affiliate_roi as affiliate_roi_router
 from routers import sold as sold_router
 from routers import feedback as feedback_router
-from scheduler import start_scheduler
 from ebay_api import has_real_credentials
 
 app = FastAPI(title="F1 Chrome Crest", version="2.0.0")
@@ -1202,9 +1201,9 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# Wire scheduler broadcast to our WS manager
-from scheduler import set_broadcast
-set_broadcast(manager.broadcast)
+# Scheduler broadcast wiring is deferred to startup (local-dev only). Importing
+# `scheduler` here pulled in scraper/ebay_api on every Vercel cold start for a
+# WS broadcast path that never fires on serverless.
 
 
 @app.get("/api/cards/{card_id}/psa-pop")
@@ -1929,6 +1928,7 @@ async def cron_keepalive(request: Request):
     # Earlier version warmed 4 endpoints every 4 min = 1,800 invocations/day.
     # This one warms 3 every 4 min = 1,080/day, still cheap.
     targets = [
+        "/api/auctions/with-verdicts?limit=500",                  # Home default strip (was NOT warmed — users hit it cold)
         "/api/auctions/with-verdicts?buying=auction&limit=500",  # Ending Soonest strip
         "/api/sales/stats",                                       # Sales dashboard summary
         "/api/health",                                            # Cheap baseline ping
@@ -4400,6 +4400,10 @@ async def startup_event():
         except Exception as _seed_e:
             # Local-dev seed — log so a broken seed_all doesn't silently leave an empty DB.
             logger.warning(f"local-dev startup seed skipped: {_seed_e}")
+        # Imported lazily: the scheduler pulls in scraper/ebay_api at module load,
+        # which is dead weight on Vercel cold starts (crons run via vercel.json there).
+        from scheduler import set_broadcast, start_scheduler
+        set_broadcast(manager.broadcast)
         start_scheduler()
         # Scrape real card images from eBay public search (no API key needed)
         asyncio.create_task(_scrape_card_images())
