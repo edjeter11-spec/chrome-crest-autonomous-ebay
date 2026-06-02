@@ -112,12 +112,8 @@
       "schedule": "30 * * * *"
     },
     {
-      "path": "/api/cron/sync-fresh-bins",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/sniper/check",
-      "schedule": "*/10 * * * *"
+      "schedule": "15 */4 * * *"
     },
     {
       "path": "/api/ebay/refresh-top-page",
