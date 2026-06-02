@@ -295,13 +295,13 @@ export default function Dashboard() {
       }
     )
 
-    // Single fetch for ALL active listings (auction + BIN). Was previously a
-    // progressive limit=200 → limit=500 pair, but limit=500 is server-cached
-    // (s-maxage) so the smaller "fast" call only added DB pressure during the
-    // initial burst (8→1 success on cold pool). Going straight to limit=500
-    // cuts a parallel request and the cached payload streams just as fast.
+    // Mobile-first: dashboard only renders ~16-row slices off these payloads,
+    // so limit=100 is plenty. Was limit=500 (~58KB gz each) which on cellular
+    // burned ~120KB JSON to render 32 cards. limit=100 (~12KB gz each) cuts
+    // payload + JSON.parse cost ~5x on mobile CPUs. The keepalive cron warms
+    // these exact URLs every 4 min so CDN still serves them hot.
     swrFetch(
-      `${API}/api/auctions/with-verdicts?limit=500`,
+      `${API}/api/auctions/with-verdicts?limit=100`,
       d => {
         try { setAuctions(applySeasonFilter(asArray(d, 'auctions')) || []) }
         catch (err) { console.error('[Dashboard] auctions handler', err); setAuctions([]) }
@@ -309,11 +309,10 @@ export default function Dashboard() {
       }
     )
 
-    // AUCTION-only feed — drives Ending Soonest strip. Without this, BIN
-    // listings dominate the first 500 rows and real sub-1-hour auctions are
-    // never delivered to the dashboard.
+    // AUCTION-only feed — drives Ending Soonest strip. limit=100 is plenty:
+    // the strip slices to ≤16. Smaller payload = faster mobile first paint.
     swrFetch(
-      `${API}/api/auctions/with-verdicts?buying=auction&limit=500`,
+      `${API}/api/auctions/with-verdicts?buying=auction&limit=100`,
       d => {
         try { setLiveAuctions(applySeasonFilter(asArray(d, 'auctions')) || []) }
         catch (err) { console.error('[Dashboard] liveAuctions handler', err); setLiveAuctions([]) }

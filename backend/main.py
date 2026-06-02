@@ -1934,8 +1934,17 @@ async def cron_keepalive(request: Request):
     # Earlier version warmed 4 endpoints every 4 min = 1,800 invocations/day.
     # This one warms 3 every 4 min = 1,080/day, still cheap.
     targets = [
-        "/api/auctions/with-verdicts?limit=500",                  # Home default strip (was NOT warmed — users hit it cold)
-        "/api/auctions/with-verdicts?buying=auction&limit=500",  # Ending Soonest strip
+        # Mobile dashboard now fetches limit=100 (5x smaller payload). Warm
+        # both these URLs so first paint hits CDN cache instead of cold backend.
+        "/api/auctions/with-verdicts?limit=100",
+        "/api/auctions/with-verdicts?buying=auction&limit=100",
+        # Desktop/legacy callers still hit limit=500 (Auctions/BuyItNow pages);
+        # keep them warm too.
+        "/api/auctions/with-verdicts?limit=500",
+        "/api/auctions/with-verdicts?buying=auction&limit=500",
+        # Other home-critical endpoints that were hitting cold every visit:
+        "/api/sales?limit=500&year=2025",                         # Sales feed + ticker + wins + 7d count
+        "/api/sniper/fresh-snipes/6",                             # Dashboard snipes strip
         "/api/sales/stats",                                       # Sales dashboard summary
         "/api/health",                                            # Cheap baseline ping
     ]
