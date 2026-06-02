@@ -26,10 +26,14 @@ if SENTRY_DSN:
 # request while Eddie sets the env var.)
 _DB_URL = os.getenv("DATABASE_URL", "")
 if os.getenv("VERCEL") == "1" and not _DB_URL.startswith("postgres"):
-    import logging as _early_log
-    _early_log.warning(
-        "[DB GUARD] DATABASE_URL not Postgres on Vercel — using ephemeral fallback. "
-        f"Got: {_DB_URL[:30]!r}"
+    # Refuse to boot on Vercel without Postgres. The previous "warn and
+    # continue" path silently fell through to SQLite at /tmp/f1cards.db,
+    # which is ephemeral per lambda instance — every write would be lost
+    # on the next cold start, masquerading as data corruption. Better to
+    # 500 every request loudly until DATABASE_URL is set correctly.
+    raise RuntimeError(
+        "[DB GUARD] DATABASE_URL must be a postgres:// URL on Vercel. "
+        f"Got: {_DB_URL[:30]!r}. Refusing to boot to prevent silent data loss."
     )
 
 # UTC helper. All model defaults in database.py currently store naive UTC via
@@ -66,6 +70,7 @@ from routers import email_alerts
 from routers import weekly_digest as weekly_digest_router
 from routers import index as indices_router
 from routers import seo_pages as seo_pages_router
+from routers import seo as seo_router
 from routers import affiliate_roi as affiliate_roi_router
 from routers import sold as sold_router
 from routers import feedback as feedback_router
@@ -203,6 +208,7 @@ app.include_router(email_alerts.router)
 app.include_router(weekly_digest_router.router)
 app.include_router(indices_router.router)
 app.include_router(seo_pages_router.router)
+app.include_router(seo_router.router)
 app.include_router(affiliate_roi_router.router)
 app.include_router(sold_router.router)
 app.include_router(feedback_router.router)
@@ -922,7 +928,7 @@ async def trigger_card_image_scrape(_admin=Depends(require_admin)):
 
 
 @app.post("/api/admin/clean-bin-end-times")
-def admin_clean_bin_end_times(db: Session = Depends(get_db)):
+def admin_clean_bin_end_times(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """One-shot: BIN listings with end_time > now+60 days are leftover
     placeholders from old scraper code that was never updated. eBay BINs
     are GTC-renewed every 30 days, so anything past that is stale —
@@ -4337,8 +4343,18 @@ frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"
 if os.path.exists(frontend_dist):
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
 
+    # Paths that must NEVER fall through to the SPA — these should return a
+    # real 404 (or be handled by a registered route). Without this guard, a
+    # broken/typoed API call returns 200 + index.html, JSON.parse() fails, and
+    # the UI silently shows empty data instead of an error users can debug.
+    _NON_SPA_PREFIXES = ("api/", "og/", "ws")
+    _NON_SPA_EXACT = {"sitemap.xml", "robots.txt", "feed.xml", "manifest.json"}
+
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
+        if full_path in _NON_SPA_EXACT or full_path.startswith(_NON_SPA_PREFIXES):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
         return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
