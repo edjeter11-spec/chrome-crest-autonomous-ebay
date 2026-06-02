@@ -113,11 +113,11 @@
     },
     {
       "path": "/api/cron/sync-fresh-bins",
-      "schedule": "*/1 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/sniper/check",
-      "schedule": "*/2 * * * *"
+      "schedule": "*/10 * * * *"
     },
     {
       "path": "/api/ebay/refresh-top-page",
