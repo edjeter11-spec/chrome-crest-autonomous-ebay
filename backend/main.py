@@ -1732,6 +1732,78 @@ async def _do_imminent_sync(db: Session, window_min: int = 90) -> dict:
     }
 
 
+async def _do_fresh_bin_sync(db: Session, page_size: int = 100) -> dict:
+    """Pull the most-recently-listed BIN (Buy-It-Now) F1 cards from eBay so the
+    snipe-matcher can react to new underpriced listings within ~1 min.
+
+    Why this exists: /api/cron/sync-imminent is auction-only (ending soon),
+    /api/cron/sync runs every 2h. Between them, brand-new BINs posted at, say,
+    $89 when the comp median is $220 would sit invisible for up to 2 hours,
+    long enough for any other collector to grab them. This cron + the bumped
+    /api/sniper/check cadence (*/2 min) closes that window to under 3 min.
+
+    Single Browse API call per fire (limit=100, sort=newlyListed, BIN-only) =
+    ~1440/day, well under the 5000/day Browse API quota.
+    Returns {fetched, added, updated, api_calls}."""
+    from ebay_api import (
+        search_f1_cards,
+        parse_ebay_item,
+        _is_valid_2025_f1_listing,
+        _is_rate_limited,
+    )
+    from scraper import _upsert_listings, recompute_snipe_eligibility
+
+    if _is_rate_limited():
+        return {"ok": False, "reason": "rate_limited", "fetched": 0, "added": 0, "updated": 0, "api_calls": 0}
+
+    api_calls = 0
+    try:
+        items = await search_f1_cards(
+            query="2025 Topps Chrome F1",
+            limit=page_size,
+            sort="newlyListed",
+            buying_options_filter="buyingOptions:{FIXED_PRICE}",
+        )
+        api_calls = 1
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200], "api_calls": 0}
+
+    parsed: list = []
+    seen_ids: set = set()
+    for it in items or []:
+        iid = it.get("itemId", "")
+        title = it.get("title", "")
+        if iid and iid not in seen_ids and _is_valid_2025_f1_listing(title):
+            seen_ids.add(iid)
+            parsed.append(parse_ebay_item(it))
+
+    added, updated = _upsert_listings(db, parsed)
+    db.commit()
+
+    # Recompute snipe flags so anything just inserted gets surfaced and the
+    # */2-min /api/sniper/check picks it up on the very next fire.
+    try:
+        recompute_snipe_eligibility(db)
+    except Exception as _re:
+        import logging as _log
+        _log.getLogger("fresh_bin").warning(f"snipe recompute failed: {_re}")
+
+    return {"ok": True, "fetched": len(parsed), "added": added, "updated": updated, "api_calls": api_calls}
+
+
+@app.get("/api/cron/sync-fresh-bins")
+async def cron_sync_fresh_bins(db: Session = Depends(get_db)):
+    """Every-minute fetch of newly-listed BIN F1 cards. Pair with the */2 min
+    /api/sniper/check so underpriced BINs trigger a push within ~3 min of going
+    live on eBay."""
+    if not has_real_credentials():
+        return {"ok": False, "reason": "no_credentials"}
+    try:
+        return await _do_fresh_bin_sync(db)
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 @app.get("/api/cron/sync-imminent")
 async def cron_sync_imminent(db: Session = Depends(get_db)):
     """Tight loop: pull only auctions ending in next 90 minutes.
