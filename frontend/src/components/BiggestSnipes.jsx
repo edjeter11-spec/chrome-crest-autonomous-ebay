@@ -66,6 +66,12 @@ function parsePrintRun(title) {
 }
 
 function isBigSnipe(a, maxSecs) {
+  // Drop anything backend has marked non-active (sold/ended/cancelled).
+  // The end_time check below catches "ended naturally," but BIN-with-auction
+  // listings sold via BIN, cancelled listings, and stale rows can still have
+  // a future end_time while `status !== 'active'` — they were leaking into
+  // Biggest Snipes as "sold Kimi card still shown" ghosts.
+  if (a.status && a.status !== 'active') return false
   const secs = secsLeft(a)
   if (secs <= 0 || secs > maxSecs) return false
   const price = a.current_price || 0
@@ -340,6 +346,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
     // picks up the 2h-24h horizon — what to set alerts for next.
     return (auctions || [])
       .filter(a => {
+        if (a.status && a.status !== 'active') return false  // skip sold/ended/cancelled ghosts
         if (!hasImage(a)) return false
         const bo = a.buying_options || []
         if (!bo.includes('AUCTION')) return false

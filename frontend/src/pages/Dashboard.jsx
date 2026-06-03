@@ -254,9 +254,14 @@ export default function Dashboard() {
         try {
           const all = applySeasonFilter(asArray(d, 'sales')) || []
           const notable = (all || []).filter(isNotable)
-          // Sales feed (15 most recent / notable)
+          // Sales feed (15 most recent / notable). Filter to rows with real
+          // images here (not at render) so the "No notable sales yet today"
+          // empty-state check actually fires when every row was filtered out
+          // — previously sales.length>0 but post-filter rendered nothing,
+          // leaving the section silently blank.
           const feed = notable.length >= 5 ? notable : all
-          setSales((feed || []).slice(0, 15))
+          const withImages = (feed || []).filter(s => s && s.image_url && !String(s.image_url).includes('placehold'))
+          setSales(withImages.slice(0, 15))
           // Scrolling ticker (10 notable)
           setTicker((notable.length >= 3 ? notable : all).slice(0, 10))
           // Big wins (>= $100) — cap to max 2 per driver so one hot driver
