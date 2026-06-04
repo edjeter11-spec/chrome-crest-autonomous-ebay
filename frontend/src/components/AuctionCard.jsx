@@ -335,6 +335,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
   const hasBIN = opts.includes('FIXED_PRICE') || auction.buy_now_price > 0
   const hasBestOffer = opts.includes('BEST_OFFER')
   const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
+  const driverName = auction.card?.driver_name || auction.driver_name
 
   // Build "vs typical price" pill + verdict badge — plain-English so non-technical
   // visitors immediately get whether this is a deal.
