@@ -904,7 +904,7 @@ export default function Dashboard() {
           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
             {(endingStrip || []).filter(Boolean).map((a, i) => (
               <div key={a?.id ?? i} className="w-[78vw] max-w-[300px] sm:w-64 shrink-0 snap-start">
-                <AuctionCard auction={a} onClick={() => setDetailAuction(a)} />
+                <AuctionCard auction={a} onClick={() => setDetailAuction(a)} priority={i < 3} />
               </div>
             ))}
           </div>

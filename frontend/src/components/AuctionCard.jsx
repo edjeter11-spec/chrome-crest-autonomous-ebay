@@ -263,7 +263,7 @@ function CardImageFallback({ teamColor, driverName }) {
   )
 }
 
-function ImageCarousel({ images, title, driverName, teamColor }) {
+function ImageCarousel({ images, title, driverName, teamColor, priority = false }) {
   const [idx, setIdx] = useState(0)
   const [failed, setFailed] = useState(new Set())
   const [retried, setRetried] = useState(new Set())
@@ -284,7 +284,8 @@ function ImageCarousel({ images, title, driverName, teamColor }) {
       <img
         src={displayable[safeIdx]}
         alt={title}
-        loading="lazy"
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : 'auto'}
         className="w-full h-full object-cover"
         onError={e => {
           const failedUrl = e.target.src
@@ -452,6 +453,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
             rel="sponsored noopener"
+            aria-label={`Buy ${driverName || 'this card'} on eBay for $${auction.buy_now_price?.toFixed(2)}`}
             className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white text-xs font-bold rounded-lg transition-colors"
           >
             <Tag size={10} />
@@ -463,6 +465,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
             rel="sponsored noopener"
+            aria-label={`Make an offer for ${driverName || 'this card'} on eBay`}
             className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 bg-blue-800/80 hover:bg-blue-700 active:bg-blue-900 text-blue-200 text-xs font-bold rounded-lg transition-colors border border-blue-700/50"
           >
             <MessageSquare size={10} />
@@ -474,6 +477,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             href={ebayAffiliateUrl(auction.ebay_url)}
             target="_blank"
             rel="sponsored noopener"
+            aria-label={hasAuction ? `Bid on ${driverName || 'this card'} on eBay` : `View ${driverName || 'this card'} on eBay`}
             className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-1.5 bg-gray-800 hover:bg-gray-700 active:bg-gray-900 text-gray-400 hover:text-gray-200 text-xs font-medium rounded-lg transition-colors"
           >
             {hasAuction ? <><Gavel size={10} /> Bid on eBay</> : <><ExternalLink size={10} /> View on eBay</>}
@@ -713,7 +717,7 @@ function computeSecsLeft(auction) {
   return auction.time_left || 0
 }
 
-export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry }) {
+export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry, priority = false }) {
   // Default click handler — keeps legacy "card click → eBay" behavior for any
   // caller that hasn't migrated to the in-app detail modal yet.
   const handleCardClick = onClick || (() => {
@@ -988,6 +992,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           title={auction.title}
           driverName={auction.card?.driver_name}
           teamColor={auction.card?.team_color}
+          priority={priority}
         />
 
         {/* Driver photo badge (top-left) */}
