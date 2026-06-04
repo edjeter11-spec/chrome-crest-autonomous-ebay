@@ -139,8 +139,16 @@ _MEDIAN_TTL_SEC = 300
 # Persistent precomputed-median table is fresh enough to trust for 48h.
 # Refresh cron at /api/cron/refresh-comp-medians runs daily at 04:15 UTC.
 _COMP_MEDIAN_MAX_AGE_SEC = 48 * 3600
+# Hard cap on how many Step-3 (live `sold_cards` aggregation) median lookups a
+# single with-verdicts request may perform. Steps 1 & 2 (in-memory + precomputed
+# table) are uncapped because they're cheap. The cap exists so that if the
+# `comp_medians` table goes stale/empty (e.g. the refresh cron didn't fire on
+# Vercel Hobby), a 500-row page degrades to "first N get verdicts, rest render
+# without" — returning in seconds — instead of firing 500 heavy queries and
+# timing out the lambda, which is what took BIN + dashboard down on 2026-06-04.
+_LIVE_MEDIAN_BUDGET = 40
 
-def _cached_median(db, driver, parallel, grade):
+def _cached_median(db, driver, parallel, grade, live_budget=None):
     """Return (median_total, n_comps) for this (driver, parallel, grade).
 
     Lookup order (fastest → slowest):
@@ -151,6 +159,11 @@ def _cached_median(db, driver, parallel, grade):
       3. Live `median_comp_price()` against `sold_cards` — fallback when
          the precompute is missing or stale. Result is written back to
          `comp_medians` so the next call within 48h hits step 2.
+
+    `live_budget` is an optional 1-element list used as a mutable counter by
+    the caller to bound how many Step-3 computations happen per request. When
+    it reaches 0, Step 3 is skipped and (None, 0) is returned so the feed
+    degrades gracefully instead of hanging. Steps 1 & 2 ignore the budget.
     """
     from scraper import median_comp_price
     from database import CompMedian
@@ -184,7 +197,13 @@ def _cached_median(db, driver, parallel, grade):
         logging.getLogger("auctions").debug(f"comp_medians lookup failed: {_cm_err}")
 
     # Step 3: fallback to live computation, then backfill comp_medians so the
-    # next caller hits the persistent layer.
+    # next caller hits the persistent layer. Gated by the per-request live
+    # budget — once exhausted we skip the expensive scan and return no comp so
+    # the overall request can't be dragged past the lambda timeout.
+    if live_budget is not None:
+        if live_budget[0] <= 0:
+            return (None, 0)
+        live_budget[0] -= 1
     med, n = median_comp_price(db, driver, parallel, grade)
     _MEDIAN_CACHE[k] = (med, n, now + _MEDIAN_TTL_SEC)
     if med is not None and n > 0:
@@ -297,6 +316,10 @@ def list_with_verdicts(
 
     out = []
     strong_buy = good_buy = 0
+    # Shared, mutable per-request budget for live (Step-3) median lookups. See
+    # _LIVE_MEDIAN_BUDGET. Steps 1 & 2 stay uncapped; only the expensive scan
+    # path draws this down, so a stale precompute table can't hang the feed.
+    live_budget = [_LIVE_MEDIAN_BUDGET]
     for a in rows:
         try:
             d = auction_to_dict(a)
@@ -311,7 +334,7 @@ def list_with_verdicts(
         comp_block = None
         if driver_name:
             try:
-                median, n_comps = _cached_median(db, driver_name, parallel, grade)
+                median, n_comps = _cached_median(db, driver_name, parallel, grade, live_budget=live_budget)
             except Exception as _comp_err:
                 # Verdict comp fetch shouldn't break the whole feed —
                 # surface the listing without a verdict and move on.
