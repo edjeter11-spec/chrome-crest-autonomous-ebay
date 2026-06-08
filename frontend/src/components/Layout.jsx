@@ -498,7 +498,7 @@ function TopRightMenu({ user, signOut, onHelp }) {
 
   if (user) {
     return (
-      <div className="fixed top-3 right-3 md:top-4 md:right-4 z-40">
+      <div className="fixed top-[calc(env(safe-area-inset-top,0px)+0.75rem)] right-3 md:top-4 md:right-4 z-40">
         <button
           onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
           className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
@@ -532,7 +532,7 @@ function TopRightMenu({ user, signOut, onHelp }) {
   }
 
   return (
-    <div className="fixed top-3 right-3 md:top-4 md:right-4 z-40 flex items-center gap-2">
+    <div className="fixed top-[calc(env(safe-area-inset-top,0px)+0.75rem)] right-3 md:top-4 md:right-4 z-40 flex items-center gap-2">
       <Link
         to="/login"
         className="inline-flex items-center justify-center px-4 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 rounded-full text-xs font-bold bg-red-600 text-white border border-red-500 hover:bg-red-500 shadow-md shadow-red-900/40"
