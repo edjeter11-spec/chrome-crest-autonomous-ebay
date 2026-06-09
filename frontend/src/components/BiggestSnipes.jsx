@@ -334,24 +334,29 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
     if (strict.length > 0) return strict
 
     // Eddie's directive (2026-06-08): "there always should be something in
-    // biggest snipes." When no auction matches the strict <2h window, fall
-    // back to a relaxed view: best-scoring active listings with an image,
-    // ending in the next 24h. Ranks by verdict then snipe_score so the most
-    // interesting cards still float to the top.
+    // biggest snipes" — BUT it has to actually feel urgent. 24h is too loose
+    // (that's already the "Next Big Auctions" section). Fallback window is
+    // 4h: still ending today, snipe-eligible-feel, but doesn't duplicate the
+    // Next Big strip. Ranks ending-soonest first, then newest-listed (proxy
+    // for "new shit" that just hit eBay), then snipe_score.
     return (auctions || [])
       .filter(a => {
         if (a.status && a.status !== 'active') return false
         if (!hasImage(a)) return false
+        const bo = a.buying_options || []
+        if (!bo.includes('AUCTION')) return false
         const secs = secsLeft(a)
-        if (secs <= 0 || secs > 24 * 3600) return false
-        return true
+        return secs > 0 && secs <= 4 * 3600
       })
       .sort((a, b) => {
-        const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
-        if (vr !== 0) return vr
-        const s = (b.snipe_score || 0) - (a.snipe_score || 0)
-        if (s !== 0) return s
-        return secsLeft(a) - secsLeft(b)
+        // Closest to ending first
+        const sL = secsLeft(a) - secsLeft(b)
+        if (sL !== 0) return sL
+        // Then newest-listed first (created_at DESC)
+        const ca = a.created_at ? new Date(a.created_at).getTime() : 0
+        const cb = b.created_at ? new Date(b.created_at).getTime() : 0
+        if (ca !== cb) return cb - ca
+        return (b.snipe_score || 0) - (a.snipe_score || 0)
       })
       .slice(0, 6)
   }, [auctions, nowTick])
