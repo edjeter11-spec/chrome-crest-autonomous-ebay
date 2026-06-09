@@ -333,26 +333,23 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
 
     if (strict.length > 0) return strict
 
-    // Eddie's directive (2026-06-08): "there always should be something in
-    // biggest snipes" — BUT it has to actually feel urgent. 24h is too loose
-    // (that's already the "Next Big Auctions" section). Fallback window is
-    // 4h: still ending today, snipe-eligible-feel, but doesn't duplicate the
-    // Next Big strip. Ranks ending-soonest first, then newest-listed (proxy
-    // for "new shit" that just hit eBay), then snipe_score.
+    // Fallback: most-urgent auctions regardless of window. Hard windows
+    // (<2h, <4h, <24h) all fail when the F1 catalog runs 5-7-day auctions,
+    // which is the typical state. Showing "closest 6 to ending" guarantees
+    // the section is never empty while still prioritizing urgency. Ties
+    // broken by newest-listed so just-hit-eBay listings ('new shit') float
+    // up vs older inventory.
     return (auctions || [])
       .filter(a => {
         if (a.status && a.status !== 'active') return false
         if (!hasImage(a)) return false
         const bo = a.buying_options || []
         if (!bo.includes('AUCTION')) return false
-        const secs = secsLeft(a)
-        return secs > 0 && secs <= 4 * 3600
+        return secsLeft(a) > 0
       })
       .sort((a, b) => {
-        // Closest to ending first
         const sL = secsLeft(a) - secsLeft(b)
         if (sL !== 0) return sL
-        // Then newest-listed first (created_at DESC)
         const ca = a.created_at ? new Date(a.created_at).getTime() : 0
         const cb = b.created_at ? new Date(b.created_at).getTime() : 0
         if (ca !== cb) return cb - ca
