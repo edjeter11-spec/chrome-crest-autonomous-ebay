@@ -107,7 +107,6 @@ const Privacy = lazyWithRetry(() => import('./pages/Privacy'))
 const Arbitrage = lazyWithRetry(() => import('./pages/Arbitrage'))
 const GradeProfit = lazyWithRetry(() => import('./pages/GradeProfit'))
 const Sniper = lazyWithRetry(() => import('./pages/Sniper'))
-const Volatility = lazyWithRetry(() => import('./pages/Volatility'))
 const Releases = lazyWithRetry(() => import('./pages/Releases'))
 const Indices = lazyWithRetry(() => import('./pages/Indices'))
 const DriverGuide = lazyWithRetry(() => import('./pages/DriverGuide'))
@@ -162,7 +161,6 @@ export default function App() {
           <Route path="arbitrage" element={<Suspense fallback={<PageFallback />}><Arbitrage /></Suspense>} />
           <Route path="grade-profit" element={<Navigate to="/arbitrage?tab=grade" replace />} />
           <Route path="sniper" element={<Suspense fallback={<PageFallback />}><Sniper /></Suspense>} />
-          <Route path="volatility" element={<Suspense fallback={<PageFallback />}><Volatility /></Suspense>} />
           <Route path="releases" element={<Suspense fallback={<PageFallback />}><Releases /></Suspense>} />
           <Route path="indices" element={<Suspense fallback={<PageFallback />}><Indices /></Suspense>} />
           <Route path="drivers/:slug/guide" element={<Suspense fallback={<PageFallback />}><DriverGuide /></Suspense>} />

@@ -314,9 +314,9 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
     // the urgency window where the price has settled and you can grab cheap.
     // Snipes are bid auctions, not BIN — STRONG_BUY verdicts on BIN listings
     // are valid info but they're not "snipes" (different concept).
-    return (auctions || [])
+    const strict = (auctions || [])
       .filter(a => {
-        // Eddie's directive: hide rows that don't have a real card photo.
+        if (a.status && a.status !== 'active') return false
         if (!hasImage(a)) return false
         const bo = a.buying_options || []
         if (!bo.includes('AUCTION')) return false
@@ -330,6 +330,30 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
         return secsLeft(a) - secsLeft(b)
       })
       .slice(0, 12)
+
+    if (strict.length > 0) return strict
+
+    // Eddie's directive (2026-06-08): "there always should be something in
+    // biggest snipes." When no auction matches the strict <2h window, fall
+    // back to a relaxed view: best-scoring active listings with an image,
+    // ending in the next 24h. Ranks by verdict then snipe_score so the most
+    // interesting cards still float to the top.
+    return (auctions || [])
+      .filter(a => {
+        if (a.status && a.status !== 'active') return false
+        if (!hasImage(a)) return false
+        const secs = secsLeft(a)
+        if (secs <= 0 || secs > 24 * 3600) return false
+        return true
+      })
+      .sort((a, b) => {
+        const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
+        if (vr !== 0) return vr
+        const s = (b.snipe_score || 0) - (a.snipe_score || 0)
+        if (s !== 0) return s
+        return secsLeft(a) - secsLeft(b)
+      })
+      .slice(0, 6)
   }, [auctions, nowTick])
 
   // "Next Big Auctions" is meant to show what's coming — be more permissive

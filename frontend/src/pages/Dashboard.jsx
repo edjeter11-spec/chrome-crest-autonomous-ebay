@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import {
   Gavel, Flame, Database, DollarSign, Zap, Activity,
   RefreshCw, Clock, TrendingUp, Users, Layers, ExternalLink,
-  AlertTriangle, ChevronRight, ChevronDown, Shield, BellRing, Target
+  AlertTriangle, ChevronRight, Shield, BellRing, Target
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
@@ -175,17 +175,6 @@ export default function Dashboard() {
   }, [])
   const [lastSync, setLastSync] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
-
-  // Progressive-disclosure: keep the dashboard tight by default; power-user
-  // analytics (latest sales, big wins, ending strip, hot snipes, scraper
-  // telemetry) live behind a single "Show more analytics" toggle. Persisted
-  // in localStorage so the choice sticks across visits.
-  const [advancedOpen, setAdvancedOpen] = useState(() => {
-    try { return window.localStorage.getItem('cc_dashboard_advanced_open') === '1' } catch { return false }
-  })
-  useEffect(() => {
-    try { window.localStorage.setItem('cc_dashboard_advanced_open', advancedOpen ? '1' : '0') } catch {}
-  }, [advancedOpen])
 
   // "Welcome back" delta strip — computed once on first mount
   const [welcomeDelta, setWelcomeDelta] = useState(null)
@@ -706,26 +695,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* "Show more analytics" disclosure — secondary feeds (latest sales, big
-          wins, biggest snipes, ending strip, hot snipes, scraper telemetry)
-          live behind a single toggle so the default landing is uncluttered. */}
-      <button
-        type="button"
-        onClick={() => setAdvancedOpen(v => !v)}
-        aria-expanded={advancedOpen}
-        className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-gray-300 hover:bg-gray-800 w-full text-left flex items-center justify-between"
-      >
-        <span className="font-bold text-sm">
-          {advancedOpen ? 'Hide analytics' : 'Show more analytics'}
-        </span>
-        <ChevronDown
-          size={16}
-          className={`transition-transform duration-200 ${advancedOpen ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {advancedOpen && (
-      <>
+      {/* Analytics sections (biggest snipes, ending strip, latest sales,
+          hot snipes, scraper telemetry) — always visible per Eddie's 2026-06-08
+          directive. Previously gated behind a "Show more analytics" toggle. */}
       {/* Biggest Snipes + Next Big Auctions */}
       <SectionBoundary>
         <Suspense fallback={<div className="h-32" />}>
@@ -960,8 +932,6 @@ export default function Dashboard() {
             )
           })}
         </div>
-      )}
-      </>
       )}
     </div>
   )

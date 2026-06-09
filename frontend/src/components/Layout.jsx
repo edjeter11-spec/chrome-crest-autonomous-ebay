@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
   Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Camera,
-  ArrowLeftRight, Calculator, Sun, Moon, Target, Activity, Home, Flame
+  ArrowLeftRight, Calculator, Sun, Moon, Target, Home, Flame
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 // Heavy one-off modals: lazy-loaded so first paint doesn't pay for code 99% of users never see.
@@ -42,7 +42,6 @@ const NAV = [
   { to: '/wishlist', label: 'Watchlist', icon: Heart },
   { to: '/grade', label: 'AI Grader', icon: Sparkles },
   { to: '/arbitrage', label: 'Arbitrage', icon: ArrowLeftRight },
-  { to: '/volatility', label: 'Volatility', icon: Activity },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/sniper', label: 'Auto Bid', icon: Target },
   { to: '/affiliate-roi', label: 'Affiliate ROI', icon: TrendingUp },
