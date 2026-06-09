@@ -49,6 +49,12 @@ function perRouteHtml() {
         html = html.replace(/property="og:title" content="[^"]*"/, `property="og:title" content="${title}"`)
         html = html.replace(/property="og:description" content="[^"]*"/, `property="og:description" content="${desc}"`)
         html = html.replace(/property="og:url" content="[^"]*"/, `property="og:url" content="${url}"`)
+        // og:image absolute URL — social crawlers (FB/LinkedIn/Discord) require absolute.
+        // Until per-route OG images are generated, every route points at the same
+        // /og-image.png. To add a per-route image later: extend the ROUTES entry with
+        // `og: '/og-sales.png'` (or similar) and replace the path below with `r.og || '/og-image.png'`.
+        html = html.replace(/property="og:image" content="[^"]*"/, `property="og:image" content="https://www.f1cardvault.com/og-image.png"`)
+        html = html.replace(/name="twitter:image" content="[^"]*"/, `name="twitter:image" content="https://www.f1cardvault.com/og-image.png"`)
         html = html.replace(/name="twitter:title" content="[^"]*"/, `name="twitter:title" content="${title}"`)
         html = html.replace(/name="twitter:description" content="[^"]*"/, `name="twitter:description" content="${desc}"`)
         html = html.replace(/name="twitter:url" content="[^"]*"/, `name="twitter:url" content="${url}"`)

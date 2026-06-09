@@ -1294,61 +1294,15 @@ def get_watchlist(db: Session = Depends(get_db)):
 
 @app.post("/api/auctions/{auction_id}/execute-snipe")
 async def execute_snipe(auction_id: int, body: dict, db: Session = Depends(get_db)):
-    """Execute a snipe bid on eBay. Requires max_bid in body."""
-    a = db.query(Auction).filter(Auction.id == auction_id).first()
-    if not a:
-        from fastapi import HTTPException
-        raise HTTPException(404, "Auction not found")
-
-    max_bid = float(body.get("max_bid", 0))
-    if max_bid <= 0:
-        from fastapi import HTTPException
-        raise HTTPException(400, "max_bid must be > 0")
-
-    # Check for eBay user OAuth token (Trading API)
-    user_token = os.getenv("EBAY_USER_TOKEN", "")
-    if not user_token:
-        return {
-            "status": "no_credentials",
-            "message": "EBAY_USER_TOKEN not set. Add your eBay OAuth user token to place real bids.",
-            "auction_id": auction_id,
-            "ebay_url": a.ebay_url,
-            "max_bid": max_bid,
-        }
-
-    # Call eBay Trading API PlaceBid
-    import httpx
-    item_id = a.ebay_listing_id.split("|")[1] if "|" in a.ebay_listing_id else a.ebay_listing_id
-    xml_body = f"""<?xml version="1.0" encoding="utf-8"?>
-<PlaceOfferRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <RequesterCredentials><eBayAuthToken>{user_token}</eBayAuthToken></RequesterCredentials>
-  <ItemID>{item_id}</ItemID>
-  <Offer>
-    <Action>Bid</Action>
-    <MaxBid currencyID="USD">{max_bid:.2f}</MaxBid>
-    <Quantity>1</Quantity>
-  </Offer>
-</PlaceOfferRequest>"""
-    headers = {
-        "X-EBAY-API-CALL-NAME": "PlaceOffer",
-        "X-EBAY-API-SITEID": "0",
-        "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
-        "X-EBAY-API-APP-NAME": os.getenv("EBAY_APP_ID", ""),
-        "X-EBAY-API-DEV-NAME": os.getenv("EBAY_DEV_ID", ""),
-        "X-EBAY-API-CERT-NAME": os.getenv("EBAY_CERT_ID", ""),
-        "Content-Type": "text/xml",
-    }
-    async with httpx.AsyncClient() as client:
-        resp = await client.post("https://api.ebay.com/ws/api.dll", content=xml_body, headers=headers, timeout=15)
-
-    success = "Success" in resp.text or "BidPlaced" in resp.text
-    return {
-        "status": "bid_placed" if success else "bid_failed",
-        "auction_id": auction_id,
-        "item_id": item_id,
-        "max_bid": max_bid,
-        "ebay_response_snippet": resp.text[:300],
-    }
+    """DISABLED 2026-06-08 — unauth bid-placing endpoint. Reads EBAY_USER_TOKEN
+    env and calls eBay PlaceOffer, but has NO per-user auth, so any visitor
+    could place bids paid by the operator's eBay account the moment that env
+    var gets set. Returning 503 until proper auth is implemented per the
+    checklist documented in routers/auctions.py:464-476 (Supabase JWT verify
+    + per-user eBay OAuth linkage + ownership check). Comment-only fix; the
+    handler signature stays so frontend stubs / monitoring don't 404."""
+    from fastapi import HTTPException
+    raise HTTPException(503, "execute-snipe disabled: needs per-user auth + eBay OAuth linking; see routers/auctions.py:464")
 
 
 @app.websocket("/ws")
@@ -1730,78 +1684,6 @@ async def _do_imminent_sync(db: Session, window_min: int = 90) -> dict:
         "api_calls": api_calls,
         "queries_used": len(SEARCH_QUERIES),
     }
-
-
-async def _do_fresh_bin_sync(db: Session, page_size: int = 100) -> dict:
-    """Pull the most-recently-listed BIN (Buy-It-Now) F1 cards from eBay so the
-    snipe-matcher can react to new underpriced listings within ~1 min.
-
-    Why this exists: /api/cron/sync-imminent is auction-only (ending soon),
-    /api/cron/sync runs every 2h. Between them, brand-new BINs posted at, say,
-    $89 when the comp median is $220 would sit invisible for up to 2 hours,
-    long enough for any other collector to grab them. This cron + the bumped
-    /api/sniper/check cadence (*/2 min) closes that window to under 3 min.
-
-    Single Browse API call per fire (limit=100, sort=newlyListed, BIN-only) =
-    ~1440/day, well under the 5000/day Browse API quota.
-    Returns {fetched, added, updated, api_calls}."""
-    from ebay_api import (
-        search_f1_cards,
-        parse_ebay_item,
-        _is_valid_2025_f1_listing,
-        _is_rate_limited,
-    )
-    from scraper import _upsert_listings, recompute_snipe_eligibility
-
-    if _is_rate_limited():
-        return {"ok": False, "reason": "rate_limited", "fetched": 0, "added": 0, "updated": 0, "api_calls": 0}
-
-    api_calls = 0
-    try:
-        items = await search_f1_cards(
-            query="2025 Topps Chrome F1",
-            limit=page_size,
-            sort="newlyListed",
-            buying_options_filter="buyingOptions:{FIXED_PRICE}",
-        )
-        api_calls = 1
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:200], "api_calls": 0}
-
-    parsed: list = []
-    seen_ids: set = set()
-    for it in items or []:
-        iid = it.get("itemId", "")
-        title = it.get("title", "")
-        if iid and iid not in seen_ids and _is_valid_2025_f1_listing(title):
-            seen_ids.add(iid)
-            parsed.append(parse_ebay_item(it))
-
-    added, updated = _upsert_listings(db, parsed)
-    db.commit()
-
-    # Recompute snipe flags so anything just inserted gets surfaced and the
-    # */2-min /api/sniper/check picks it up on the very next fire.
-    try:
-        recompute_snipe_eligibility(db)
-    except Exception as _re:
-        import logging as _log
-        _log.getLogger("fresh_bin").warning(f"snipe recompute failed: {_re}")
-
-    return {"ok": True, "fetched": len(parsed), "added": added, "updated": updated, "api_calls": api_calls}
-
-
-@app.get("/api/cron/sync-fresh-bins")
-async def cron_sync_fresh_bins(db: Session = Depends(get_db)):
-    """Every-minute fetch of newly-listed BIN F1 cards. Pair with the */2 min
-    /api/sniper/check so underpriced BINs trigger a push within ~3 min of going
-    live on eBay."""
-    if not has_real_credentials():
-        return {"ok": False, "reason": "no_credentials"}
-    try:
-        return await _do_fresh_bin_sync(db)
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:200]}
 
 
 @app.get("/api/cron/sync-imminent")

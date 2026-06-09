@@ -2,9 +2,9 @@ import { Outlet, NavLink, useLocation, Link } from 'react-router-dom'
 import { useState, useEffect, lazy, Suspense } from 'react'
 import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
-  Bell, BarChart3, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
-  Database, BellRing, HelpCircle, ListChecks, Package, Sparkles, User, ShieldAlert, Scale, Camera,
-  ArrowLeftRight, Calculator, Sun, Moon, Target, Home, Flame
+  Bell, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
+  Database, BellRing, HelpCircle, Sparkles, User,
+  ArrowLeftRight, Sun, Moon, Target, Home, Flame
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 // Heavy one-off modals: lazy-loaded so first paint doesn't pay for code 99% of users never see.
