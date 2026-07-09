@@ -1883,23 +1883,23 @@ async def cron_keepalive(request: Request):
             return {"ok": False, "error": "unauthorized"}
 
     base = "https://f1cardvault.com"
-    # Minimal warming: hit the two heavy endpoints + sales/stats. These three
-    # are the cold-start spikes users actually feel (3.8s + 2.0s respectively).
-    # Earlier version warmed 4 endpoints every 4 min = 1,800 invocations/day.
-    # This one warms 3 every 4 min = 1,080/day, still cheap.
+    # Warming trimmed 2026-07-07 after the Neon data-transfer quota was exceeded.
+    # Root cause: this warmed 8 endpoints — including two limit=500 full-payload
+    # queries + sales?limit=500 — every 4 min, ~360 heavy fetches/day moving GBs
+    # of rows whether or not anyone was on the site. The CDN cache is only
+    # s-maxage=60 while this ran every 240s, so the big fetches expired long
+    # before each warm and barely prevented cold-starts. Now: only the small,
+    # cheap endpoints + the mobile-sized limit=100 dashboard (first paint). The
+    # heavy limit=500 desktop pages cold-start on first visit (~3.8s, rare) —
+    # an acceptable trade to stop blowing the DB transfer budget. Schedule also
+    # relaxed to */15 in vercel.json.
     targets = [
-        # Mobile dashboard now fetches limit=100 (5x smaller payload). Warm
-        # both these URLs so first paint hits CDN cache instead of cold backend.
+        # Mobile dashboard first paint (limit=100 = ~5x smaller payload than 500).
         "/api/auctions/with-verdicts?limit=100",
         "/api/auctions/with-verdicts?buying=auction&limit=100",
-        # Desktop/legacy callers still hit limit=500 (Auctions/BuyItNow pages);
-        # keep them warm too.
-        "/api/auctions/with-verdicts?limit=500",
-        "/api/auctions/with-verdicts?buying=auction&limit=500",
-        # Other home-critical endpoints that were hitting cold every visit:
-        "/api/sales?limit=500&year=2025",                         # Sales feed + ticker + wins + 7d count
+        # Small/cheap endpoints — negligible transfer, real cold-start wins:
         "/api/sniper/fresh-snipes/6",                             # Dashboard snipes strip
-        "/api/sales/stats",                                       # Sales dashboard summary
+        "/api/sales/stats",                                       # Pre-aggregated summary (small)
         "/api/health",                                            # Cheap baseline ping
     ]
     results = []

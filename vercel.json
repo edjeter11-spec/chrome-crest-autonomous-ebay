@@ -124,7 +124,7 @@
   "crons": [
     {
       "path": "/api/cron/keepalive",
-      "schedule": "*/4 * * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/sync",

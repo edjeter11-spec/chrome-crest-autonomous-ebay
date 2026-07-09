@@ -675,14 +675,16 @@ def _upsert_listings(db: Session, listings: list[dict]) -> tuple[int, int]:
 async def sync_real_ebay_listings(db: Session, return_full_stats: bool = False):
     """Fetch live eBay listings and upsert into database. Returns count of new listings added.
     Pass return_full_stats=True to get a dict with added + updated + fetched counts."""
-    # Purge all non-2025 or ended auctions first
-    stale = db.query(Auction).filter(Auction.status == "active").all()
-    purged = 0
-    for a in stale:
-        if not _is_2025_f1_title(a.title or ""):
-            db.delete(a)
-            purged += 1
+    # Purge all non-2025 or ended auctions first.
+    # Project to (id, title) only — pulling full Auction rows here moved ~25
+    # columns per active listing over the wire every sync just to read the
+    # title, a meaningful chunk of the Neon data-transfer budget. Delete the
+    # non-2025 ids in one bulk statement instead of per-row ORM deletes.
+    stale = db.query(Auction.id, Auction.title).filter(Auction.status == "active").all()
+    stale_ids = [row.id for row in stale if not _is_2025_f1_title(row.title or "")]
+    purged = len(stale_ids)
     if purged:
+        db.query(Auction).filter(Auction.id.in_(stale_ids)).delete(synchronize_session=False)
         db.commit()
         logger.info(f"Purged {purged} non-2025 listings from DB")
 
