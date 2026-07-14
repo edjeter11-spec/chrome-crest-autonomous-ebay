@@ -16,6 +16,7 @@ const FeedbackWidget = lazy(() => import('./FeedbackWidget'))
 import StatusFooter from './StatusFooter'
 import { useAuth } from '../lib/auth'
 import { LogIn, LogOut } from 'lucide-react'
+import Logo, { LogoMark } from './Logo'
 
 // Pick initial theme: respect explicit user choice (cc_theme), else use system pref.
 // Older users skew light mode, so first-visit defaults follow OS preference.
@@ -67,7 +68,6 @@ export default function Layout() {
   const [snipeCount, setSnipeCount] = useState(0)
   const [pushState, setPushState] = useState('idle') // idle | subscribed | busy | unsupported
   const [showTutorial, setShowTutorial] = useState(false)
-  const [logoOk, setLogoOk] = useState(true)
   const [theme, setTheme] = useState(getInitialTheme)
   useEffect(() => {
     try { localStorage.setItem('cc_theme', theme) } catch {}
@@ -221,27 +221,8 @@ export default function Layout() {
     <>
       {/* Logo */}
       <div className={`flex items-center ${collapsed && !mobile ? 'justify-center' : 'justify-between'} px-3 py-4 border-b border-gray-800/60`}>
-        {(!collapsed || mobile) && (
-          <div className="flex flex-col items-start gap-1">
-            {logoOk ? (
-              <img src="/logo.png" alt="F1 Card Vault" className="h-12 w-auto object-contain drop-shadow-[0_4px_12px_rgba(185,28,28,0.35)]" onError={() => setLogoOk(false)} />
-            ) : (
-              <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
-                <span className="text-white text-xs font-black">F1</span>
-              </div>
-            )}
-            <div className="text-[10px] text-gray-500 font-medium light:text-gray-600 pl-1">Topps Chrome F1 Tracker</div>
-          </div>
-        )}
-        {collapsed && !mobile && (
-          logoOk ? (
-            <img src="/logo.png" alt="F1 Card Vault" className="w-10 h-10 object-contain" onError={() => setLogoOk(false)} />
-          ) : (
-            <div className="w-8 h-8 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-900/40">
-              <span className="text-white text-xs font-black">F1</span>
-            </div>
-          )
-        )}
+        {(!collapsed || mobile) && <Logo size={40} />}
+        {collapsed && !mobile && <LogoMark size={34} />}
         {mobile ? (
           <button
             onClick={() => setMobileOpen(false)}
@@ -387,18 +368,7 @@ export default function Layout() {
           >
             <Menu size={22} />
           </button>
-          <div className="flex items-center gap-2">
-            {logoOk ? (
-              <img src="/logo.png" alt="F1 Card Vault" className="h-7 w-auto object-contain" onError={() => setLogoOk(false)} />
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-red-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white text-[9px] font-black">F1</span>
-                </div>
-                <span className="font-black text-white text-sm tracking-tight">F1 Card Vault</span>
-              </div>
-            )}
-          </div>
+          <Logo compact size={26} />
           {snipeCount > 0 ? (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-600/20">
               <Zap size={10} className="text-red-400" fill="currentColor" />

@@ -41,8 +41,7 @@ export default function SignedOutBanner() {
   return (
     <div className="bg-gradient-to-r from-red-900 to-red-700 border border-red-600/40 rounded-xl shadow-lg shadow-red-900/30 px-3 md:px-4 py-2.5 mb-4 flex items-center gap-2 md:gap-3">
       <span className="text-xs md:text-sm font-bold text-white flex-1 leading-snug">
-        <span className="mr-1">🎯</span>
-        Sign in to set snipe alerts, save watchlist, and build your portfolio
+        Sign in to set snipe alerts, save your watchlist, and build your portfolio
       </span>
       <Link
         to="/login"

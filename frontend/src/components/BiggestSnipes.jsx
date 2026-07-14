@@ -453,10 +453,10 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
         <div className="px-4 py-3 border-b border-gray-800/60">
           <h2 className="text-sm font-black text-white flex items-center gap-2">
             <Target size={14} className="text-red-400" />
-            🎯 Biggest Snipes
+            Biggest Snipes
           </h2>
           <div className="text-[10px] text-gray-500 mt-1 font-medium">
-            Ending ≤2h · price has settled, snipe window is now
+            Highest-value auctions ending within 2 hours — the bid window is now
           </div>
         </div>
         <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">
@@ -472,7 +472,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
             ))
           ) : items.length === 0 ? (
             <div className="py-12 text-center text-gray-600 text-sm px-4">
-              No big snipes ending soon — the action is elsewhere right now. Check back in an hour.
+              No qualifying auctions ending in the next 2 hours. High-value listings appear here as their bid window opens.
             </div>
           ) : (
             items.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} onOpen={onAuctionClick} />)
@@ -484,10 +484,10 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
         <div className="px-4 py-3 border-b border-gray-800/60">
           <h2 className="text-sm font-black text-white flex items-center gap-2">
             <Clock size={14} className="text-amber-400" />
-            ⏰ Next Big Auctions
+            Next Big Auctions
           </h2>
           <div className="text-[10px] text-gray-500 mt-1 font-medium">
-            ending 2h–24h · set alerts for these
+            Ending in 2–24 hours — set an alert to catch the close
           </div>
         </div>
         <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">

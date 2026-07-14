@@ -357,7 +357,7 @@ export default function Auctions() {
             }`
           }
         >
-          🔴 Live Auctions
+          Live Auctions
         </NavLink>
         <NavLink
           to="/bin"
@@ -369,7 +369,7 @@ export default function Auctions() {
             }`
           }
         >
-          💰 Buy It Now
+          Buy It Now
         </NavLink>
       </div>
 
@@ -387,7 +387,7 @@ export default function Auctions() {
                 className="text-xs font-bold px-2.5 py-1 rounded-xl bg-orange-600/15 text-orange-300 border border-orange-600/30"
                 title="Auctions ending in the next 60 minutes"
               >
-                ⏳ {endingThisHour} ending this hour
+                {endingThisHour} ending this hour
               </span>
             )}
             {snipeCount > 0 && (
@@ -407,7 +407,7 @@ export default function Auctions() {
                 aria-pressed={filterStrongBuy}
                 title="Filter to strong buys only"
               >
-                🔥 {strongBuyCount} strong buys
+                {strongBuyCount} strong buys
               </button>
             )}
           </>
@@ -462,7 +462,7 @@ export default function Auctions() {
           className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
             filterStrongBuy ? 'bg-green-600/20 text-green-400 border border-green-600/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
-          🔥 Strong Buys
+          Strong Buys
         </button>
 
         <div className="ml-auto flex items-center gap-2">
@@ -543,7 +543,7 @@ export default function Auctions() {
           {/* Secondary toggle pills */}
           {[
             { label: '⭐ First-Year Cards', active: filterRookie, key: 'filterRookie' },
-            { label: '⚡ Snipe Only', active: filterSnipe, key: 'filterSnipe' },
+            { label: 'Snipe Only', active: filterSnipe, key: 'filterSnipe' },
             { label: '🔖 Watchlist', active: filterWatchlist, key: 'filterWatchlist' },
           ].map(({ label, active, key }) => (
             <button key={label} onClick={() => setF({ [key]: !active })}

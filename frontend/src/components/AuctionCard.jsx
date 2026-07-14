@@ -432,11 +432,11 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             <div className="text-right shrink-0">
               <ScoreExplain score={score} type="snipe" auction={auction}>
                 <span
-                  className={`text-base leading-none ${rating.color}`}
-                  title={`Deal score: ${score}/100`}
-                  aria-label={`Deal score ${score} out of 100, ${rating.label}`}
+                  className={`text-base font-black leading-none tabular-nums ${rating.color}`}
+                  title={`Snipe score: ${score}/100`}
+                  aria-label={`Snipe score ${score} out of 100, ${rating.label}`}
                 >
-                  {rating.flames || <span className="text-xs font-bold">·</span>}
+                  {score}
                 </span>
               </ScoreExplain>
               <div className={`text-[10px] uppercase tracking-wide mt-0.5 font-bold ${rating.color}`}>
@@ -585,7 +585,7 @@ function DetailsPanel({ auctionId, onImages }) {
       <div className="flex gap-3 text-xs text-gray-500 flex-wrap">
         {details?.returns_accepted && <span className="text-green-500 font-medium">✓ Returns</span>}
         {details?.item_location && <span>📍 {details.item_location}</span>}
-        {details?.quantity_sold > 0 && <span className="text-orange-400">🔥 {details.quantity_sold} sold</span>}
+        {details?.quantity_sold > 0 && <span className="text-orange-400">{details.quantity_sold} sold</span>}
         {!details?.condition_description && !entries.length && (
           <span className="text-gray-700 italic">Syncing details from eBay…</span>
         )}

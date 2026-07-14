@@ -8,9 +8,8 @@
          ~100-300ms on first card image load (TLS handshake + DNS). -->
     <link rel="preconnect" href="https://i.ebayimg.com" crossorigin>
     <link rel="dns-prefetch" href="https://i.ebayimg.com">
-    <!-- Logo is rendered in the header on every page; preload so it lands
-         in parallel with CSS instead of waiting for JS to mount. -->
-    <link rel="preload" as="image" href="/logo.png" fetchpriority="high">
+    <!-- Logo is now an inline SVG component (src/components/Logo.jsx) — no
+         raster preload needed. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>How We Score F1 Card Auctions — F1 Card Vault</title>
     <meta name="description" content="Methodology behind STRONG_BUY, GOOD_BUY, FAIR, OVERPRICED, PASS verdicts. 90-day median + comp count.">
@@ -60,13 +59,14 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="F1 Card Vault" />
     <link rel="apple-touch-icon" href="/logo.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
     <link rel="alternate" type="application/rss+xml" title="F1 Card Vault Strong Buys" href="/feed.xml" />
-    <script type="module" crossorigin src="/assets/index-CoU1LFgH.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/vendor-DaXjH9f0.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BXxJsUCw.css">
+    <script type="module" crossorigin src="/assets/index-DjSjQ3rU.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-C7I2mrzE.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-DauSJesW.css">
   </head>
   <body>
     <!-- Apply theme before paint to avoid flash-of-wrong-theme.

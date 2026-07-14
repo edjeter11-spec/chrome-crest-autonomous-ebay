@@ -550,13 +550,13 @@ export default function Dashboard() {
               icon={Gavel}
               label={<><span className="md:hidden">Live</span><span className="hidden md:inline">Live Auctions</span></>}
               value={auctionsLoading ? null : Number(liveAuctionsCount || 0).toLocaleString()}
-              sub={auctionsLoading ? 'Total active' : `🔥 ${strongBuyCount} strong buys`}
+              sub={auctionsLoading ? 'Total active' : `${strongBuyCount} strong buys`}
               color="blue"
               onClick={() => navigate('/auctions?buying=auction')}
             />
             <KpiTile
               icon={Clock}
-              label={<><span className="md:hidden">⏰ &lt;1h</span><span className="hidden md:inline">Ending ≤ 1h</span></>}
+              label={<><span className="md:hidden">≤1h</span><span className="hidden md:inline">Ending ≤ 1h</span></>}
               value={auctionsLoading ? null : Number(endingUnderHour || 0).toLocaleString()}
               sub={endingUnderHour > 0 ? 'Hurry' : 'None imminent'}
               color={endingUnderHour > 0 ? 'red' : 'gray'}
@@ -566,7 +566,7 @@ export default function Dashboard() {
               icon={BellRing}
               label={<><span className="md:hidden">Snipes</span><span className="hidden md:inline">Active Snipes</span></>}
               value={snipesLoading ? null : Number(activeSnipesCount || 0).toLocaleString()}
-              sub={activeSnipesCount > 0 ? 'Tracking now' : 'None tracked'}
+              sub={activeSnipesCount > 0 ? 'Under market, ending soon' : 'None right now'}
               color="yellow"
               onClick={() => navigate('/alerts')}
             />
@@ -589,7 +589,7 @@ export default function Dashboard() {
               icon={Zap}
               label="Top Snipe"
               value={snipesLoading ? null : (topSnipeScore != null ? Math.round(topSnipeScore) : '—')}
-              sub={(Array.isArray(snipes) && snipes.length) ? `${snipes.length} tracked` : 'None flagged'}
+              sub={(Array.isArray(snipes) && snipes.length) ? `Snipe score /100 · ${snipes.length} live` : 'None flagged'}
               color="red"
             />
           </div>
@@ -1081,7 +1081,7 @@ function DealOfTheDay({ auctions }) {
     try { trackClick(rawUrl, auctionId, cardId) } catch (err) { console.error('[DealOfTheDay] trackClick', err) }
   }
 
-  const badgeLabel = isAuctionDeal ? '🔴 Live Auction Steal' : '💰 New Buy-It-Now Deal'
+  const badgeLabel = isAuctionDeal ? 'Live Auction Steal' : 'New Buy-It-Now Deal'
   const formatLine = isAuctionDeal
     ? `${bidCount} bid${bidCount === 1 ? '' : 's'} · ends ${countdown}`
     : `Buy Now · Listed ${relTime(listedAt)}`
@@ -1192,32 +1192,34 @@ function DealOfTheDay({ auctions }) {
 }
 
 function KpiTile({ icon: Icon, label, value, sub, color = 'gray', onClick }) {
-  const palettes = {
-    blue:    'text-blue-400 bg-blue-600/10 border-blue-600/30',
-    red:     'text-red-400 bg-red-600/10 border-red-600/30',
-    cyan:    'text-cyan-400 bg-cyan-600/10 border-cyan-600/30',
-    emerald: 'text-emerald-400 bg-emerald-600/10 border-emerald-600/30',
-    green:   'text-green-400 bg-green-600/10 border-green-600/30',
-    yellow:  'text-yellow-400 bg-yellow-600/10 border-yellow-600/30',
-    violet:  'text-violet-400 bg-violet-600/10 border-violet-600/30',
-    gray:    'text-gray-400 bg-gray-800/40 border-gray-700/50',
+  // Restrained palette: every tile shares one neutral surface; `color` tints
+  // only the icon, so the KPI row reads as one system instead of a rainbow.
+  const iconTints = {
+    blue:    'text-blue-400',
+    red:     'text-red-400',
+    cyan:    'text-cyan-400',
+    emerald: 'text-emerald-400',
+    green:   'text-green-400',
+    yellow:  'text-yellow-400',
+    violet:  'text-violet-400',
+    gray:    'text-gray-500',
   }
-  const cls = palettes[color] || palettes.gray
+  const tint = iconTints[color] || iconTints.gray
   const Cmp = onClick ? 'button' : 'div'
   return (
     <Cmp
       onClick={onClick}
-      className={`rounded-xl md:rounded-2xl border p-2 md:p-4 ${cls} ${onClick ? 'hover:brightness-125 cursor-pointer text-left' : ''} transition-all`}
+      className={`rounded-xl md:rounded-2xl border border-gray-800/70 bg-gray-900/60 light:bg-white light:border-gray-200 p-2 md:p-4 ${onClick ? 'hover:border-gray-600/70 cursor-pointer text-left' : ''} transition-colors`}
     >
       <div className="flex items-center gap-1 md:gap-2 mb-1 md:mb-2">
-        <Icon size={11} className="md:hidden opacity-80" />
-        <Icon size={13} className="hidden md:block opacity-80" />
-        <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider opacity-80 truncate">{label}</span>
+        <Icon size={11} className={`md:hidden ${tint}`} />
+        <Icon size={13} className={`hidden md:block ${tint}`} />
+        <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-gray-500 light:text-gray-600 truncate">{label}</span>
       </div>
       {value === null ? (
         <div className="h-5 md:h-6 w-16 bg-gray-800/60 rounded animate-pulse" />
       ) : (
-        <div className="text-sm md:text-xl font-black text-white truncate tabular-nums">{value}</div>
+        <div className="text-sm md:text-xl font-black text-white light:text-gray-900 truncate tabular-nums">{value}</div>
       )}
       {sub && <div className="hidden md:block text-[10px] text-gray-500 mt-0.5 truncate light:text-gray-600">{sub}</div>}
     </Cmp>

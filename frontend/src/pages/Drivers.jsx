@@ -81,8 +81,8 @@ const SERIES_COLOR = { F1: '#EF4444', F2: '#8B5CF6', F3: '#EC4899', Legends: '#F
 
 // Form-tier badge styles — match existing dark-theme palette.
 const FORM_TIER_STYLE = {
-  hot:      { cls: 'bg-red-600 text-white border-red-500/40',         label: 'HOT',      icon: '🔥' },
-  climbing: { cls: 'bg-orange-600 text-white border-orange-500/40',   label: 'CLIMBING', icon: '📈' },
+  hot:      { cls: 'bg-red-600 text-white border-red-500/40',         label: 'HOT',      icon: '' },
+  climbing: { cls: 'bg-orange-600 text-white border-orange-500/40',   label: 'CLIMBING', icon: '' },
   stable:   { cls: 'bg-gray-700 text-gray-200 border-gray-600/40',    label: 'STABLE',   icon: ''   },
   cold:     { cls: 'bg-gray-800 text-gray-500 border-gray-700/40',    label: 'COLD',     icon: ''   },
 }
@@ -680,7 +680,7 @@ export default function Drivers() {
               if (days > 21 || days < 0) return null
               return (
                 <div className="mb-5 px-4 py-3 rounded-2xl bg-red-900/20 border border-red-700/40 text-sm text-gray-100 flex items-center gap-2 flex-wrap">
-                  <span className="font-black text-red-300">🏆 Won {lr.name}</span>
+                  <span className="font-black text-red-300">Won {lr.name}</span>
                   <span className="text-gray-400">{new Date(lr.date).toLocaleDateString()}</span>
                   <span className="ml-auto text-[10px] text-red-300/80 font-semibold">Form score {f.form_score}</span>
                 </div>

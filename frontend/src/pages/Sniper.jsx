@@ -527,7 +527,6 @@ export default function Sniper() {
       {/* Empty-state hero */}
       {!loading && rules.length === 0 && !wizardOpen && (
         <div className="bg-gradient-to-br from-red-900/20 via-gray-900 to-orange-900/15 border border-red-700/30 rounded-3xl p-8 text-center mb-6">
-          <div className="text-5xl mb-4">🎯</div>
           <h2 className="text-2xl font-black text-white mb-3">Set up your first auto-bid</h2>
           <p className="text-sm text-gray-300 leading-relaxed max-w-md mx-auto mb-6">
             Tell us what cards you want and your max bid. We'll alert you when one shows up so you can grab it before someone else.

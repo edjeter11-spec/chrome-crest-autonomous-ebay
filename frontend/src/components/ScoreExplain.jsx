@@ -35,12 +35,12 @@ export default function ScoreExplain({ score, type = 'snipe', auction = {}, chil
       {open && (
         <div className="absolute right-0 bottom-full mb-2 w-64 bg-gray-900 border border-gray-700 rounded-xl p-3 shadow-2xl z-50 text-xs">
           <div className="font-black text-white mb-1 text-sm">
-            {type === 'snipe' ? 'Deal Score' : 'Invest Score'}: {score}/100
+            {type === 'snipe' ? 'Snipe Score' : 'Invest Score'}: {score}/100
           </div>
           {type === 'snipe' && (
             <p className="text-gray-300 mb-2 leading-snug">
-              Higher = better value. We compare the current price to recent sales of similar cards.
-              <span className="block mt-1 text-gray-400">🔥🔥🔥 means it's well below typical price.</span>
+              Higher = better value. We compare the current price to recent sales
+              of the same card, then weight timing, bid activity, and rarity.
             </p>
           )}
           <ul className="space-y-1.5 text-gray-300">
