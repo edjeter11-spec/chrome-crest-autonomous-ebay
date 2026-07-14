@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, Response, Request
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, defer
 from sqlalchemy import func
 from database import get_db, Auction, Card
 from datetime import datetime
@@ -105,7 +105,14 @@ def list_auctions(
     response: Response = None,
     db: Session = Depends(get_db),
 ):
-    q = db.query(Auction).options(joinedload(Auction.card))
+    # Same column projection as /with-verdicts — auction_to_dict never
+    # serializes these in list views; see comment there.
+    q = db.query(Auction).options(
+        joinedload(Auction.card),
+        defer(Auction.extra_images),
+        defer(Auction.created_at),
+        defer(Auction.psa_cert),
+    )
     if status:
         q = q.filter(Auction.status == status)
     # Drop expired-but-not-yet-marked-ended rows for active queries. The
@@ -275,7 +282,10 @@ def list_with_verdicts(
     buying: Optional[str] = None,
     snipe_only: bool = False,
     driver: Optional[str] = None,
-    limit: int = Query(500, le=1000),
+    # Cap lowered 1000 -> 500 (real callers use 100/500; an uncached
+    # limit=1000 hit doubles the Neon transfer of the heaviest query
+    # on the site for no product reason).
+    limit: int = Query(500, le=500),
     offset: int = 0,
     response: Response = None,
     db: Session = Depends(get_db),
@@ -293,7 +303,18 @@ def list_with_verdicts(
     """
     from scraper import _extract_grade_from_title
 
-    q = db.query(Auction).options(joinedload(Auction.card))
+    # Column projection (Neon data-transfer cut): auction_to_dict never
+    # serializes extra_images in list views (the /details endpoint loads it
+    # on modal open) and created_at/psa_cert aren't surfaced either.
+    # extra_images alone is a JSON Text blob ~400B/row x 500 rows per
+    # uncached hit — defer() drops them from the SELECT; any accidental
+    # access lazy-loads instead of breaking.
+    q = db.query(Auction).options(
+        joinedload(Auction.card),
+        defer(Auction.extra_images),
+        defer(Auction.created_at),
+        defer(Auction.psa_cert),
+    )
     if status:
         q = q.filter(Auction.status == status)
     # When asking for active rows, drop anything whose end_time has already
