@@ -4,10 +4,24 @@ No API key required — Wikipedia's API is public.
 Images served through our proxy to avoid hotlink issues.
 """
 import asyncio
+import re
 import httpx
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Matches a Wikimedia ORIGINAL (non-/thumb/) image URL — i.e. a camera-res
+# multi-MB file we never want to serve as an avatar. Do NOT hand-build
+# /thumb/ URLs from these (renditions only exist at certain widths — 400s);
+# re-fetch via the pageimages API instead, which returns a valid thumbnail.
+_WIKIMEDIA_ORIGINAL_RE = re.compile(
+    r"^https://upload\.wikimedia\.org/wikipedia/[a-z]+/[0-9a-f]/[0-9a-f]{2}/[^/?#]+$",
+    re.IGNORECASE,
+)
+
+
+def is_wikimedia_original(url: str) -> bool:
+    return bool(url and _WIKIMEDIA_ORIGINAL_RE.match(url))
 
 # Wikipedia article titles for each driver
 DRIVER_WIKIPEDIA = {
@@ -43,7 +57,14 @@ _photo_cache: dict[str, str] = {}
 
 
 async def fetch_driver_photo(driver_name: str) -> str:
-    """Fetch the Wikipedia page image URL for a driver."""
+    """Fetch the Wikipedia page image URL for a driver.
+
+    Requests thumbnail|original and PREFERS the thumbnail: the `original`
+    source is camera resolution (1700px+, multi-MB) — absurd for the
+    36-144px avatars we render, and slow enough that avatar <img>s sat
+    pending for many seconds on first load. Wikimedia picks a rendition
+    width that actually exists (hand-building /thumb/ URLs can 400).
+    """
     title = DRIVER_WIKIPEDIA.get(driver_name, driver_name)
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
@@ -53,7 +74,8 @@ async def fetch_driver_photo(driver_name: str) -> str:
                     "action": "query",
                     "prop": "pageimages",
                     "format": "json",
-                    "piprop": "original",
+                    "piprop": "thumbnail|original",
+                    "pithumbsize": 512,
                     "titles": title,
                     "origin": "*",
                 },
@@ -64,6 +86,8 @@ async def fetch_driver_photo(driver_name: str) -> str:
             data = r.json()
             pages = data.get("query", {}).get("pages", {})
             for page in pages.values():
+                if "thumbnail" in page:
+                    return page["thumbnail"]["source"]
                 if "original" in page:
                     return page["original"]["source"]
     except Exception as e:
@@ -103,16 +127,23 @@ async def get_photo(driver_name: str) -> str:
     3. Wikipedia API fetch
     4. Hardcoded fallbacks
     """
-    if driver_name in _photo_cache:
-        return _photo_cache[driver_name]
+    cached = _photo_cache.get(driver_name, "")
+    if cached and not is_wikimedia_original(cached):
+        return cached
 
-    # Check database for cached photo — skip placeholder URLs so Wikipedia fetch runs.
+    # Check database for cached photo — skip placeholder URLs so Wikipedia
+    # fetch runs, and skip Wikimedia ORIGINALS (multi-MB stale entries from
+    # pre-thumbnail refresh runs) so they get replaced by a thumbnail below.
     try:
         from database import SessionLocal, Card
         db = SessionLocal()
         card = db.query(Card).filter(Card.driver_name == driver_name).first()
         db.close()
-        if card and card.image_url and "placehold.co" not in card.image_url:
+        if (
+            card and card.image_url
+            and "placehold.co" not in card.image_url
+            and not is_wikimedia_original(card.image_url)
+        ):
             _photo_cache[driver_name] = card.image_url
             return card.image_url
     except Exception as e:
@@ -122,6 +153,10 @@ async def get_photo(driver_name: str) -> str:
     url = await fetch_driver_photo(driver_name)
     if not url:
         url = _PHOTO_FALLBACKS.get(driver_name, "")
+    if not url and cached:
+        # Refetch failed but we hold a stale heavy original — better that
+        # than a blank avatar.
+        url = cached
     if url:
         _photo_cache[driver_name] = url
     return url
