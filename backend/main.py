@@ -1000,10 +1000,19 @@ async def driver_photo(name: str = QueryParam(...), redirect: bool = True):
     from fastapi.responses import RedirectResponse, Response
     url = await get_photo(name)
     if not url:
-        # 1x1 transparent pixel so <img onError> still fires sensibly
-        return Response(status_code=404)
+        # Short CDN cache on misses: transient DB/Wikipedia failures shouldn't
+        # pin a 404 for long, but bursts also shouldn't hammer the function.
+        return Response(status_code=404, headers={"Cache-Control": "public, s-maxage=300"})
     if redirect:
-        return RedirectResponse(url=url, status_code=302)
+        # Cache the redirect at the CDN for a day. The in-memory photo cache
+        # dies with every serverless instance, so without this header every
+        # avatar on a page load hit a cold function (DB query + possible 8s
+        # Wikipedia fetch) — the intermittent blank-avatar bug.
+        return RedirectResponse(
+            url=url,
+            status_code=302,
+            headers={"Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800"},
+        )
     return {"driver": name, "photo_url": url}
 
 

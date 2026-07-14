@@ -6,6 +6,7 @@ import { ebayAffiliateUrl } from '../lib/ebay'
 import { calculateFMV } from '../lib/fmv'
 import { ShareMenu } from '../components/AuctionCard'
 import Breadcrumbs from '../components/Breadcrumbs'
+import DriverAvatar from '../components/DriverAvatar'
 import RawToGradedROI from '../components/RawToGradedROI'
 import LastUpdatedLabel from '../components/LastUpdatedLabel'
 import CardImage from '../components/CardImage'
@@ -274,11 +275,9 @@ export default function CardPage() {
 
       {/* Hero */}
       <div className="panel p-5 md:p-6 flex flex-col md:flex-row gap-5 items-start">
-        <img
-          src={`${API}/api/drivers/photo?name=${encodeURIComponent(driver)}`}
-          alt={driver}
-          className="w-28 h-28 md:w-36 md:h-36 rounded-2xl object-cover border-2 border-gray-800 bg-gray-900"
-          onError={(e) => { e.currentTarget.style.display = 'none' }}
+        <DriverAvatar
+          name={driver}
+          className="w-28 h-28 md:w-36 md:h-36 rounded-2xl object-cover border-2 border-gray-800 bg-gray-900 text-2xl"
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">

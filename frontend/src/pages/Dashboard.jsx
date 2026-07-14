@@ -6,6 +6,7 @@ import {
   AlertTriangle, ChevronRight, Shield, BellRing, Target
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
+import DriverAvatar from '../components/DriverAvatar'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import { SkeletonBox, SkeletonCard, SkeletonCardRow, SkeletonStat } from '../components/Skeleton'
 // BiggestSnipes hides behind the "Show more analytics" toggle and
@@ -620,11 +621,9 @@ export default function Dashboard() {
                           ? { borderColor: tColor, boxShadow: `0 0 0 1px ${tColor}33` }
                           : { borderColor: 'rgba(75,85,99,0.5)' }}
                       >
-                        <img
-                          src={`${API}/api/drivers/photo?name=${encodeURIComponent(driverName)}`}
-                          alt={driverName}
-                          className="w-full h-full object-cover"
-                          onError={e => { e.target.style.display = 'none' }}
+                        <DriverAvatar
+                          name={driverName}
+                          className="w-full h-full object-cover text-sm"
                         />
                       </div>
                       <span
@@ -1099,11 +1098,9 @@ function DealOfTheDay({ auctions }) {
       <div className="flex flex-col md:flex-row items-stretch">
         <div className="md:w-64 h-40 md:h-auto bg-black/40 flex items-center justify-center shrink-0 relative">
           {driver && (
-            <img
-              src={`${API}/api/drivers/photo?name=${encodeURIComponent(driver)}`}
-              alt={driver}
-              className="absolute top-3 left-3 w-14 h-14 rounded-full object-cover border-2 border-white/70 bg-gray-900 shadow-lg z-10"
-              onError={e => { e.currentTarget.style.display = 'none' }}
+            <DriverAvatar
+              name={driver}
+              className="absolute top-3 left-3 w-14 h-14 rounded-full object-cover border-2 border-white/70 bg-gray-900 shadow-lg z-10 text-xs"
             />
           )}
           {img ? (

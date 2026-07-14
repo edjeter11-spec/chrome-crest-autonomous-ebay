@@ -19,6 +19,7 @@ import InfoTooltip from './InfoTooltip'
 import Countdown from './Countdown'
 import { JARGON_DEFS } from '../lib/definitions'
 import { dealRating } from '../lib/dealRating'
+import DriverAvatar from './DriverAvatar'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -998,11 +999,9 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
 
         {/* Driver photo badge (top-left) */}
         {(auction.card?.driver_name || auction.driver_name) && (
-          <img
-            src={`${API}/api/drivers/photo?name=${encodeURIComponent(auction.card?.driver_name || auction.driver_name)}`}
-            alt={auction.card?.driver_name || auction.driver_name}
-            className="absolute top-2 left-2 w-9 h-9 rounded-full object-cover border-2 border-white/80 bg-gray-900 shadow-lg z-20"
-            onError={e => { e.currentTarget.style.display = 'none' }}
+          <DriverAvatar
+            name={auction.card?.driver_name || auction.driver_name}
+            className="absolute top-2 left-2 w-9 h-9 rounded-full object-cover border-2 border-white/80 bg-gray-900 shadow-lg z-20 text-[10px]"
           />
         )}
 

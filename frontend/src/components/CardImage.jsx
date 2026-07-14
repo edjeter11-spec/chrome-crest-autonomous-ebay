@@ -32,6 +32,11 @@ export default function CardImage({
 }) {
   const [failed, setFailed] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  // Retry counter: a transient CDN error / burst throttle used to mark the
+  // image failed FOREVER (the intermittent "no image after reload" bug).
+  // Now we retry twice — with a cache-busting param so a poisoned edge
+  // response doesn't just replay — before giving up to the placeholder.
+  const [attempt, setAttempt] = useState(0)
   const upscaled = src ? upscaleEbayImage(src, size) : ''
 
   // Reset loading/error state when src changes — important for lists that
@@ -39,18 +44,31 @@ export default function CardImage({
   useEffect(() => {
     setFailed(false)
     setLoaded(false)
+    setAttempt(0)
   }, [upscaled])
 
-  // Max-wait timer: if the image doesn't fire onLoad OR onError within
-  // 10s (was 3s — too aggressive on slow eBay CDN, killed images that
-  // would have loaded fine in 4-5s; users saw placeholder grey on rows
-  // whose image worked perfectly in the modal). 10s still rescues genuine
-  // dead URLs from infinite skeleton state.
+  const retryOrFail = () => {
+    if (attempt < 2) {
+      setAttempt(a => a + 1)
+      setLoaded(false)
+    } else {
+      setFailed(true)
+    }
+  }
+
+  // Max-wait timer per attempt: if the image doesn't fire onLoad OR onError
+  // within 10s (was 3s — too aggressive on slow eBay CDN), retry/fail so
+  // genuinely dead URLs can't hold an infinite skeleton.
   useEffect(() => {
     if (!upscaled || loaded || failed) return
-    const id = setTimeout(() => setFailed(true), 10000)
+    const id = setTimeout(retryOrFail, 10000)
     return () => clearTimeout(id)
-  }, [upscaled, loaded, failed])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upscaled, loaded, failed, attempt])
+
+  const displaySrc = attempt > 0
+    ? `${upscaled}${upscaled.includes('?') ? '&' : '?'}retry=${attempt}`
+    : upscaled
 
   if (!upscaled || failed) {
     return (
@@ -69,12 +87,13 @@ export default function CardImage({
         <div className="absolute inset-0 bg-gray-800 animate-pulse" aria-hidden="true" />
       )}
       <img
-        src={upscaled}
+        key={attempt}
+        src={displaySrc}
         alt={alt}
         loading={loading}
         decoding="async"
         onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
+        onError={retryOrFail}
         className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'} transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'} ${imgClassName}`}
       />
     </div>

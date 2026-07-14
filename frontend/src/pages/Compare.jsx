@@ -5,6 +5,7 @@ import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/driv
 import { TOP_PARALLELS } from './CardPage'
 import { ALL_PARALLELS } from '../lib/parallels'
 import CardImagePlaceholder from '../components/CardImagePlaceholder'
+import DriverAvatar from '../components/DriverAvatar'
 
 const API = import.meta.env.VITE_API_URL || ''
 const ALL_DRIVERS = [...DRIVERS_F1, ...DRIVERS_F2, ...DRIVERS_F3, ...DRIVERS_LEGENDS]
@@ -160,12 +161,10 @@ function Column({ side, driver, parallel, data, loading }) {
   return (
     <div className="panel p-5 space-y-4">
       <div className="flex items-start gap-3">
-        {driver && !imgFailed ? (
-          <img
-            src={`${API}/api/drivers/photo?name=${encodeURIComponent(driver)}`}
-            alt={driver}
-            className="w-16 h-16 rounded-xl object-cover border border-gray-800 bg-gray-900"
-            onError={() => setImgFailed(true)}
+        {driver ? (
+          <DriverAvatar
+            name={driver}
+            className="w-16 h-16 rounded-xl object-cover border border-gray-800 bg-gray-900 text-sm"
           />
         ) : (
           <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-800 shrink-0">
