@@ -50,7 +50,7 @@ export function LogoMark({ size = 40, className = '' }) {
 function Wordmark({ textSize = 'text-lg' }) {
   return (
     <span className={`font-black ${textSize} tracking-tight leading-none whitespace-nowrap`}>
-      <span className="italic text-red-500">F1</span>{' '}
+      <span className="italic text-red-500 mr-1.5">F1</span>
       <span className="text-white light:text-gray-900">CARD VAULT</span>
     </span>
   )
@@ -71,7 +71,7 @@ export default function Logo({ size = 44, compact = false, caption = true, class
       <span className="flex flex-col gap-1">
         <Wordmark />
         {caption && (
-          <span className="text-[9px] text-gray-500 font-semibold tracking-[0.14em] uppercase light:text-gray-600 leading-none">
+          <span className="text-[8px] text-gray-500 font-semibold tracking-[0.08em] uppercase light:text-gray-600 leading-none whitespace-nowrap">
             Topps Chrome F1 Tracker
           </span>
         )}
