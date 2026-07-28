@@ -1,0 +1,6 @@
+import{l as t}from"./index-DcgWdFgw.js";(function(){try{var e=typeof window<"u"?window:typeof global<"u"?global:typeof globalThis<"u"?globalThis:typeof self<"u"?self:{};e.SENTRY_RELEASE={id:"37056f3f434746cf5a223f753da221a71ed4c31e"};var d=new e.Error().stack;d&&(e._sentryDebugIds=e._sentryDebugIds||{},e._sentryDebugIds[d]="49abc67d-c32e-42b3-8858-0f603cc0c21d",e._sentryDebugIdIdentifier="sentry-dbid-49abc67d-c32e-42b3-8858-0f603cc0c21d")}catch{}})();/**
+ * @license lucide-react v0.446.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const n=t("Calendar",[["path",{d:"M8 2v4",key:"1cmpym"}],["path",{d:"M16 2v4",key:"4m81vk"}],["rect",{width:"18",height:"18",x:"3",y:"4",rx:"2",key:"1hopcy"}],["path",{d:"M3 10h18",key:"8toen8"}]]);export{n as C};

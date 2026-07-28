@@ -371,6 +371,12 @@ QUERIES = [
     "2025 Topps Chrome F1 /5",
     "Topps Chrome Formula 1 SuperFractor",
     "Topps Chrome Formula 1 Autograph",
+    # 2025 Topps Dynasty F1 (added 2026-07-28) — sold-data accrual so a
+    # Dynasty comp pool builds forward. Kept to 3 queries: Dynasty volume
+    # is a fraction of Chrome's.
+    "2025 Topps Dynasty Formula 1",
+    "2025 Topps Dynasty F1 Auto",
+    "2025 Topps Dynasty F1 /10",
 ]
 
 

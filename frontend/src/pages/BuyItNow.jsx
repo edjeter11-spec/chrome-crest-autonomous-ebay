@@ -85,6 +85,7 @@ export default function BuyItNow() {
   const [filterRookie, setFilterRookie] = useState(false)
   const [filterBestOffer, setFilterBestOffer] = useState(false)
   const [filterStrongBuy, setFilterStrongBuy] = useState(false)
+  const [filterDynasty, setFilterDynasty] = useState(false)
   // Premium default OFF (was ON, $150+) — only 4 rows >=$150 in current
   // inventory and all were Base parallel; combined with No-Base default
   // the page rendered empty for everyone.
@@ -133,6 +134,7 @@ export default function BuyItNow() {
       if (filterRookie && !ROOKIES.has(a.card?.driver_name)) return false
       if (filterBestOffer && !(a.buying_options || []).includes('BEST_OFFER')) return false
       if (filterStrongBuy && !(a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')) return false
+      if (filterDynasty && !/dynasty/i.test(a.title || '')) return false
       // Premium: hide low-end BIN — buy_now (or current) price must be at least $150
       if (filterPremium && Math.max(a.buy_now_price || 0, a.current_price || 0) < 150) return false
       if (search) {
@@ -256,6 +258,15 @@ export default function BuyItNow() {
             filterStrongBuy ? 'bg-green-600/25 text-green-400 border border-green-600/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
           Strong Buys
+        </button>
+
+        {/* Dynasty toggle — 2025 Topps Dynasty F1 listings only */}
+        <button onClick={() => setFilterDynasty(!filterDynasty)}
+          aria-pressed={filterDynasty}
+          className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
+            filterDynasty ? 'bg-amber-600/20 text-amber-400 border border-amber-600/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+          }`}>
+          Dynasty
         </button>
       </div>
 

@@ -3259,6 +3259,7 @@ def _refresh_comp_medians_impl(db: Session) -> dict:
             "FROM sold_cards "
             "WHERE sale_date >= :cutoff AND sale_price > 0 "
             "AND is_duplicate = FALSE AND driver_name IS NOT NULL "
+            "AND title NOT ILIKE '%dynasty%' "
             "GROUP BY driver_name, parallel, grade HAVING COUNT(*) >= 3"
         )
         driver_only_sql = (
@@ -3269,6 +3270,7 @@ def _refresh_comp_medians_impl(db: Session) -> dict:
             "FROM sold_cards "
             "WHERE sale_date >= :cutoff AND sale_price > 0 "
             "AND is_duplicate = FALSE AND driver_name IS NOT NULL "
+            "AND title NOT ILIKE '%dynasty%' "
             "GROUP BY driver_name HAVING COUNT(*) >= 3"
         )
     else:
@@ -3279,6 +3281,7 @@ def _refresh_comp_medians_impl(db: Session) -> dict:
             "FROM sold_cards "
             "WHERE sale_date >= :cutoff AND sale_price > 0 "
             "AND is_duplicate = 0 AND driver_name IS NOT NULL "
+            "AND LOWER(title) NOT LIKE '%dynasty%' "
             "GROUP BY driver_name, parallel, grade HAVING COUNT(*) >= 3"
         )
         driver_only_sql = (
@@ -3288,6 +3291,7 @@ def _refresh_comp_medians_impl(db: Session) -> dict:
             "FROM sold_cards "
             "WHERE sale_date >= :cutoff AND sale_price > 0 "
             "AND is_duplicate = 0 AND driver_name IS NOT NULL "
+            "AND LOWER(title) NOT LIKE '%dynasty%' "
             "GROUP BY driver_name HAVING COUNT(*) >= 3"
         )
 

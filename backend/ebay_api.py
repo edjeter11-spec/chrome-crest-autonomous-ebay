@@ -60,6 +60,11 @@ EBAY_SANDBOX_BROWSE_URL = "https://api.sandbox.ebay.com/buy/browse/v1/item_summa
 SEARCH_QUERIES = [
     "2025 Topps Chrome Formula 1",
     "2025 Topps Chrome F1",
+    # 2025 Topps Dynasty F1 (added 2026-07-28). Cost note: every query in
+    # this list multiplies the sync/refresh cron API spend — 2 Dynasty
+    # queries ≈ +100-150 calls/day on the 5,000/day cap (~2,000 used).
+    "2025 Topps Dynasty Formula 1",
+    "2025 Topps Dynasty F1",
 ]
 
 # eBay category IDs for trading cards

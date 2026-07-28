@@ -72,7 +72,7 @@ export default function Logo({ size = 44, compact = false, caption = true, class
         <Wordmark />
         {caption && (
           <span className="text-[8px] text-gray-500 font-semibold tracking-[0.08em] uppercase light:text-gray-600 leading-none whitespace-nowrap">
-            Topps Chrome F1 Tracker
+            Topps F1 Tracker
           </span>
         )}
       </span>

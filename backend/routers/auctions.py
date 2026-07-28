@@ -353,7 +353,12 @@ def list_with_verdicts(
         grade = _extract_grade_from_title(a.title or "")
         verdict_key = None
         comp_block = None
-        if driver_name:
+        # Dynasty gets NO verdict: the comp pool (and the matched card row)
+        # is Chrome — a median for the same driver+parallel key would be
+        # nonsense for an ultra-premium set. Honest silence until Dynasty
+        # comps exist. See scraper.is_dynasty_title.
+        is_dynasty = "dynasty" in (a.title or "").lower()
+        if driver_name and not is_dynasty:
             try:
                 median, n_comps = _cached_median(db, driver_name, parallel, grade, live_budget=live_budget)
             except Exception as _comp_err:

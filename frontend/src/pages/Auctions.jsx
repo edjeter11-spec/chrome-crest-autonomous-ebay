@@ -74,11 +74,12 @@ export default function Auctions() {
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
     filterRookie: false, formulaType: 'F1', teamFilter: 'All',
     filterStrongBuy: false, autoVariant: 'Any', filterPremium: false,
+    filterDynasty: false,
   })
   const setF = (patch) => setFilters(prev => ({ ...prev, ...patch }))
   const { search, sortBy, filterParallel, printRun, listingType,
           filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter,
-          filterStrongBuy, autoVariant, filterPremium } = filters
+          filterStrongBuy, autoVariant, filterPremium, filterDynasty } = filters
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [showSaveRule, setShowSaveRule] = useState(false)
@@ -275,6 +276,7 @@ export default function Auctions() {
       if (filterWatchlist && a.status !== 'watchlist') return false
       if (filterRookie && !ROOKIES.has(a.card?.driver_name)) return false
       if (filterStrongBuy && !(a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY')) return false
+      if (filterDynasty && !/dynasty/i.test(a.title || '')) return false
       // Premium: hide low-end auctions — current bid must be at least $100
       if (filterPremium && (a.current_price || 0) < 100) return false
       if (search) {
@@ -327,7 +329,7 @@ export default function Auctions() {
     tag.textContent = JSON.stringify(payload)
     document.head.appendChild(tag)
     return () => { const el = document.getElementById('auctions-jsonld'); if (el) el.remove() }
-  }, [auctions, search, sortBy, filterParallel, printRun, listingType, filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter, filterStrongBuy, autoVariant])
+  }, [auctions, search, sortBy, filterParallel, printRun, listingType, filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter, filterStrongBuy, autoVariant, filterDynasty])
 
   const snipeCount = filtered.filter(a => a.snipe_eligible).length
   const strongBuyCount = auctions.filter(a => a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY').length
@@ -463,6 +465,16 @@ export default function Auctions() {
             filterStrongBuy ? 'bg-green-600/20 text-green-400 border border-green-600/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
           Strong Buys
+        </button>
+
+        {/* Dynasty toggle — 2025 Topps Dynasty F1 listings only (no verdicts
+            yet: Dynasty comps are product-pure and still accruing) */}
+        <button onClick={() => setF({ filterDynasty: !filterDynasty })}
+          aria-pressed={filterDynasty}
+          className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
+            filterDynasty ? 'bg-amber-600/20 text-amber-400 border border-amber-600/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+          }`}>
+          Dynasty
         </button>
 
         <div className="ml-auto flex items-center gap-2">

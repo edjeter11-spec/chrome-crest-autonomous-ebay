@@ -63,6 +63,15 @@ def _extract_grade_from_title(title: str) -> str | None:
     return f"{grader} {num}"
 
 
+def is_dynasty_title(title: str | None) -> bool:
+    """2025 Topps Dynasty F1 — tracked alongside Chrome, but comps, verdicts
+    and snipe flags stay product-pure: Dynasty is an ultra-premium set whose
+    prices share nothing with Chrome parallels of the same driver. Until a
+    Dynasty comp pool exists (historical import planned), Dynasty listings
+    render without verdicts rather than with Chrome-based nonsense."""
+    return "dynasty" in (title or "").lower()
+
+
 def median_comp_price(
     db: Session,
     driver: str | None,
@@ -96,6 +105,9 @@ def median_comp_price(
             SoldCard.sale_date >= cutoff,
             SoldCard.sale_price > 0,
             SoldCard.is_duplicate == False,  # noqa: E712
+            # Chrome comps only — Dynasty sold rows would poison the median
+            # for the same driver+parallel key (see is_dynasty_title).
+            ~SoldCard.title.ilike("%dynasty%"),
             *filters,
         )
         rows = [float(r.total) for r in q.all() if r.total is not None]
@@ -158,17 +170,22 @@ def calculate_snipe_score(auction, card, db: Session | None = None) -> float:
 
     price_score = 50
     # Use median (not avg) scoped to driver+parallel+grade when available.
-    owns_db = db is None
-    if owns_db:
-        from database import SessionLocal as _SL
-        db = _SL()
-    try:
-        auction_grade = _extract_grade_from_title(auction.title or "")
-        med, n = median_comp_price(db, card.driver_name, card.parallel, auction_grade)
-        ref_price = med if (med and n >= 3) else (card.base_value or 0)
-    finally:
+    if is_dynasty_title(getattr(auction, "title", None)):
+        # No Dynasty comp pool yet — the matched card + medians are Chrome.
+        # Leave price_score neutral; time/bids/seller still shape the score.
+        ref_price = 0
+    else:
+        owns_db = db is None
         if owns_db:
-            db.close()
+            from database import SessionLocal as _SL
+            db = _SL()
+        try:
+            auction_grade = _extract_grade_from_title(auction.title or "")
+            med, n = median_comp_price(db, card.driver_name, card.parallel, auction_grade)
+            ref_price = med if (med and n >= 3) else (card.base_value or 0)
+        finally:
+            if owns_db:
+                db.close()
 
     # Compare against total cost (price + shipping) so "free shipping $20" vs
     # "$15 + $8 shipping" are apples-to-apples.
@@ -307,6 +324,14 @@ def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> boo
 
     now = datetime.utcnow()
     if end_time <= now:
+        return False
+
+    # Dynasty: no comp pool exists yet, and every "cheap vs median" signal
+    # below would be measured against CHROME prices for the same driver.
+    # A snipe requires a price-vs-comp basis — so Dynasty is never flagged
+    # until Dynasty comps land (historical import planned). Listings still
+    # appear everywhere else normally.
+    if is_dynasty_title(getattr(auction, "title", None)):
         return False
 
     # HARD requirement: ending within 24h. Anything beyond is not a snipe —
