@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { X, Share2, Copy, Check } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -13,9 +14,14 @@ export default function ShareWatchlistModal({ onClose }) {
   const share = async () => {
     setBusy(true); setErr('')
     try {
+      // Share now requires a signed-in user server-side (it snapshots YOUR
+      // wishlist rows only — the old anonymous path leaked everyone's).
+      const { data: sess } = await supabase.auth.getSession()
+      const token = sess?.session?.access_token
+      if (!token) throw new Error('Sign in to share your watchlist')
       const res = await fetch(`${API}/api/watchlist/share`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: name || null }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)

@@ -18,12 +18,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 
 from database import get_db, engine, Auction, SoldCard, Card
+from lib.auth import require_admin
 
 router = APIRouter(tags=["snapshots"])
 
 
 @router.post("/api/admin/migrate-snapshots")
-def migrate_snapshots():
+def migrate_snapshots(_admin=Depends(require_admin)):
     """Create daily_snapshots table + index (idempotent, Postgres + SQLite safe)."""
     statements = [
         """
@@ -115,7 +116,7 @@ def _compute_today_metrics(db: Session) -> dict:
 
 
 @router.post("/api/admin/take-snapshot")
-def take_snapshot(db: Session = Depends(get_db)):
+def take_snapshot(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Compute today's metrics and upsert a row into daily_snapshots."""
     today = date.today().isoformat()
     metrics = _compute_today_metrics(db)

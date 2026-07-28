@@ -1,8 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, Sparkles, Zap } from 'lucide-react'
 import { DRIVERS_F1, DRIVERS_F2, DRIVERS_F3, DRIVERS_LEGENDS } from '../lib/drivers'
+import { supabase } from '../lib/supabase'
 
 const API = import.meta.env.VITE_API_URL || ''
+
+// watch-rules mutations are per-user server-side (Supabase JWT + row
+// ownership) — every write must carry the session token.
+async function authHeaders(extra = {}) {
+  try {
+    const { data: sess } = await supabase.auth.getSession()
+    const token = sess?.session?.access_token
+    return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  } catch {
+    return extra
+  }
+}
 
 const PARALLELS = [
   '', 'Refractor', 'Autograph', 'SuperFractor', 'Aqua /199', 'Pink /250', 'Teal /299',
@@ -19,7 +32,7 @@ export default function SmartRules() {
 
   const load = async () => {
     try {
-      const r = await fetch(`${API}/api/watch-rules`)
+      const r = await fetch(`${API}/api/watch-rules`, { headers: await authHeaders() })
       if (r.ok) {
         const d = await r.json()
         setRules(d.rules || [])
@@ -31,14 +44,14 @@ export default function SmartRules() {
   useEffect(() => { load() }, [])
 
   const del = async (id) => {
-    await fetch(`${API}/api/watch-rules/${id}`, { method: 'DELETE' })
+    await fetch(`${API}/api/watch-rules/${id}`, { method: 'DELETE', headers: await authHeaders() })
     setRules(prev => prev.filter(r => r.id !== id))
   }
 
   const toggle = async (r) => {
     await fetch(`${API}/api/watch-rules/${r.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ active: !r.active }),
     })
     setRules(prev => prev.map(x => x.id === r.id ? { ...x, active: !x.active } : x))
@@ -126,7 +139,7 @@ function AddRuleForm({ onClose, onAdded }) {
     try {
       const res = await fetch(`${API}/api/watch-rules`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           driver_filter: driver || null,
           parallel_filter: parallel || null,

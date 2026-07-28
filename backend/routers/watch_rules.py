@@ -1,10 +1,17 @@
-"""Smart watch rules — auto-watch any matching auction."""
+"""Smart watch rules — auto-watch any matching auction.
+
+Ownership model (mirrors routers/wishlist.py): rows carry the Supabase
+user_id of their creator. Mutations require a valid JWT and only touch the
+caller's own rows; legacy rows with user_id NULL are read-only."""
+
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime
-from database import get_db, Base, Auction, Card
+from database import get_db, Base, Auction, Card, engine
 from datetime import datetime
+from lib.auth import get_user_id, require_user_id
 
 router = APIRouter(prefix="/api/watch-rules", tags=["watch_rules"])
 
@@ -19,6 +26,33 @@ class WatchRule(Base):
     max_price = Column(Float, nullable=False)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    user_id = Column(String, nullable=True, index=True)
+
+
+_user_id_col_ensured = False
+
+
+def _ensure_user_id_col() -> None:
+    """Self-heal: add the user_id column on prod tables created before the
+    ownership model existed. Idempotent; runs once per process."""
+    global _user_id_col_ensured
+    if _user_id_col_ensured:
+        return
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            if "postgresql" in str(engine.url):
+                conn.execute(text("ALTER TABLE watch_rules ADD COLUMN IF NOT EXISTS user_id VARCHAR"))
+            else:
+                try:
+                    conn.execute(text("ALTER TABLE watch_rules ADD COLUMN user_id VARCHAR"))
+                except Exception:
+                    pass  # SQLite: column already exists
+            conn.commit()
+        _user_id_col_ensured = True
+    except Exception:
+        # Table may not exist yet (create_tables handles it) — don't crash.
+        pass
 
 
 def _to_dict(r: WatchRule) -> dict:
@@ -46,13 +80,20 @@ def _rule_label(r: WatchRule) -> str:
 
 
 @router.get("")
-def list_rules(db: Session = Depends(get_db)):
-    rules = db.query(WatchRule).order_by(WatchRule.created_at.desc()).all()
+def list_rules(db: Session = Depends(get_db), user_id: Optional[str] = Depends(get_user_id)):
+    _ensure_user_id_col()
+    q = db.query(WatchRule)
+    if user_id:
+        q = q.filter(WatchRule.user_id == user_id)
+    else:
+        q = q.filter(WatchRule.user_id.is_(None))
+    rules = q.order_by(WatchRule.created_at.desc()).all()
     return {"rules": [{**_to_dict(r), "label": _rule_label(r)} for r in rules]}
 
 
 @router.post("")
-def create_rule(body: dict, db: Session = Depends(get_db)):
+def create_rule(body: dict, db: Session = Depends(get_db), user_id: str = Depends(require_user_id)):
+    _ensure_user_id_col()
     max_price = float(body.get("max_price") or 0)
     if max_price <= 0:
         raise HTTPException(400, "max_price must be > 0")
@@ -63,6 +104,7 @@ def create_rule(body: dict, db: Session = Depends(get_db)):
         grade_filter=body.get("grade_filter") or None,
         max_price=max_price,
         active=bool(body.get("active", True)),
+        user_id=user_id,
     )
     db.add(r)
     db.commit()
@@ -71,10 +113,14 @@ def create_rule(body: dict, db: Session = Depends(get_db)):
 
 
 @router.patch("/{rule_id}")
-def update_rule(rule_id: int, body: dict, db: Session = Depends(get_db)):
+def update_rule(rule_id: int, body: dict, db: Session = Depends(get_db), user_id: str = Depends(require_user_id)):
+    _ensure_user_id_col()
     r = db.query(WatchRule).filter(WatchRule.id == rule_id).first()
     if not r:
         raise HTTPException(404, "Not found")
+    # Caller must own the row; legacy rows (user_id=None) are not mutable.
+    if r.user_id != user_id:
+        raise HTTPException(403, "forbidden")
     allowed = {"name", "driver_filter", "parallel_filter", "grade_filter", "max_price", "active"}
     for k, v in body.items():
         if k in allowed:
@@ -85,10 +131,13 @@ def update_rule(rule_id: int, body: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/{rule_id}")
-def delete_rule(rule_id: int, db: Session = Depends(get_db)):
+def delete_rule(rule_id: int, db: Session = Depends(get_db), user_id: str = Depends(require_user_id)):
+    _ensure_user_id_col()
     r = db.query(WatchRule).filter(WatchRule.id == rule_id).first()
     if not r:
         raise HTTPException(404, "Not found")
+    if r.user_id != user_id:
+        raise HTTPException(403, "forbidden")
     db.delete(r)
     db.commit()
     return {"ok": True}
@@ -124,6 +173,7 @@ def auction_matches_rule(auction: Auction, rule: WatchRule, card: Card | None) -
 def apply_rules_to_auctions(db: Session) -> int:
     """Walk active auctions, auto-set status='watchlist' for any that match an
     active rule. Returns count of auctions newly auto-watched."""
+    _ensure_user_id_col()
     rules = db.query(WatchRule).filter(WatchRule.active == True).all()
     if not rules:
         return 0

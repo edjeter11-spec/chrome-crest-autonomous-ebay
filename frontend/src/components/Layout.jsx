@@ -418,7 +418,7 @@ export default function Layout() {
 
         {/* Mobile bottom tab bar — 4 key routes, iOS/Android-style tap targets */}
         <nav
-          className="md:hidden fixed bottom-0 inset-x-0 bg-gray-950/95 backdrop-blur border-t border-gray-800 z-30"
+          className="md:hidden fixed bottom-0 inset-x-0 bg-gray-950/95 backdrop-blur border-t border-gray-800 z-40"
           style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
           <div className="flex h-16 min-h-[64px]">

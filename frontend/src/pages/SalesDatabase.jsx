@@ -808,7 +808,7 @@ export default function SalesDatabase() {
       )}
 
       {alertToast && (
-        <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4 py-2.5 rounded-xl bg-gray-900 border border-amber-600/40 text-amber-200 text-xs font-semibold shadow-2xl max-w-[90vw] text-center">
+        <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom,0px)+0.5rem)] md:bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4 py-2.5 rounded-xl bg-gray-900 border border-amber-600/40 text-amber-200 text-xs font-semibold shadow-2xl max-w-[90vw] text-center">
           {alertToast}
         </div>
       )}

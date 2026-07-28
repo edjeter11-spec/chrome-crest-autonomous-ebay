@@ -223,7 +223,7 @@ export default function BuyItNow() {
       {/* Primary filter bar — only the high-frequency controls. Power-user
           filters live in the "Advanced filters" disclosure below. */}
       <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
-        <div className="relative min-w-44 flex-1 sm:flex-initial">
+        <div className="relative min-w-0 basis-full sm:basis-auto sm:min-w-44 flex-1 sm:flex-initial">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Driver, title…"

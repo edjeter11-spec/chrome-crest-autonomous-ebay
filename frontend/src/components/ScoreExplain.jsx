@@ -26,7 +26,7 @@ export default function ScoreExplain({ score, type = 'snipe', auction = {}, chil
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
-        className="inline-flex items-center justify-center w-8 h-8 -m-2 text-gray-500 hover:text-gray-300 active:text-white touch-manipulation"
+        className="inline-flex items-center justify-center w-8 h-8 -my-2 -ml-2 text-gray-500 hover:text-gray-300 active:text-white touch-manipulation"
         aria-label="What does this score mean?"
         aria-expanded={open}
       >

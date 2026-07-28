@@ -377,8 +377,8 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
     <div className="space-y-2">
       {/* Price + score row */}
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-baseline gap-1.5">
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
             <span className="text-xl font-black text-white tracking-tight">
               ${auction.current_price?.toFixed(2) ?? '—'}
             </span>
@@ -1123,7 +1123,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
         {/* Title — fall back to em-dash if data is genuinely absent rather than
             holding a permanent pulse. Server-side rows that ship without a title
             previously left two skeleton bars pulsing forever. */}
-        <p className="text-xs text-gray-400 leading-snug line-clamp-2 min-h-[2.5rem]">
+        <p className="text-xs text-gray-400 leading-snug line-clamp-2 min-h-[2.25rem] md:min-h-[2.5rem]">
           {auction.title || <span className="text-gray-600 italic">Untitled listing</span>}
         </p>
 
@@ -1203,11 +1203,11 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
         {/* Seller row — em-dash fallback so a row with no seller doesn't keep
             an animate-pulse running forever (was the source of stuck per-card
             skeletons on /auctions mobile audit). */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400 font-semibold truncate max-w-[160px]">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[10px] text-gray-400 font-semibold truncate min-w-0 flex-1 max-w-[160px]">
             {auction.seller || <span className="text-gray-600">—</span>}
           </span>
-          <SellerBadge feedback={auction.seller_feedback} />
+          <span className="shrink-0"><SellerBadge feedback={auction.seller_feedback} /></span>
           {auction.last_updated && (
             <LastUpdatedLabel timestamp={auction.last_updated} className="ml-auto" />
           )}
@@ -1326,7 +1326,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
             <button
               key={key}
               onClick={(e) => togglePanel(key, e)}
-              className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-medium transition-colors ${
+              className={`flex-1 flex items-center justify-center gap-1 py-1.5 min-h-[40px] sm:min-h-0 rounded-lg text-[10px] font-medium transition-colors ${
                 expandedPanel === key
                   ? 'bg-gray-800 text-white'
                   : 'text-gray-600 hover:text-gray-400 hover:bg-gray-800/40'

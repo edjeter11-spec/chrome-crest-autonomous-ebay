@@ -68,7 +68,8 @@
     },
     {
       "src": "/assets/(.*)",
-      "dest": "frontend/dist/assets/$1"
+      "dest": "frontend/dist/assets/$1",
+      "headers": { "Cache-Control": "public, max-age=31536000, immutable" }
     },
     {
       "src": "/icons/(.*)",
@@ -91,7 +92,7 @@
     {
       "src": "/og-image.png",
       "dest": "frontend/dist/og-image.png",
-      "headers": { "Content-Type": "image/png" }
+      "headers": { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" }
     },
     {
       "src": "/logo.png",

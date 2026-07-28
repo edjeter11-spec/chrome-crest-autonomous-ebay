@@ -16,21 +16,16 @@ from typing import Optional
 from datetime import datetime, timedelta
 
 from database import get_db, SoldCard, PsaPop, PsaSale, PsaPopSnapshot, Auction
+from lib.auth import require_cron_or_admin
 
 router = APIRouter(prefix="/api/psa", tags=["psa"])
 
 
 def _require_admin_or_cron(request: Request) -> None:
     """Gate admin-only PSA actions — matches /api/ebay/refresh auth pattern.
-    Accepts ADMIN_TOKEN via ?token=, X-Admin-Token header, or vercel-cron UA."""
-    admin_token = os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    if "vercel-cron" in ua:
-        return
-    if not admin_token or (qtoken != admin_token and header_token != admin_token):
-        raise HTTPException(status_code=401, detail="unauthorized")
+    CRON_SECRET bearer (Vercel cron) or X-Admin-Token header. Header-only,
+    constant-time compares (see lib/auth.py)."""
+    require_cron_or_admin(request)
 
 
 GRADE_ORDER = [

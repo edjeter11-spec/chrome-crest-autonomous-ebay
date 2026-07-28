@@ -157,23 +157,22 @@ async def _graceful_500_handler(request: _ReqType, exc: Exception):
         return _JSONResp({"alerts": [], "_degraded": True}, status_code=status)
     if "/portfolio" in path or "/wishlist" in path:
         return _JSONResp([], status_code=status)
-    # Default: explicit error JSON instead of opaque 500
-    return _JSONResp({"error": str(exc)[:200], "path": path, "_degraded": True}, status_code=status)
+    # Default: generic error JSON instead of opaque 500. Never echo str(exc)
+    # to clients — exception text can leak connection strings, file paths,
+    # or SQL. Full detail goes to the logger + Sentry capture above only.
+    return _JSONResp({"error": "internal error", "path": path, "_degraded": True}, status_code=status)
 
 
 # --- Admin auth gate -------------------------------------------------------
 # Every `/api/admin/*` route requires a matching ADMIN_TOKEN. If the env var
 # isn't set, the routes return 503 (admin disabled) so there's no blanket
-# open-mode fallback. Token can be passed via `?token=` query or the
-# `X-Admin-Token` header.
-def require_admin(request: Request):
-    from fastapi import HTTPException
-    admin_token = os.getenv("ADMIN_TOKEN", "")
-    if not admin_token:
-        raise HTTPException(503, "admin disabled")
-    given = request.query_params.get("token") or request.headers.get("x-admin-token")
-    if given != admin_token:
-        raise HTTPException(403, "unauthorized")
+# open-mode fallback. Header-only (X-Admin-Token) — the old `?token=` query
+# param was removed (query strings leak into logs/analytics/referrers).
+# Cron endpoints accept Vercel's `Authorization: Bearer <CRON_SECRET>` OR the
+# admin header via require_cron_or_admin. Both use constant-time compares.
+# Implementations live in lib/auth.py so routers can share them without a
+# circular import on main.
+from lib.auth import require_admin, require_cron_or_admin, client_ip as _client_ip
 
 app.include_router(cards.router)
 app.include_router(auctions.router)
@@ -1405,7 +1404,7 @@ def dashboard_bundle(db: Session = Depends(get_db)):
 
 
 @app.get("/api/cron/sync")
-async def cron_sync(db: Session = Depends(get_db)):
+async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
     """Called by Vercel cron — seeds DB, syncs live listings, batches price history."""
     from seed_data import seed_all
     try:
@@ -1696,7 +1695,7 @@ async def _do_imminent_sync(db: Session, window_min: int = 90) -> dict:
 
 
 @app.get("/api/cron/sync-imminent")
-async def cron_sync_imminent(db: Session = Depends(get_db)):
+async def cron_sync_imminent(db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
     """Tight loop: pull only auctions ending in next 90 minutes.
     Runs every 15 min via Vercel cron. Solves the blind window between full
     2-hourly syncs where newly-listed short-duration auctions would otherwise
@@ -1715,7 +1714,9 @@ async def refresh_imminent_user(request: Request, db: Session = Depends(get_db))
     """User-triggered refresh — same logic as cron_sync_imminent but
     rate-limited to 1 call per 60s per client IP."""
     import time as _time
-    ip = request.client.host if request.client else "unknown"
+    # Trusted client IP (x-real-ip / rightmost XFF) — request.client.host is
+    # the proxy behind Vercel, which would rate-limit all users as one.
+    ip = _client_ip(request)
     now_t = _time.time()
     last = _refresh_imminent_rate.get(ip, 0)
     if now_t - last < 60:
@@ -1735,7 +1736,7 @@ async def refresh_imminent_user(request: Request, db: Session = Depends(get_db))
 
 
 @app.get("/api/cron/refresh-bids")
-async def cron_refresh_bids(db: Session = Depends(get_db)):
+async def cron_refresh_bids(db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
     """Refresh bid_count + current_price on the top 100 auctions ending soonest.
     Most rows show bids=0 because Browse search doesn't include live bid counts
     reliably; the per-item /buy/browse/v1/item/{id} endpoint does. Runs every
@@ -1816,15 +1817,7 @@ async def ebay_refresh_top_page(request: Request, db: Session = Depends(get_db))
     Fast hourly refresh of the top 50 ending-soonest active auctions.
     Keeps the first page of live auctions always fresh (< 1 hour old).
     """
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     try:
         from ebay_api import get_item_details as _get_item_details
@@ -1881,15 +1874,8 @@ async def cron_keepalive(request: Request):
     inside their CDN cache window so the next user request is served
     from cache instantly (~150ms) instead of cold (~15s).
     """
-    import os as _os, httpx as _httpx
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    import httpx as _httpx
+    require_cron_or_admin(request)
 
     base = "https://f1cardvault.com"
     # Warming trimmed 2026-07-07 after the Neon data-transfer quota was exceeded.
@@ -1936,18 +1922,10 @@ async def audit_auto_fix(request: Request, db: Session = Depends(get_db)):
          the report severity in the inbox so Eddie sees it
       5. Persist the report into user_feedback so /admin/feedback shows it
 
-    Auth: ADMIN_TOKEN or vercel-cron UA.
+    Auth: Vercel cron (Authorization: Bearer CRON_SECRET) or X-Admin-Token header.
     """
-    import os as _os
     from datetime import timedelta
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     now = datetime.utcnow()
     actions: list[str] = []
@@ -2097,18 +2075,10 @@ async def audit_morning_check(request: Request, db: Session = Depends(get_db)):
       3. OVERNIGHT: last-24h feedback submissions count (excluding our
          own auto-audit posts)
 
-    Auth: ADMIN_TOKEN or vercel-cron UA.
+    Auth: Vercel cron (Authorization: Bearer CRON_SECRET) or X-Admin-Token header.
     """
-    import os as _os
     from datetime import timedelta
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     now = datetime.utcnow()
     lines = [f"MORNING DIGEST ({now.strftime('%Y-%m-%d %H:%M')}Z)", ""]
@@ -2196,18 +2166,10 @@ def audit_stale_prices(request: Request, db: Session = Depends(get_db)):
     Server-side daily 7am audit. Replaces the session-only CronCreate version.
     Walks active auctions, breaks down freshness, flags stale-premium ($50+,
     >2h since refresh), posts a tight digest into the feedback inbox so Eddie
-    sees it next time he opens the inbox. Auth: ADMIN_TOKEN or vercel-cron UA.
+    sees it next time he opens the inbox. Auth: CRON_SECRET bearer or X-Admin-Token.
     """
-    import os as _os
     from datetime import timedelta
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     now = datetime.utcnow()
     rows = db.query(Auction).filter(
@@ -2278,15 +2240,7 @@ async def backfill_sellers(request: Request, db: Session = Depends(get_db)):
     seller is empty or the 'ebay_seller' placeholder. Hit repeatedly until
     `remaining` returns 0. Same auth pattern as refresh endpoints.
     """
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     from sqlalchemy import or_
     from ebay_api import get_item_details as _get_item_details
@@ -2363,15 +2317,7 @@ async def ebay_refresh_stale_premium(request: Request, db: Session = Depends(get
     Browse API quota headroom). Marks status='ended' if eBay reports the
     listing closed.
     """
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     try:
         from ebay_api import get_item_details as _get_item_details
@@ -2441,17 +2387,9 @@ async def finding_active_ingest(request: Request, db: Session = Depends(get_db))
     Runs a small driver x parallel matrix inline so Vercel's 10s function
     timeout doesn't kill it. Hit repeatedly to expand coverage.
 
-    Auth: ADMIN_TOKEN or vercel-cron UA.
+    Auth: Vercel cron (Authorization: Bearer CRON_SECRET) or X-Admin-Token header.
     """
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     try:
         from ebay_finding_api import fetch_active_for_query
@@ -2506,15 +2444,7 @@ async def finding_active_ingest(request: Request, db: Session = Depends(get_db))
 @app.api_route("/api/admin/debug-sync", methods=["GET", "POST"])
 async def debug_sync(request: Request, db: Session = Depends(get_db)):
     """Run sync_real_ebay_listings with full instrumentation. Same auth pattern."""
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
     try:
         from scraper import sync_real_ebay_listings
         import ebay_api as _ea
@@ -2538,18 +2468,10 @@ def clear_ebay_cooldown(request: Request):
     """
     Manually clear the eBay rate-limit cooldown. The Browse API auto-locks for
     24h on a 429, which can lock the whole ingest pipeline for a full day.
-    Use sparingly — the cooldown exists for a reason. Auth: ADMIN_TOKEN or
-    vercel-cron UA.
+    Use sparingly — the cooldown exists for a reason. Auth: CRON_SECRET
+    bearer or X-Admin-Token header.
     """
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
     try:
         from database import SessionLocal, SystemState
         import ebay_api as _ea
@@ -2578,18 +2500,10 @@ def migrate_feedback_table(request: Request):
     serverless instances don't reliably re-init across deploys, so this is
     the manual escape hatch.
 
-    Auth: ADMIN_TOKEN via header/query, OR vercel-cron UA. The operation is
-    idempotent (CREATE TABLE IF NOT EXISTS) so the loose auth is safe.
+    Auth: CRON_SECRET bearer or X-Admin-Token header. The operation is
+    idempotent (CREATE TABLE IF NOT EXISTS).
     """
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
     from sqlalchemy import text
     try:
         from database import engine as _engine
@@ -2631,17 +2545,9 @@ async def ebay_refresh(request: Request, db: Session = Depends(get_db)):
     """
     Admin-gated live-refresh via eBay Browse API.
     Runs on a 15-minute Vercel cron to keep bid counts + end times fresh.
-    Auth: ?token=<ADMIN_TOKEN>, X-Admin-Token header, or Vercel cron (vercel-cron/1.0 UA).
+    Auth: CRON_SECRET bearer (Vercel cron) or X-Admin-Token header.
     """
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     if not has_real_credentials():
         return {"ok": False, "error": "no_credentials"}
@@ -2768,17 +2674,9 @@ async def cron_scrape_free(request: Request):
     /api/cron/sync so we can hammer the cheap scrapers without tripping the
     expensive paths.
 
-    Auth: same pattern as /api/ebay/refresh — ADMIN_TOKEN or vercel-cron UA.
+    Auth: same pattern as /api/ebay/refresh — CRON_SECRET bearer or X-Admin-Token.
     """
-    import os as _os
-    admin_token = _os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    is_cron = "vercel-cron" in ua
-    if not is_cron:
-        if not admin_token or (qtoken != admin_token and header_token != admin_token):
-            return {"ok": False, "error": "unauthorized"}
+    require_cron_or_admin(request)
 
     results = {"130point": None, "ebay_html_sold": None, "ebay_html_auction": None}
     errors = {}
@@ -2859,7 +2757,7 @@ def health():
 
 
 @app.post("/api/sync")
-async def manual_sync(db: Session = Depends(get_db)):
+async def manual_sync(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Synchronously fetch live eBay listings. Seeds cards first if needed."""
     if not has_real_credentials():
         return {"success": False, "message": "No eBay credentials configured"}
@@ -2873,7 +2771,7 @@ async def manual_sync(db: Session = Depends(get_db)):
 
 
 @app.post("/api/sync/price-history")
-async def manual_price_history_sync(db: Session = Depends(get_db)):
+async def manual_price_history_sync(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Trigger one batch of price history sync (5 drivers, ~300 sold comps each)."""
     if not has_real_credentials():
         return {"success": False, "message": "No eBay credentials"}
@@ -3201,7 +3099,7 @@ async def rebuild_auctions(db: Session = Depends(get_db), _admin=Depends(require
 
 
 @app.get("/api/cron/mark-ended")
-def cron_mark_ended(db: Session = Depends(get_db)):
+def cron_mark_ended(db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
     """Sweep: mark every active auction whose end_time is in the past as
     'ended'. Runs every 30 min via Vercel cron. Without this, the API's
     ending-soonest sort puts expired rows before live ones, burying real
@@ -3383,7 +3281,7 @@ def _refresh_comp_medians_impl(db: Session) -> dict:
 
 
 @app.get("/api/cron/refresh-comp-medians")
-def cron_refresh_comp_medians(response: Response, db: Session = Depends(get_db)):
+def cron_refresh_comp_medians(response: Response, db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
     """Daily pre-aggregation of `sold_cards` medians into `comp_medians`.
 
     Vercel cron at 04:15 UTC. Reads via /api/auctions/with-verdicts hit
@@ -3561,7 +3459,7 @@ def _refresh_basket_history_impl(db: Session, lookback_days: int = 365) -> dict:
 
 
 @app.get("/api/cron/refresh-basket-history")
-def cron_refresh_basket_history(response: Response, db: Session = Depends(get_db)):
+def cron_refresh_basket_history(response: Response, db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
     """Daily pre-aggregation of index basket daily values into
     `basket_daily_value`. Vercel cron at 04:30 UTC.
 
@@ -3592,7 +3490,7 @@ def admin_seed_basket_history(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/api/cron/sync-race-results")
-async def cron_sync_race_results(request: Request, db: Session = Depends(get_db)):
+async def cron_sync_race_results(request: Request, db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
     """Pull all 2026 race results from OpenF1 (https://openf1.org) and
     upsert into race_results. Free public API, no auth.
 

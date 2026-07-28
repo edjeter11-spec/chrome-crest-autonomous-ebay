@@ -3,7 +3,7 @@ Weekly email digest — top movers in user's watchlist sent every Monday 9am UTC
 Queries watched cards, filters to ones with price change in last 7 days, ranks by % change.
 Sends personalized HTML email per user via Resend API.
 
-Auth: vercel-cron User-Agent or ADMIN_TOKEN (same as cleanup.py pattern).
+Auth: CRON_SECRET bearer (Vercel cron) or X-Admin-Token (same as cleanup.py pattern).
 """
 import os
 from datetime import datetime, timedelta
@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 
 from database import get_db, Wishlist, Card, Auction, SoldCard
+from lib.auth import require_cron_or_admin
 import httpx
 
 router = APIRouter(prefix="/api/email", tags=["email"])
@@ -24,19 +25,6 @@ FROM_EMAIL = os.getenv("DIGEST_FROM_EMAIL", "F1 Card Vault <digest@f1cardhub.com
 EBAY_CAMPID = os.getenv("EBAY_CAMPID", "")
 EBAY_CUSTOMID = os.getenv("EBAY_CUSTOMID", "f1cardhub")
 EBAY_ROTATOR = "711-53200-19255-0"
-
-
-def _admin_ok(request: Request) -> bool:
-    """Check if request is from Vercel cron or has valid ADMIN_TOKEN."""
-    admin_token = os.getenv("ADMIN_TOKEN", "")
-    qtoken = request.query_params.get("token", "")
-    header_token = request.headers.get("x-admin-token", "")
-    ua = request.headers.get("user-agent", "").lower()
-    if "vercel-cron" in ua:
-        return True
-    if not admin_token:
-        return False
-    return qtoken == admin_token or header_token == admin_token
 
 
 def _ebay_affiliate_url(url: str) -> str:
@@ -219,8 +207,7 @@ async def send_weekly_digest(request: Request, db: Session = Depends(get_db)):
     Cron endpoint: Sent Monday 9am UTC. Iterates all users with watchlists,
     calculates top 5 movers, sends personalized emails.
     """
-    if not _admin_ok(request):
-        raise HTTPException(status_code=401, detail="unauthorized")
+    require_cron_or_admin(request)
 
     week_ago = datetime.utcnow() - timedelta(days=7)
 

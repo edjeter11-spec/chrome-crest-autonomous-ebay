@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import Column, Integer, String, DateTime, Text
 from database import get_db, Base, engine, Auction, Wishlist, Card
+from lib.auth import require_user_id
 from datetime import datetime
 import secrets
 import json
@@ -22,17 +23,28 @@ class SharedWatchlist(Base):
 
 
 def _generate_token() -> str:
-    return secrets.token_urlsafe(6)  # ~8 chars
+    # 16 bytes (~22 chars). The old token_urlsafe(6) (~8 chars / 48 bits)
+    # was short enough to worry about brute-force enumeration of share URLs.
+    return secrets.token_urlsafe(16)
 
 
 @router.post("/share")
-def create_share(body: dict = None, db: Session = Depends(get_db)):
-    """Snapshot current watchlist (live auction watches + wishlist items) and return a token."""
+def create_share(
+    body: dict = None,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(require_user_id),
+):
+    """Snapshot current watchlist (live auction watches + wishlist items) and return a token.
+
+    Auth: requires a logged-in user (Supabase JWT). Only the caller's OWN
+    wishlist rows are snapshotted — the old version dumped every user's
+    wishlist into a public share."""
     body = body or {}
-    # Capture live-watched auctions
+    # Capture live-watched auctions (global product concept — Auction has no
+    # per-user owner; status='watchlist' is site-wide)
     watched = db.query(Auction).filter(Auction.status == "watchlist").all()
-    # Capture wishlist items
-    wishes = db.query(Wishlist).all()
+    # Capture the caller's own wishlist items only
+    wishes = db.query(Wishlist).filter(Wishlist.user_id == user_id).all()
 
     items = []
     for a in watched:

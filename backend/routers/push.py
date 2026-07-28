@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db, PushSubscription
+from lib.auth import require_admin
 
 router = APIRouter(prefix="/api/push", tags=["push"])
 log = logging.getLogger("push")
@@ -50,8 +51,9 @@ async def unsubscribe(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/test")
-def send_test(db: Session = Depends(get_db)):
-    """Fire a test notification to every subscriber."""
+def send_test(db: Session = Depends(get_db), _admin=Depends(require_admin)):
+    """Fire a test notification to every subscriber. Admin-gated (X-Admin-Token)
+    so anonymous callers can't push-spam every subscribed browser."""
     sent = send_push_to_all(db, title="Chrome Crest test", body="Push notifications are working!", url="/")
     return {"sent": sent}
 

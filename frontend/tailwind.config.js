@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+import plugin from 'tailwindcss/plugin'
+
 export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
@@ -20,5 +22,10 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // `light:` variant — active when ThemeToggle puts .light on <body>.
+    // NOTE: without this plugin every light:* class in the codebase
+    // silently compiles to NOTHING (that was the light-mode bug).
+    plugin(({ addVariant }) => addVariant('light', 'body.light &')),
+  ],
 }

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Response, Request
 from sqlalchemy.orm import Session, joinedload, defer
 from sqlalchemy import func
 from database import get_db, Auction, Card
+from lib.auth import client_ip
 from datetime import datetime
 from typing import Optional
 import asyncio
@@ -454,10 +455,11 @@ async def refresh_stale_listings(request: Request, db: Session = Depends(get_db)
     """
     from scraper import sync_real_ebay_listings
     now_ts = datetime.utcnow().timestamp()
-    # Resolve client IP (trusts X-Forwarded-For when behind a proxy / Vercel).
+    # Resolve client IP via the trusted proxy headers only (x-real-ip /
+    # RIGHTMOST x-forwarded-for entry). The leftmost XFF entry is client-
+    # supplied and let attackers rotate fake IPs to bypass the rate limit.
     try:
-        xff = request.headers.get("x-forwarded-for") if request else None
-        ip = (xff.split(",")[0].strip() if xff else None) or (request.client.host if request and request.client else "unknown")
+        ip = client_ip(request)
     except Exception:
         ip = "unknown"
     last = _REFRESH_STALE_TS.get(ip, 0)

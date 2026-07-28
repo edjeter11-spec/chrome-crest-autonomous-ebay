@@ -2,7 +2,6 @@ import { lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import useKeyboardShortcuts from './lib/useKeyboardShortcuts'
 import Layout from './components/Layout'
-import Dashboard from './pages/Dashboard'
 import { AuthProvider, useAuth } from './lib/auth'
 
 /**
@@ -52,6 +51,10 @@ import ToastHost from './components/ToastHost'
 // Auctions/BuyItNow/Login are not the landing route — lazy-load to drop
 // ~30-40KB from the main bundle. Dashboard stays eager since it IS the
 // default route and we don't want a Suspense flash on first paint.
+// Dashboard was the ONLY eager page import — it dragged AuctionCard + ~9 lib
+// modules into the 348KB entry chunk that every route paid for. Lazy like
+// the other 27 routes; the shared Suspense skeleton covers first paint.
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'))
 const Auctions = lazyWithRetry(() => import('./pages/Auctions'))
 const BuyItNow = lazyWithRetry(() => import('./pages/BuyItNow'))
 const Login = lazyWithRetry(() => import('./pages/Login'))

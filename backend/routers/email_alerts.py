@@ -6,7 +6,9 @@ be on a verified domain in Resend — default is alerts@f1cardvault.com.
 """
 import os
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from lib.auth import require_admin
 
 router = APIRouter(prefix="/api/email", tags=["email"])
 
@@ -35,8 +37,9 @@ async def send_email(to: str, subject: str, html: str) -> dict:
 
 
 @router.post("/test")
-async def send_test_email(to: str = Query(..., description="Recipient email")):
-    """Test endpoint — sends a sample email to verify Resend wiring."""
+async def send_test_email(to: str = Query(..., description="Recipient email"), _admin=Depends(require_admin)):
+    """Test endpoint — sends a sample email to verify Resend wiring. Admin-gated
+    (X-Admin-Token) so anonymous callers can't burn the Resend quota / spam."""
     if not to or "@" not in to:
         raise HTTPException(status_code=400, detail="invalid email")
     return await send_email(

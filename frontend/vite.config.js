@@ -49,6 +49,7 @@ function perRouteHtml() {
         html = html.replace(/property="og:title" content="[^"]*"/, `property="og:title" content="${title}"`)
         html = html.replace(/property="og:description" content="[^"]*"/, `property="og:description" content="${desc}"`)
         html = html.replace(/property="og:url" content="[^"]*"/, `property="og:url" content="${url}"`)
+        html = html.replace(/rel="canonical" href="[^"]*"/, `rel="canonical" href="${url}"`)
         // og:image absolute URL — social crawlers (FB/LinkedIn/Discord) require absolute.
         // Until per-route OG images are generated, every route points at the same
         // /og-image.png. To add a per-route image later: extend the ROUTES entry with

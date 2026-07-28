@@ -4,9 +4,10 @@ for specific driver/parallel combos without waiting for the next cron cycle.
 
 Improves sold comp freshness from 24h+ to minutes.
 """
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
+from lib.auth import client_ip
 from datetime import datetime
 import asyncio
 import logging
@@ -14,12 +15,15 @@ import logging
 router = APIRouter(prefix="/api/comps", tags=["comps"])
 logger = logging.getLogger(__name__)
 
-# Track recent refresh jobs to prevent hammering
-_refresh_tracker: dict = {}  # (driver, parallel) -> last_refresh_time
+# Track recent refresh jobs to prevent hammering.
+# Keyed by trusted client IP — the old (driver, parallel) key let a single
+# caller fire unlimited scrapes just by rotating driver names.
+_refresh_tracker: dict = {}  # client_ip -> last_refresh_time
 
 
 @router.post("/refresh")
 async def refresh_comps(
+    request: Request,
     driver: str = Query(..., description="F1 driver name (e.g., 'Max Verstappen')"),
     parallel: str = Query(None, description="Card parallel (optional; defaults to all)"),
     db: Session = Depends(get_db),
@@ -28,12 +32,12 @@ async def refresh_comps(
     Manually trigger a fresh sold-comp scrape for a specific driver (and optional parallel).
     Non-blocking; scrape runs in background. Returns job ID for status polling.
 
-    Rate-limiting: max 1 refresh per (driver, parallel) per 5 minutes.
+    Rate-limiting: max 1 refresh per client IP per 5 minutes.
     """
     import os
 
-    # Rate limit: only allow one refresh per 5 minutes per driver/parallel
-    tracker_key = (driver, parallel or "all")
+    # Rate limit: only allow one refresh per 5 minutes per client IP
+    tracker_key = client_ip(request)
     last_refresh = _refresh_tracker.get(tracker_key, datetime.min)
     elapsed = (datetime.utcnow() - last_refresh).total_seconds()
     if elapsed < 300:  # 5 minutes
@@ -123,7 +127,9 @@ async def refresh_all_comps(db: Session = Depends(get_db)):
 
     Rate-limiting: max 1 full refresh per 30 minutes.
     """
-    # Rate limit: allow one full refresh per 30 minutes
+    # Rate limit: allow one full refresh per 30 minutes. Deliberately a
+    # GLOBAL key (not per-IP) — per-IP would let a multi-IP attacker queue
+    # many full-matrix scrapes; global is strictly tighter.
     last_full = _refresh_tracker.get("full_refresh", datetime.min)
     elapsed = (datetime.utcnow() - last_full).total_seconds()
     if elapsed < 1800:  # 30 minutes

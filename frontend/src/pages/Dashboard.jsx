@@ -163,17 +163,6 @@ export default function Dashboard() {
     return () => clearInterval(id)
   }, [])
 
-  // TEMP: surface any runtime errors so mobile blank-render has a trail in console
-  useEffect(() => {
-    const handler = (e) => { console.error('[Dashboard error]', e.error || e.message) }
-    const rejHandler = (e) => { console.error('[Dashboard unhandled rejection]', e.reason) }
-    window.addEventListener('error', handler)
-    window.addEventListener('unhandledrejection', rejHandler)
-    return () => {
-      window.removeEventListener('error', handler)
-      window.removeEventListener('unhandledrejection', rejHandler)
-    }
-  }, [])
   const [lastSync, setLastSync] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -210,10 +199,17 @@ export default function Dashboard() {
         }
       })
 
-      fetch(`${API}/api/admin/scraper-health`)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => setScraperHealth(d))
-        .catch(() => {})
+      // scraper-health is admin-gated server-side — only fire it when an
+      // admin token is stored, otherwise every visitor burned a guaranteed
+      // 403 round-trip and the strip was dead UI anyway.
+      let adminToken = null
+      try { adminToken = window.localStorage.getItem('cc_admin_token') } catch {}
+      if (adminToken) {
+        fetch(`${API}/api/admin/scraper-health`, { headers: { 'X-Admin-Token': adminToken } })
+          .then(r => r.ok ? r.json() : null)
+          .then(d => setScraperHealth(d))
+          .catch(() => {})
+      }
     }, 1500)
     return () => clearTimeout(deferTimer)
   }, [])
@@ -557,7 +553,7 @@ export default function Dashboard() {
             />
             <KpiTile
               icon={Clock}
-              label={<><span className="md:hidden">≤1h</span><span className="hidden md:inline">Ending ≤ 1h</span></>}
+              label={<><span className="md:hidden">Ending ≤1h</span><span className="hidden md:inline">Ending ≤ 1h</span></>}
               value={auctionsLoading ? null : Number(endingUnderHour || 0).toLocaleString()}
               sub={endingUnderHour > 0 ? 'Hurry' : 'None imminent'}
               color={endingUnderHour > 0 ? 'red' : 'gray'}
@@ -573,7 +569,7 @@ export default function Dashboard() {
             />
             <KpiTile
               icon={Flame}
-              label={<><span className="md:hidden">7d</span><span className="hidden md:inline">7d Sales</span></>}
+              label={<><span className="md:hidden">7d Sales</span><span className="hidden md:inline">7d Sales</span></>}
               value={recent24hCount == null ? null : Number(recent24hCount || 0).toLocaleString()}
               sub="Fresh recent sales this week"
               color="emerald"
@@ -581,7 +577,7 @@ export default function Dashboard() {
             />
             <KpiTile
               icon={Database}
-              label={<><span className="md:hidden">Sales</span><span className="hidden md:inline">Total Sales</span></>}
+              label={<><span className="md:hidden">Total Sales</span><span className="hidden md:inline">Total Sales</span></>}
               value={statsLoading ? null : (Number(stats?.total_count ?? 0).toLocaleString())}
               sub={stats?.week_count != null ? `+${Number(stats.week_count).toLocaleString()} this week` : ' '}
               color="cyan"
@@ -612,11 +608,11 @@ export default function Dashboard() {
                     <button
                       key={i}
                       onClick={() => navigate(`/drivers?name=${encodeURIComponent(driverName)}`)}
-                      className="shrink-0 flex flex-col items-center gap-1.5 w-20"
+                      className="shrink-0 flex flex-col items-center gap-1.5 w-[68px] md:w-20"
                       title={`${d?.count ?? 0} sold · $${Math.round(Number(d?.total_value) || 0).toLocaleString()}${team ? ` · ${team}` : ''}`}
                     >
                       <div
-                        className="w-16 h-16 rounded-full overflow-hidden bg-gray-800 border-2 transition-colors"
+                        className="w-14 h-14 md:w-16 md:h-16 rounded-full overflow-hidden bg-gray-800 border-2 transition-colors"
                         style={tColor
                           ? { borderColor: tColor, boxShadow: `0 0 0 1px ${tColor}33` }
                           : { borderColor: 'rgba(75,85,99,0.5)' }}
@@ -669,7 +665,7 @@ export default function Dashboard() {
       <SectionBoundary><RaceCalendarStrip /></SectionBoundary>
 
       {/* Header — sticky on mobile so the refresh button is always reachable */}
-      <div className="sticky top-0 z-30 -mx-3 px-3 py-2 md:py-0 md:mx-0 md:px-0 md:static bg-gray-950/85 backdrop-blur-md md:bg-transparent md:backdrop-blur-none border-b border-gray-800/60 md:border-0 flex items-start justify-between gap-4">
+      <div className="sticky top-0 z-20 -mx-3 px-3 py-2 md:py-0 md:mx-0 md:px-0 md:static bg-gray-950/85 backdrop-blur-md md:bg-transparent md:backdrop-blur-none border-b border-gray-800/60 md:border-0 flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-1 h-7 bg-red-600 rounded-full shrink-0" />
           <div className="min-w-0">
@@ -806,7 +802,7 @@ export default function Dashboard() {
                 className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors no-underline"
               >
                 <img
-                  src={upscaleEbayImage(s?.image_url, 200)}
+                  src={upscaleEbayImage(s?.image_url, 140)}
                   alt=""
                   className="w-10 h-14 object-cover rounded border border-gray-800 shrink-0"
                   loading="lazy"
@@ -1093,7 +1089,7 @@ function DealOfTheDay({ auctions }) {
       rel="noopener sponsored"
       onClick={onCtaClick}
       onAuxClick={onCtaClick}
-      className="block mx-3 md:mx-0 bg-gradient-to-br from-red-900 via-red-950 to-gray-900 rounded-2xl border border-red-600/50 shadow-xl shadow-red-950/40 overflow-hidden hover:brightness-110 transition"
+      className="block bg-gradient-to-br from-red-900 via-red-950 to-gray-900 rounded-2xl border border-red-600/50 shadow-xl shadow-red-950/40 overflow-hidden hover:brightness-110 transition"
     >
       <div className="flex flex-col md:flex-row items-stretch">
         <div className="md:w-64 h-40 md:h-auto bg-black/40 flex items-center justify-center shrink-0 relative">
@@ -1104,7 +1100,7 @@ function DealOfTheDay({ auctions }) {
             />
           )}
           {img ? (
-            <img src={img} alt={title} className="h-full w-full object-contain p-3" />
+            <img src={img} alt={title} fetchPriority="high" loading="eager" className="h-full w-full object-contain p-3" />
           ) : (
             <div className="text-red-300 text-xs font-bold">No image</div>
           )}
@@ -1211,14 +1207,14 @@ function KpiTile({ icon: Icon, label, value, sub, color = 'gray', onClick }) {
       <div className="flex items-center gap-1 md:gap-2 mb-1 md:mb-2">
         <Icon size={11} className={`md:hidden ${tint}`} />
         <Icon size={13} className={`hidden md:block ${tint}`} />
-        <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-gray-500 light:text-gray-600 truncate">{label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 light:text-gray-600 truncate">{label}</span>
       </div>
       {value === null ? (
         <div className="h-5 md:h-6 w-16 bg-gray-800/60 rounded animate-pulse" />
       ) : (
         <div className="text-sm md:text-xl font-black text-white light:text-gray-900 truncate tabular-nums">{value}</div>
       )}
-      {sub && <div className="hidden md:block text-[10px] text-gray-500 mt-0.5 truncate light:text-gray-600">{sub}</div>}
+      {sub && <div className="block text-[10px] leading-tight text-gray-500 mt-0.5 truncate light:text-gray-600">{sub}</div>}
     </Cmp>
   )
 }

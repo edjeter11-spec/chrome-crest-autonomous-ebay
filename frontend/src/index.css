@@ -30,22 +30,49 @@
 
   * { box-sizing: border-box; }
 
-  /* Light mode — WCAG AA contrast compliance */
+  /* ============== Light mode ==============
+     Strategy: token-prefix attribute selectors ([class^=] for first token,
+     [class*=" ..."] for later tokens) so EVERY opacity variant (/40 /60 /85
+     /95 ...) is covered without enumerating them. Hover-only classes like
+     "hover:bg-gray-800" are NOT matched (their token starts with "hover:"),
+     so hover states keep their own remaps below. */
   body.light { background: #f6f7f9; color: #1f2937; }
-  body.light h1, body.light h2, body.light h3, body.light .page-title, body.light .text-white { color: #1f2937 !important; }
+  body.light h1, body.light h2, body.light h3, body.light .page-title { color: #1f2937 !important; }
 
-  /* Background color mappings */
-  body.light .bg-gray-950, body.light .bg-gray-900, body.light .bg-gray-900\/95, body.light .bg-gray-900\/70, body.light .bg-gray-900\/60, body.light .bg-gray-900\/50 { background-color: #ffffff !important; border-color: #e5e7eb !important; }
-  body.light .bg-gray-800, body.light .bg-gray-800\/60, body.light .bg-gray-800\/80, body.light .bg-gray-800\/70, body.light .bg-gray-800\/50 { background-color: #f1f5f9 !important; }
+  /* Surfaces — three depths so panels don't melt into the page:
+     page chrome (gray-950) #eef1f4 · panels (gray-900) #ffffff ·
+     raised/chips (gray-800) #e9edf1 · buttons/hover (gray-700) #dde2e8 */
+  body.light [class^="bg-gray-950"], body.light [class*=" bg-gray-950"] { background-color: #eef1f4 !important; }
+  body.light [class^="bg-gray-900"], body.light [class*=" bg-gray-900"] { background-color: #ffffff !important; }
+  body.light [class^="bg-gray-800"], body.light [class*=" bg-gray-800"] { background-color: #e9edf1 !important; }
+  body.light [class^="bg-gray-700"], body.light [class*=" bg-gray-700"] { background-color: #dde2e8 !important; }
+  /* Image scrims / pills on photos keep a dark tint for contrast */
+  body.light [class^="bg-black"], body.light [class*=" bg-black"] { background-color: rgba(15, 23, 42, 0.55) !important; }
+  /* Gray gradients (hero/panel washes) flatten to a panel white */
+  body.light [class^="from-gray-9"], body.light [class*=" from-gray-9"],
+  body.light [class^="via-gray-9"], body.light [class*=" via-gray-9"] { background-image: none !important; background-color: #ffffff !important; }
 
-  /* Text color mappings — darker grays for light mode WCAG AA */
-  body.light .text-gray-100, body.light .text-gray-200, body.light .text-gray-300 { color: #1f2937 !important; }
-  body.light .text-gray-400 { color: #4b5563 !important; } /* 4.75:1 ratio on #f1f5f9 */
-  body.light .text-gray-500 { color: #374151 !important; } /* 7.5:1 ratio on #ffffff, 6.8:1 on #f1f5f9 */
-  body.light .text-gray-600 { color: #1f2937 !important; } /* 14.5:1 ratio */
+  /* Text — .text-white darkens EXCEPT on/inside saturated surfaces
+     (red/green/etc buttons and gradient heroes keep white text) */
+  body.light .text-white { color: #1f2937 !important; }
+  body.light [class*="bg-red"] .text-white, body.light [class*="bg-green"] .text-white,
+  body.light [class*="bg-emerald"] .text-white, body.light [class*="bg-blue"] .text-white,
+  body.light [class*="bg-orange"] .text-white, body.light [class*="bg-amber"] .text-white,
+  body.light [class*="bg-violet"] .text-white, body.light [class*="bg-gradient"] .text-white,
+  body.light .text-white[class*="bg-red"], body.light .text-white[class*="bg-green"],
+  body.light .text-white[class*="bg-emerald"], body.light .text-white[class*="bg-blue"],
+  body.light .text-white[class*="bg-orange"], body.light .text-white[class*="bg-amber"],
+  body.light .text-white[class*="bg-violet"], body.light .text-white[class*="bg-gradient"] { color: #ffffff !important; }
 
-  /* Border color mappings */
-  body.light .border-gray-800, body.light .border-gray-800\/60, body.light .border-gray-700, body.light .border-gray-700\/40, body.light .border-gray-700\/50 { border-color: #e5e7eb !important; }
+  /* Text grays — darker for WCAG AA on the light surfaces above */
+  body.light .text-gray-100, body.light .text-gray-200 { color: #1f2937 !important; }
+  body.light .text-gray-300 { color: #374151 !important; }
+  body.light .text-gray-400 { color: #4b5563 !important; }
+  body.light .text-gray-500 { color: #374151 !important; }
+  body.light .text-gray-600 { color: #1f2937 !important; }
+
+  /* Borders — every gray border token, all opacity variants */
+  body.light [class^="border-gray"], body.light [class*=" border-gray"] { border-color: #e2e6ea !important; }
 
   /* Input fields */
   body.light .input-field { background-color: #ffffff !important; border-color: #d1d5db !important; color: #1f2937 !important; }
@@ -62,16 +89,14 @@
   body.light .data-table tbody tr td a { color: #0f766e !important; } /* teal-900 for links */
   body.light .data-table tbody tr td a:hover { color: #134e4a !important; text-decoration: underline; }
 
-  /* Additional light-mode overrides for common patterns */
-  body.light .text-gray-300 { color: #374151 !important; }
   body.light .text-gray-700 { color: #1f2937 !important; }
 
-  /* Ensure icons and interactive elements have proper contrast */
+  /* Hover states — token-prefix match on the hover: classes themselves */
   body.light .hover\:text-gray-200:hover { color: #4b5563 !important; }
   body.light .hover\:text-gray-300:hover { color: #374151 !important; }
   body.light .hover\:text-gray-400:hover { color: #1f2937 !important; }
-  body.light .hover\:bg-gray-800:hover { background-color: #e5e7eb !important; }
-  body.light .hover\:bg-gray-800\/40:hover { background-color: rgba(229,231,235,0.4) !important; }
+  body.light [class*="hover:bg-gray-800"]:hover { background-color: #dde2e8 !important; }
+  body.light [class*="hover:bg-gray-700"]:hover { background-color: #d3d9e0 !important; }
 
   /* Opacity adjustments for light mode readability */
   body.light .opacity-60 { opacity: 0.8 !important; }
@@ -81,11 +106,6 @@
 
   /* Card & panel backgrounds */
   body.light .panel { background-color: #ffffff !important; border-color: #e5e7eb !important; }
-  body.light .card-hover { transition-colors: true; }
-
-  /* Badges and small text */
-  body.light .px-1\.5 { }
-  body.light .py-0\.5 { }
 
   /* Countdown timers */
   body.light .countdown-normal { color: #4b5563 !important; }

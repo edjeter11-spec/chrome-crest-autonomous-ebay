@@ -201,12 +201,12 @@ function AuctionRow({ a, nowTick, freshOverride, onOpen }) {
     if (!Number.isNaN(t)) {
       const ageMin = Math.max(0, Math.floor((Date.now() - t) / 60000))
       if (ageMin < 2) {
-        freshness = <span className="text-[9px] text-emerald-400 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Live</span>
+        freshness = <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />Live</span>
       } else if (ageMin < 60) {
-        freshness = <span className="text-[9px] text-gray-500">Updated {ageMin}m ago</span>
+        freshness = <span className="text-[10px] text-gray-500">Updated {ageMin}m ago</span>
       } else {
         const ageH = Math.floor(ageMin / 60)
-        freshness = <span className="text-[9px] text-amber-500">Updated {ageH}h ago</span>
+        freshness = <span className="text-[10px] text-amber-500">Updated {ageH}h ago</span>
       }
     }
   }
@@ -245,7 +245,7 @@ function AuctionRow({ a, nowTick, freshOverride, onOpen }) {
               to="/how-we-score"
               title="How we score auctions"
               onClick={e => e.stopPropagation()}
-              className={`text-[9px] font-black px-1.5 py-0.5 rounded shrink-0 hover:opacity-80 transition-opacity ${
+              className={`text-[10px] font-black px-1.5 py-0.5 rounded shrink-0 hover:opacity-80 transition-opacity ${
                 verdict === 'STRONG_BUY' ? 'bg-emerald-600/40 text-emerald-200' : 'bg-emerald-600/25 text-emerald-300'
               }`}
             >

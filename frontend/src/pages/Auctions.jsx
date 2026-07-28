@@ -426,7 +426,7 @@ export default function Auctions() {
           filters live in the "Advanced filters" disclosure below. */}
       <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
         {/* Search */}
-        <div className="relative min-w-44 flex-1 sm:flex-initial">
+        <div className="relative min-w-0 basis-full sm:basis-auto sm:min-w-44 flex-1 sm:flex-initial">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
           <input value={search} onChange={e => setF({ search: e.target.value })}
             placeholder="Driver, title…"
@@ -653,7 +653,7 @@ export default function Auctions() {
       )}
 
       {ruleToast && (
-        <div className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-50 max-w-[calc(100vw-2rem)] md:max-w-sm bg-gray-900 border border-green-600/40 rounded-xl shadow-xl px-4 py-3 flex items-center gap-3">
+        <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom,0px)+0.5rem)] md:bottom-6 right-4 md:right-6 z-50 max-w-[calc(100vw-2rem)] md:max-w-sm bg-gray-900 border border-green-600/40 rounded-xl shadow-xl px-4 py-3 flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-green-600/30 border border-green-500/60 flex items-center justify-center shrink-0">
             <Check size={16} className="text-green-300" />
           </div>
