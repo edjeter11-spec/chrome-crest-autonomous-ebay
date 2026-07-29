@@ -261,8 +261,13 @@ async def ingest_sold_for_driver(driver_name: str, db: Session) -> dict:
 # killed mid-flight almost every time and db.commit() rarely executed.
 # sold_cards went 7+ weeks stale as a result. Now it's awaited for real,
 # batched like price_history_sync.py so each cron tick finishes fast and
-# rotates through the full roster over a handful of ticks.
-_ALL_DRIVERS_BATCH_SIZE = 5
+# rotates through the full roster over many ticks. Kept small (2) because
+# the caller in main.py wraps this in asyncio.wait_for(timeout=25) — each
+# driver call is up to 3 sequential Finding-API pages at a 15s httpx
+# timeout apiece, so even 2 drivers can theoretically approach the
+# deadline. Small batch = the common case finishes well inside budget;
+# worst case it just times out cleanly and picks up next tick.
+_ALL_DRIVERS_BATCH_SIZE = 2
 _all_drivers_cursor = 0
 
 
@@ -415,8 +420,11 @@ async def _upsert_active_item(item: dict, db: Session) -> str:
 # completion at all (see ingest_all_drivers comment — same root cause).
 # Now awaited for real, capped to a rotating slice per cron tick so the
 # full matrix cycles over several ticks instead of running (and dying) all
-# at once.
-_FINDING_API_PAIR_BATCH = 12
+# at once. Caller wraps this in asyncio.wait_for(timeout=45) — 4 pairs ×
+# 2 queries (sold+active) × ~2-3s (network + 1s pacing sleep) typically
+# fits well inside that; worst case it times out cleanly and resumes from
+# the same cursor position next tick (no data loss, just delay).
+_FINDING_API_PAIR_BATCH = 4
 _finding_api_cursor = 0
 
 

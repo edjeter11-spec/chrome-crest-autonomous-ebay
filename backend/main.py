@@ -1434,15 +1434,40 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
     # Both functions process a rotating slice per call and cycle through
     # the full roster/matrix over successive cron ticks — see the
     # _*_BATCH_SIZE / _*_cursor comments in sold_ingest.py.
+    #
+    # Hard per-stage deadline via wait_for: sync_real_ebay_listings +
+    # sync_price_history_batch above already make ~15-20 sequential
+    # eBay-API calls each (15s httpx timeout apiece) before we even get
+    # here, and this whole route has a single Vercel function-duration
+    # ceiling to share. Without a deadline, a slow/cooldown-throttled
+    # Finding API run here can push the WHOLE cron tick past that ceiling
+    # with no response ever sent — which is exactly what happened testing
+    # this fix (4m50s+, no completion, no error, nothing committed).
+    # Timing out cleanly just means "try again next tick" — every function
+    # here already commits incrementally, so a timeout can't corrupt data,
+    # only delay it by one 2h cycle.
+    # Each gets its OWN db session (db=None -> SessionLocal() internally),
+    # not the route's shared `db` — a cancelled-by-timeout SQLAlchemy
+    # session mid-query/mid-commit is not safe to keep using for the rest
+    # of this route (main sync/price-history/scraper code all still runs
+    # after this block on the same `db`).
     sold_result = None
     finding_result = None
     sold_error = None
     try:
-        from sold_ingest import ingest_all_drivers, ingest_finding_api_all
-        sold_result = await ingest_all_drivers(db)
-        finding_result = await ingest_finding_api_all(db)
+        from sold_ingest import ingest_all_drivers
+        sold_result = await asyncio.wait_for(ingest_all_drivers(None), timeout=25)
+    except asyncio.TimeoutError:
+        sold_error = "ingest_all_drivers timed out (25s) — will retry next tick"
     except Exception as e:
         sold_error = str(e)[:200]
+    try:
+        from sold_ingest import ingest_finding_api_all
+        finding_result = await asyncio.wait_for(ingest_finding_api_all(None), timeout=45)
+    except asyncio.TimeoutError:
+        sold_error = (sold_error + " | " if sold_error else "") + "ingest_finding_api_all timed out (45s) — will retry next tick"
+    except Exception as e:
+        sold_error = (sold_error + " | " if sold_error else "") + str(e)[:200]
 
     # Free scrapers — bypass eBay Browse API entirely.
     # Awaited (not fire-and-forget) so they actually run to completion each
