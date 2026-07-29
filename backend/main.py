@@ -2306,6 +2306,13 @@ def audit_stale_prices(request: Request, db: Session = Depends(get_db)):
     Walks active auctions, breaks down freshness, flags stale-premium ($50+,
     >2h since refresh), posts a tight digest into the feedback inbox so Eddie
     sees it next time he opens the inbox. Auth: CRON_SECRET bearer or X-Admin-Token.
+
+    Also checks sold_cards write-freshness (same signal /api/health/data-freshness
+    exposes) and prepends a WARNING line when it's degraded/stale/unknown. This is
+    the exact metric that stayed silently green for 7 weeks during the dead-DB
+    outage — nothing was watching it, so nobody noticed until the Sales page was
+    checked by hand. Now it rides the same daily digest as the price-staleness
+    audit instead of needing a separate alert channel.
     """
     from datetime import timedelta
     require_cron_or_admin(request)
@@ -2342,8 +2349,30 @@ def audit_stale_prices(request: Request, db: Session = Depends(get_db)):
 
     n = len(rows)
     pct_24h = (fresh[">=24h"] * 100 // n) if n else 0
+
+    # Sold-data freshness check — the metric that hid a 7-week outage because
+    # nothing was watching it. See /api/health/data-freshness for the same logic.
+    from database import SoldCard
+    from sqlalchemy import func as _func
+    sold_warning = None
+    try:
+        newest_scrape = db.query(_func.max(SoldCard.scraped_at)).scalar()
+        sold_age_h = (now - newest_scrape).total_seconds() / 3600 if newest_scrape else None
+        if sold_age_h is None:
+            sold_warning = "WARNING: sold_cards has no scraped_at rows at all (unknown/never written)."
+        elif sold_age_h > 48:
+            sold_warning = f"WARNING: sold_cards data is STALE — newest write is {sold_age_h:.1f}h old (>48h). Check GH Actions DATABASE_URL and scrape.yml runs."
+        elif sold_age_h > 12:
+            sold_warning = f"NOTE: sold_cards data is degraded — newest write is {sold_age_h:.1f}h old (>12h)."
+    except Exception as e:
+        sold_warning = f"WARNING: sold_cards freshness check failed: {str(e)[:120]}"
+
     lines = [
         f"AUTO-AUDIT 7AM ({now.date().isoformat()})",
+    ]
+    if sold_warning:
+        lines += [sold_warning, ""]
+    lines += [
         f"Sample: {n} active auctions",
         f"Freshness: <30m={fresh['<30m']} <2h={fresh['<2h']} <6h={fresh['<6h']} <24h={fresh['<24h']} >=24h={fresh['>=24h']}",
         f"Stale (>=24h): {pct_24h}%",
@@ -2368,6 +2397,7 @@ def audit_stale_prices(request: Request, db: Session = Depends(get_db)):
         "sample_size": n,
         "freshness": fresh,
         "stale_premium_count": len(stale_premium),
+        "sold_data_warning": sold_warning,
         "report_preview": msg[:500],
     }
 
