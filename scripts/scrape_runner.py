@@ -663,7 +663,17 @@ def scrape_search_page(page, url: str):
         else:
             raise
     title = page.title() or ""
-    if "Pardon" in title or "interruption" in title.lower():
+    # Bot-challenge detection: eBay serves several different interstitials
+    # depending on IP reputation — "Pardon Our Interruption" (captcha),
+    # "Security Measure" (soft block), and "Sign in or Register" (a login
+    # wall that appears in place of search results under heavy load). Only
+    # "Pardon" was recognized before, so every run since ~2026-06 hit the
+    # other two titles, fell through to the 20s wait_for_selector timeout
+    # per query with no cooldown, and the whole job blew its 25min budget
+    # without a single successful query — this is why sold_cards / the
+    # GH-Actions-fed comp pool went stale.
+    _CHALLENGE_TITLES = ("pardon", "interruption", "security measure", "sign in or register")
+    if any(t in title.lower() for t in _CHALLENGE_TITLES):
         log.warning(f"Bot challenge: {title} — cooling 30s then retrying")
         page.wait_for_timeout(30000)
         try:
@@ -675,7 +685,7 @@ def scrape_search_page(page, url: str):
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=45000)
             title = page.title() or ""
-            if "Pardon" in title or "interruption" in title.lower():
+            if any(t in title.lower() for t in _CHALLENGE_TITLES):
                 log.warning(f"Bot challenge persisted after retry — skipping {url[:80]}")
                 return []
         except Exception as e:
@@ -879,6 +889,16 @@ def main():
             + [(q, 40) for q in PREMIUM_QUERIES]
             + [(q, 200) for q in MARKET_MAKER_QUERIES]
         )
+        # Circuit breaker: each bot-challenge costs ~35s (30s cooldown + 2
+        # navigations) before yielding zero items. If eBay is hard-blocking
+        # this runner's IP for the whole run, ~80 queries × 35s blows well
+        # past the 25min job timeout with zero rows written and the run
+        # shows as "cancelled" instead of "completed" — which is exactly
+        # what happened for weeks. After 6 CONSECUTIVE empty queries, stop
+        # early and let whatever was already committed stand, rather than
+        # burn the rest of the budget on a run that isn't going to recover.
+        consecutive_empty = 0
+        EMPTY_STREAK_BREAKER = 6
         for query, min_price in sold_queries:
             url = build_url(query, "sold", min_price=min_price)
             log.info(f"Scraping [sold] {query!r} (min=${min_price})")
@@ -893,6 +913,17 @@ def main():
                     _recreate_page(f"sold loop: {e}")
                 items = []
             total_seen += len(items)
+            if items:
+                consecutive_empty = 0
+            else:
+                consecutive_empty += 1
+                if consecutive_empty >= EMPTY_STREAK_BREAKER:
+                    log.error(
+                        f"{EMPTY_STREAK_BREAKER} consecutive empty/blocked queries — "
+                        f"eBay is likely hard-blocking this IP. Stopping sold-query loop early "
+                        f"to preserve budget for the auction pass below."
+                    )
+                    break
 
             rows = []
             skipped_not_sold = 0

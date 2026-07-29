@@ -87,12 +87,20 @@ const FORM_TIER_STYLE = {
   cold:     { cls: 'bg-gray-800 text-gray-500 border-gray-700/40',    label: 'COLD',     icon: ''   },
 }
 
+const FORM_VALUE_HINT = {
+  hot: 'Recent results are strong — hype tends to push prices up before comps catch up. Snipe scores demand a deeper discount right now.',
+  climbing: 'Trending upward — snipe scores lean slightly more cautious on "cheap" pricing.',
+  stable: 'No recent form swing — snipe pricing uses the standard bar.',
+  cold: 'Off recent form — no hype tailwind, so a discount here is more likely a real bargain. Snipe scores loosen the bar a bit.',
+}
+
 function FormBadge({ form, small }) {
   if (!form?.tier) return null
   const s = FORM_TIER_STYLE[form.tier] || FORM_TIER_STYLE.cold
+  const hint = FORM_VALUE_HINT[form.tier] || ''
   return (
     <span
-      title={`Form ${form.form_score} — last ${form.races_counted} race${form.races_counted === 1 ? '' : 's'}`}
+      title={`Form ${form.form_score} — last ${form.races_counted} race${form.races_counted === 1 ? '' : 's'}. ${hint}`}
       className={`font-black px-1.5 py-0.5 rounded-lg border ${s.cls} ${small ? 'text-[9px]' : 'text-[10px]'}`}>
       {s.icon ? `${s.icon} ` : ''}{s.label}
     </span>

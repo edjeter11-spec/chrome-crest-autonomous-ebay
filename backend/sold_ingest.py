@@ -255,26 +255,45 @@ async def ingest_sold_for_driver(driver_name: str, db: Session) -> dict:
     }
 
 
-async def ingest_all_drivers(db: Optional[Session] = None) -> dict:
-    """Ingest across all F1 drivers. Creates its own session if none provided."""
+# Per-tick cap for ingest_all_drivers. This used to run ALL drivers via
+# asyncio.create_task() (fire-and-forget) — on Vercel serverless the lambda
+# freezes/recycles as soon as the HTTP response returns, so the task was
+# killed mid-flight almost every time and db.commit() rarely executed.
+# sold_cards went 7+ weeks stale as a result. Now it's awaited for real,
+# batched like price_history_sync.py so each cron tick finishes fast and
+# rotates through the full roster over a handful of ticks.
+_ALL_DRIVERS_BATCH_SIZE = 5
+_all_drivers_cursor = 0
+
+
+async def ingest_all_drivers(db: Optional[Session] = None, batch_size: Optional[int] = None) -> dict:
+    """Ingest sold comps for a rotating batch of F1 drivers. Creates its own
+    session if none provided. Call every cron tick — cursor persists across
+    calls (in-process) so repeated ticks cover the full roster."""
+    global _all_drivers_cursor
     owns_session = db is None
     if owns_session:
         db = SessionLocal()
 
+    n = batch_size or _ALL_DRIVERS_BATCH_SIZE
+    start = _all_drivers_cursor % len(F1_DRIVERS)
+    batch = [F1_DRIVERS[(start + i) % len(F1_DRIVERS)] for i in range(min(n, len(F1_DRIVERS)))]
+    _all_drivers_cursor = (start + len(batch)) % len(F1_DRIVERS)
+
     results = []
     total_added = 0
     try:
-        for i, driver in enumerate(F1_DRIVERS):
+        for i, driver in enumerate(batch):
             try:
                 r = await ingest_sold_for_driver(driver, db)
                 results.append(r)
                 total_added += r["added"]
-                logger.info(f"sold_ingest [{i+1}/{len(F1_DRIVERS)}] {driver}: +{r['added']}")
+                logger.info(f"sold_ingest [{i+1}/{len(batch)}] {driver}: +{r['added']}")
             except Exception as e:
                 logger.error(f"sold_ingest error for {driver}: {e}")
                 results.append({"driver": driver, "error": str(e)[:200]})
             # Gentle pacing between drivers — Finding API burst limit ~1 req/s
-            if i < len(F1_DRIVERS) - 1:
+            if i < len(batch) - 1:
                 await asyncio.sleep(0.5)
     finally:
         if owns_session:
@@ -282,7 +301,8 @@ async def ingest_all_drivers(db: Optional[Session] = None) -> dict:
 
     return {
         "total_added": total_added,
-        "drivers_processed": len(F1_DRIVERS),
+        "drivers_processed": len(batch),
+        "drivers_batch": batch,
         "results": results,
     }
 
@@ -388,13 +408,27 @@ async def _upsert_active_item(item: dict, db: Session) -> str:
     return "added"
 
 
-async def ingest_finding_api_all(db: Optional[Session] = None) -> dict:
+# Full (driver × parallel) matrix is 12 × 15 = 180 pairs; at ~2s/pair
+# (sold + active + pacing) that's ~6 minutes — far past what a single
+# awaited Vercel invocation should hold open, and this function used to
+# be fire-and-forget via asyncio.create_task() so it never ran to
+# completion at all (see ingest_all_drivers comment — same root cause).
+# Now awaited for real, capped to a rotating slice per cron tick so the
+# full matrix cycles over several ticks instead of running (and dying) all
+# at once.
+_FINDING_API_PAIR_BATCH = 12
+_finding_api_cursor = 0
+
+
+async def ingest_finding_api_all(db: Optional[Session] = None, batch_size: Optional[int] = None) -> dict:
     """
     Aggressive Finding API ingest:
       - Sold:   driver × major_parallel matrix via findCompletedItems
       - Active: same matrix via findItemsAdvanced  -> Auction rows
-    Stays on Finding API quota (separate from Browse).
+    Stays on Finding API quota (separate from Browse). Processes a rotating
+    batch of (driver, parallel) pairs per call — see _FINDING_API_PAIR_BATCH.
     """
+    global _finding_api_cursor
     owns = db is None
     if owns:
         db = SessionLocal()
@@ -403,41 +437,47 @@ async def ingest_finding_api_all(db: Optional[Session] = None) -> dict:
     active_updated = 0
     queries_run = 0
     errors: list[str] = []
+
+    all_pairs = [(d, p) for d in TOP_DRIVERS for p in MAJOR_PARALLELS]
+    n = batch_size or _FINDING_API_PAIR_BATCH
+    start = _finding_api_cursor % len(all_pairs)
+    pairs = [all_pairs[(start + i) % len(all_pairs)] for i in range(min(n, len(all_pairs)))]
+    _finding_api_cursor = (start + len(pairs)) % len(all_pairs)
+
     try:
-        for driver in TOP_DRIVERS:
+        for driver, parallel in pairs:
             last = driver.split()[-1]
-            for parallel in MAJOR_PARALLELS:
-                q = f"2025 Topps Chrome F1 {last} {parallel}"
-                queries_run += 1
-                # Sold
+            q = f"2025 Topps Chrome F1 {last} {parallel}"
+            queries_run += 1
+            # Sold
+            try:
+                items = await fetch_sold_for_query(q, pages=1)
+                for it in items:
+                    r = await _upsert_sold_item(it, db, fallback_driver=driver)
+                    if r == "added":
+                        sold_added += 1
+            except Exception as e:
+                errors.append(f"sold '{q}': {str(e)[:80]}")
+            await asyncio.sleep(1.0)
+            # Active
+            try:
+                items = await fetch_active_for_query(q, pages=1)
+                for it in items:
+                    r = await _upsert_active_item(it, db)
+                    if r == "added":
+                        active_added += 1
+                    elif r == "updated":
+                        active_updated += 1
+            except Exception as e:
+                errors.append(f"active '{q}': {str(e)[:80]}")
+            await asyncio.sleep(1.0)
+            # commit periodically so partial progress survives timeouts
+            if queries_run % 10 == 0:
                 try:
-                    items = await fetch_sold_for_query(q, pages=1)
-                    for it in items:
-                        r = await _upsert_sold_item(it, db, fallback_driver=driver)
-                        if r == "added":
-                            sold_added += 1
+                    db.commit()
                 except Exception as e:
-                    errors.append(f"sold '{q}': {str(e)[:80]}")
-                await asyncio.sleep(1.0)
-                # Active
-                try:
-                    items = await fetch_active_for_query(q, pages=1)
-                    for it in items:
-                        r = await _upsert_active_item(it, db)
-                        if r == "added":
-                            active_added += 1
-                        elif r == "updated":
-                            active_updated += 1
-                except Exception as e:
-                    errors.append(f"active '{q}': {str(e)[:80]}")
-                await asyncio.sleep(1.0)
-                # commit periodically so partial progress survives timeouts
-                if queries_run % 10 == 0:
-                    try:
-                        db.commit()
-                    except Exception as e:
-                        logger.error(f"mid-commit: {e}")
-                        db.rollback()
+                    logger.error(f"mid-commit: {e}")
+                    db.rollback()
         try:
             db.commit()
         except Exception as e:

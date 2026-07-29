@@ -1428,13 +1428,19 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
     except Exception as e:
         ph_error = str(e)[:200]
 
-    # Non-blocking sold-card ingest — runs in background, never blocks the cron.
+    # Sold-card ingest — batched + awaited (was asyncio.create_task, which
+    # Vercel serverless kills mid-flight the instant the response returns,
+    # so this silently ran ~never and sold_cards went 7+ weeks stale).
+    # Both functions process a rotating slice per call and cycle through
+    # the full roster/matrix over successive cron ticks — see the
+    # _*_BATCH_SIZE / _*_cursor comments in sold_ingest.py.
+    sold_result = None
+    finding_result = None
     sold_error = None
     try:
         from sold_ingest import ingest_all_drivers, ingest_finding_api_all
-        asyncio.create_task(ingest_all_drivers())
-        # Aggressive driver x parallel matrix (sold + active via Finding API)
-        asyncio.create_task(ingest_finding_api_all())
+        sold_result = await ingest_all_drivers(db)
+        finding_result = await ingest_finding_api_all(db)
     except Exception as e:
         sold_error = str(e)[:200]
 
@@ -1576,7 +1582,8 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
         "snapshot_error": snapshot_error,
         "ebay_error": ebay_error,
         "price_history_error": ph_error,
-        "sold_ingest_started": sold_error is None,
+        "sold_ingest": sold_result,
+        "sold_ingest_finding_api": finding_result,
         "sold_ingest_error": sold_error,
         "scraper_errors": scraper_errors,
         "snipe_alerts_created": snipe_alerts_created,
@@ -3714,10 +3721,15 @@ def driver_form_scores(response: Response = None, db: Session = Depends(get_db))
     DSQ always = 0 pts. DNS doesn't count toward weight_sum (not their fault).
 
     Tiers: hot ≥20, climbing ≥10, stable ≥5, else cold.
+
+    Scoring core lives in driver_form.py — shared with calculate_snipe_score,
+    which applies a form-based price-threshold adjustment (a driver coming
+    off a win needs a deeper discount to read as a "cheap" snipe, since
+    hype outruns the comp median).
     """
     from database import RaceResult, engine as _engine
     from datetime import datetime as _dt, timedelta as _td
-    from sqlalchemy import desc
+    from driver_form import compute_form_for_results, POSITION_POINTS, FORM_LOOKBACK_DAYS
 
     # Self-heal table on first call (see cron_sync_race_results note).
     try:
@@ -3729,81 +3741,20 @@ def driver_form_scores(response: Response = None, db: Session = Depends(get_db))
     if response is not None:
         response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=3600"
 
-    # Position → points table
-    PTS = {1: 25, 2: 18, 3: 15, 4: 12, 5: 10, 6: 8, 7: 6, 8: 4, 9: 3, 10: 2}
-    cutoff = _dt.utcnow() - _td(days=120)  # ~4 race weekends + sprints
-
-    rows = (
-        db.query(RaceResult)
-        .filter(RaceResult.race_date >= cutoff)
-        .order_by(RaceResult.driver_name, desc(RaceResult.race_date))
-        .all()
-    )
+    cutoff = _dt.utcnow() - _td(days=FORM_LOOKBACK_DAYS)
+    rows = db.query(RaceResult).filter(RaceResult.race_date >= cutoff).all()
 
     by_driver = {}
     for r in rows:
         by_driver.setdefault(r.driver_name, []).append(r)
 
-    def dnf_points(laps):
-        """Crashed-into / lap-1 incident → light penalty.
-        Long DNF (mechanical or driver error) → full penalty."""
-        if laps is None: return 0
-        if laps <= 3: return 5    # almost certainly not their fault
-        if laps <= 15: return 2   # ambiguous
-        return 0                  # ran a while then broke / spun
-
     out = []
     for name, results in by_driver.items():
-        # Take last 6 events (mix of Race + Sprint) for a fuller picture
-        recent = results[:6]
-        total = 0
-        weight_sum = 0
-        recency_weights = [1.0, 0.85, 0.7, 0.55, 0.4, 0.25]
-        for i, r in enumerate(recent):
-            recency = recency_weights[i] if i < len(recency_weights) else 0.15
-            sprint_mod = 0.5 if getattr(r, "is_sprint", False) else 1.0
-            w = recency * sprint_mod
-            if r.status == "DNS":
-                # didn't start → don't count this event
-                continue
-            elif r.status == "DSQ":
-                pts = 0
-            elif r.status == "DNF":
-                pts = dnf_points(getattr(r, "laps_completed", None))
-            elif r.position and r.position <= 10:
-                pts = PTS.get(r.position, 1)
-            else:
-                pts = 1  # finished outside points
-            total += pts * w
-            weight_sum += w
-        score = round(total / weight_sum, 1) if weight_sum else 0.0
-
-        if score >= 20:
-            tier = "hot"
-        elif score >= 10:
-            tier = "climbing"
-        elif score >= 5:
-            tier = "stable"
-        else:
-            tier = "cold"
-
-        # Latest race for the trigger fact
-        latest = recent[0] if recent else None
-        out.append({
-            "driver_name": name,
-            "form_score": score,
-            "tier": tier,
-            "races_counted": len(recent),
-            "latest_race": {
-                "name": latest.race_name,
-                "date": latest.race_date.isoformat() if latest.race_date else None,
-                "position": latest.position,
-                "status": latest.status,
-            } if latest else None,
-        })
+        form = compute_form_for_results(results)
+        out.append({"driver_name": name, **form})
 
     out.sort(key=lambda x: -x["form_score"])
-    return {"drivers": out, "weights_table": PTS}
+    return {"drivers": out, "weights_table": POSITION_POINTS}
 
 
 @app.post("/api/extension/verdicts")

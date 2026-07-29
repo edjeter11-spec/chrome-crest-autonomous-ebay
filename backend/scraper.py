@@ -192,6 +192,31 @@ def calculate_snipe_score(auction, card, db: Session | None = None) -> float:
     cur_total = (auction.current_price or 0) + (getattr(auction, "shipping_cost", 0) or 0)
     if ref_price and ref_price > 0 and cur_total > 0:
         ratio = cur_total / ref_price
+        # Form/hype adjustment: the 90-day sold-comp median lags the live
+        # market by however long it takes buyers to close purchases. A
+        # driver who just won/podiumed sees demand (and asking prices)
+        # jump before the median catches up, so "cheap vs. median" is a
+        # weaker signal right after a big result — divide the ratio down
+        # (modifier < 1) so it takes a BIGGER discount to read as cheap.
+        # Cold form has no hype tailwind, so an ordinary discount is more
+        # likely a real, durable bargain — modifier > 1 loosens the bar.
+        # See driver_form.form_price_modifier for the tier -> multiplier map.
+        if not is_dynasty_title(getattr(auction, "title", None)) and card is not None:
+            try:
+                from driver_form import get_driver_form, form_price_modifier
+                _form_db = db
+                _owns_form_db = _form_db is None
+                if _owns_form_db:
+                    from database import SessionLocal as _SL2
+                    _form_db = _SL2()
+                try:
+                    form = get_driver_form(_form_db, card.driver_name)
+                    ratio = ratio / form_price_modifier(form)
+                finally:
+                    if _owns_form_db:
+                        _form_db.close()
+            except Exception as _fe:
+                logger.debug(f"form price modifier failed: {_fe}")
         if ratio <= 0.5:
             price_score = 100
         elif ratio <= 0.65:
