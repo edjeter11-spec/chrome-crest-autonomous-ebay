@@ -1425,8 +1425,20 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
     except Exception as e:
         ebay_error = str(e)[:200]
     logger.info(f"cron_sync: stage=browse_sync done added={added} error={ebay_error}")
+    # Hard deadline: fetch_sold_for_driver does up to 3 sequential 15s-capped
+    # Finding-API pages per driver. At BATCH_SIZE drivers that's a real risk
+    # of blowing the whole route's time budget when eBay is slow/rate-
+    # limited — confirmed live 2026-07-29 (this stage alone hung 2min50s+,
+    # no response ever sent, nothing downstream ran). On timeout, bail the
+    # WHOLE route immediately rather than keep using `db` afterward — a
+    # cancelled-mid-query session isn't safe to reuse for the remaining
+    # sync/scraper stages below.
     try:
-        ph = await sync_price_history_batch(db)
+        ph = await asyncio.wait_for(sync_price_history_batch(db), timeout=90)
+    except asyncio.TimeoutError:
+        ph_error = "sync_price_history_batch timed out (90s) — will retry next tick"
+        logger.error(f"cron_sync: stage=price_history TIMEOUT — aborting rest of route")
+        return {"ok": False, "stage": "price_history_timeout", "added": added, "ebay_error": ebay_error, "price_history_error": ph_error}
     except Exception as e:
         ph_error = str(e)[:200]
     logger.info(f"cron_sync: stage=price_history done error={ph_error}")

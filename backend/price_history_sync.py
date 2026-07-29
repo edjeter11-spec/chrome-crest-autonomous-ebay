@@ -13,7 +13,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 5      # drivers processed per cron run (~15 Finding API calls)
+# Worst case per driver: fetch_sold_for_driver does up to 3 sequential
+# Finding-API pages, each with a 15s httpx timeout -> 45s/driver if eBay is
+# slow/rate-limited (not hypothetical: confirmed live 2026-07-29, Browse API
+# was in cooldown and this stage alone hung 2min50s+ with BATCH_SIZE=5,
+# taking the whole /api/cron/sync route down with it — no response, nothing
+# committed, silently retried forever by the caller). Cut to 2 so the worst
+# case (~90s + pacing) stays inside the wait_for deadline main.py wraps
+# this call in.
+BATCH_SIZE = 2      # drivers processed per cron run (~6 Finding API calls)
 REFRESH_HOURS = 24  # hours between re-fetching the same driver
 
 
