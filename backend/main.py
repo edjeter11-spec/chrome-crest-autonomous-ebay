@@ -2749,6 +2749,32 @@ async def cron_scrape_free(request: Request):
     return {"ok": True, "results": results, "errors": errors}
 
 
+@app.get("/api/debug/price-history-isolated")
+async def debug_price_history_isolated(db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
+    """TEMP diagnostic (2026-07-29): isolate sync_price_history_batch from
+    the rest of /api/cron/sync to find why that route hangs indefinitely.
+    Remove once the hang is root-caused."""
+    import time as _time
+    from price_history_sync import _drivers_due, sync_driver
+    t0 = _time.time()
+    drivers = _drivers_due(db)
+    t1 = _time.time()
+    results = []
+    for d in drivers:
+        ds = _time.time()
+        try:
+            added = await sync_driver(db, d)
+            results.append({"driver": d, "added": added, "sec": round(_time.time() - ds, 2)})
+        except Exception as e:
+            results.append({"driver": d, "error": str(e)[:150], "sec": round(_time.time() - ds, 2)})
+    return {
+        "drivers_due": drivers,
+        "drivers_due_query_sec": round(t1 - t0, 2),
+        "results": results,
+        "total_sec": round(_time.time() - t0, 2),
+    }
+
+
 @app.get("/api/debug/ebay")
 async def debug_ebay():
     """Quota-free diagnostic: reads eBay rate-limit analytics (no search calls)."""
