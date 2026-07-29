@@ -1419,14 +1419,17 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
     ph = None
     ebay_error = None
     ph_error = None
+    logger.info("cron_sync: stage=browse_sync start")
     try:
         added = await sync_real_ebay_listings(db)
     except Exception as e:
         ebay_error = str(e)[:200]
+    logger.info(f"cron_sync: stage=browse_sync done added={added} error={ebay_error}")
     try:
         ph = await sync_price_history_batch(db)
     except Exception as e:
         ph_error = str(e)[:200]
+    logger.info(f"cron_sync: stage=price_history done error={ph_error}")
 
     # Sold-card ingest — batched + awaited (was asyncio.create_task, which
     # Vercel serverless kills mid-flight the instant the response returns,
@@ -1454,6 +1457,7 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
     sold_result = None
     finding_result = None
     sold_error = None
+    logger.info("cron_sync: stage=sold_ingest_all_drivers start")
     try:
         from sold_ingest import ingest_all_drivers
         sold_result = await asyncio.wait_for(ingest_all_drivers(None), timeout=25)
@@ -1461,6 +1465,7 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
         sold_error = "ingest_all_drivers timed out (25s) — will retry next tick"
     except Exception as e:
         sold_error = str(e)[:200]
+    logger.info(f"cron_sync: stage=sold_ingest_all_drivers done result={sold_result} error={sold_error}")
     try:
         from sold_ingest import ingest_finding_api_all
         finding_result = await asyncio.wait_for(ingest_finding_api_all(None), timeout=45)
@@ -1468,6 +1473,7 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
         sold_error = (sold_error + " | " if sold_error else "") + "ingest_finding_api_all timed out (45s) — will retry next tick"
     except Exception as e:
         sold_error = (sold_error + " | " if sold_error else "") + str(e)[:200]
+    logger.info(f"cron_sync: stage=sold_ingest_finding_api done result={finding_result} error={sold_error}")
 
     # Free scrapers — bypass eBay Browse API entirely.
     # Awaited (not fire-and-forget) so they actually run to completion each
