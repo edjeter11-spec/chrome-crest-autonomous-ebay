@@ -443,9 +443,16 @@ MARKET_MAKER_QUERIES = [
 
 def upsert_auction(conn, rows):
     """Upsert active auction/BIN rows into the `auctions` table.
-    rows: list of tuples matching the column order below."""
+    rows: list of tuples matching the column order below.
+
+    Returns (added, conn) — the connection is part of the contract because
+    a deadlock/SSL-drop forces a reconnect here, and the CALLER must adopt
+    the new handle. It previously returned only the count, so after a heal
+    the caller kept its stale `conn` and the next find_card_id_for() died
+    with "connection already closed", crashing the whole run mid-BIN-pass.
+    Matches upsert_sold's (count, conn) contract."""
     if not rows:
-        return 0
+        return 0, conn
     sql = """
         INSERT INTO auctions (
             card_id, ebay_listing_id, title, current_price, buy_now_price,
@@ -470,8 +477,11 @@ def upsert_auction(conn, rows):
         with conn.cursor() as cur:
             execute_values(cur, sql, rows)
         conn.commit()
-        return len(rows)
+        return len(rows), conn
     except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        # Covers SSL drops AND deadlocks (psycopg2 raises those as
+        # OperationalError). Either way the transaction is dead, so the only
+        # safe move is a fresh connection + one retry.
         log.warning(f"DB connection lost on auctions upsert ({str(e)[:80]}); reconnecting + retrying")
         try: conn.close()
         except Exception: pass
@@ -480,10 +490,10 @@ def upsert_auction(conn, rows):
             with conn.cursor() as cur:
                 execute_values(cur, sql, rows)
             conn.commit()
-            return len(rows)
+            return len(rows), conn
         except Exception as e2:
             log.error(f"Auctions retry after reconnect also failed: {str(e2)[:120]}")
-            return 0
+            return 0, conn
 
 
 def get_default_card_id(conn) -> int:
@@ -493,6 +503,25 @@ def get_default_card_id(conn) -> int:
         cur.execute("SELECT id FROM cards ORDER BY id LIMIT 1")
         row = cur.fetchone()
         return row[0] if row else 1
+
+
+def _safe_card_lookup(conn, driver: str, parallel: str, default: int) -> int:
+    """find_card_id_for, but never fatal. A dead/deadlocked connection here
+    used to crash the entire run mid-pass ("connection already closed").
+    A card-id lookup is not worth losing a 20-minute scrape over — heal the
+    connection, retry once, and fall back to the default card id."""
+    try:
+        return find_card_id_for(conn, driver, parallel, default)
+    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+        log.warning(f"card lookup lost connection ({str(e)[:60]}); retrying once")
+        try:
+            return find_card_id_for(_ensure_conn(conn), driver, parallel, default)
+        except Exception as e2:
+            log.warning(f"card lookup retry failed ({str(e2)[:60]}); using default")
+            return default
+    except Exception as e:
+        log.warning(f"card lookup failed ({str(e)[:60]}); using default")
+        return default
 
 
 def find_card_id_for(conn, driver: str, parallel: str, default: int) -> int:
@@ -537,7 +566,11 @@ def parse_end_time(time_text: str, mode: str):
 
 def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int):
     """Scrape active auctions or BINs and upsert into the auctions table.
-    mode: 'auction' or 'bin'."""
+    mode: 'auction' or 'bin'.
+
+    Returns (total_seen, total_added, conn) — conn is returned because an
+    upsert in here may reconnect after a deadlock/SSL drop, and main() must
+    adopt the live handle for the passes that follow."""
     total_added = 0
     total_seen = 0
     for query in queries:
@@ -571,7 +604,7 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
             ebay_listing_id = f"v1|{item_id}|0"
             driver = driver_from_title(title)
             parallel = parallel_from_title(title)
-            card_id = find_card_id_for(conn, driver, parallel, default_card_id)
+            card_id = _safe_card_lookup(conn, driver, parallel, default_card_id)
             end_time = parse_end_time(it.get("date_text", ""), mode)
             if mode == "auction" and end_time is None:
                 continue  # Skip rows we can't determine end time for — better than fake countdown
@@ -600,14 +633,16 @@ def scrape_active_listings(page, conn, queries, mode: str, default_card_id: int)
                 datetime.utcnow(),
             ))
         if rows:
-            added = upsert_auction(conn, rows)
+            # Must rebind conn — upsert_auction may have reconnected after a
+            # deadlock/SSL drop, and the old handle is dead at that point.
+            added, conn = upsert_auction(conn, rows)
             total_added += added
             log.info(f"  → {added} {mode} rows upserted")
         # 12s between queries — fires eBay's per-IP rate detector at the old
         # 2s pace which triggered "Pardon Our Interruption" bot-challenge
         # pages on every active-listing query.
         time.sleep(12)
-    return total_seen, total_added
+    return total_seen, total_added, conn
 
 
 # Holds the live (page, ctx, browser) triple. We mutate this when the page
@@ -1011,7 +1046,7 @@ def main():
         # crashed and been recreated, but even if not we don't want any
         # cookie/state buildup contaminating the next phase.
         _recreate_page("pre-auction reset")
-        auc_seen, auc_added = scrape_active_listings(
+        auc_seen, auc_added, conn = scrape_active_listings(
             _PAGE_STATE["page"], conn, QUERIES, "auction", default_card_id
         )
         log.info(f"Auction pass: {auc_seen} seen, {auc_added} upserted")
@@ -1019,7 +1054,7 @@ def main():
         # ---- Buy-It-Now (write to auctions table with FIXED_PRICE buying_options) ----
         log.info("=== BIN scan ===")
         _recreate_page("pre-BIN reset")
-        bin_seen, bin_added = scrape_active_listings(
+        bin_seen, bin_added, conn = scrape_active_listings(
             _PAGE_STATE["page"], conn, QUERIES[:5], "bin", default_card_id
         )
         log.info(f"BIN pass: {bin_seen} seen, {bin_added} upserted")
