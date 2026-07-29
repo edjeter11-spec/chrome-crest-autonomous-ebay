@@ -12,7 +12,10 @@ on:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Covers TWO scrapers now: the eBay auction/BIN pass (~17-22 min, its
+    # sold pass short-circuits early via the empty-streak breaker) plus the
+    # sportscardspro sold-comp pass (~120 cards at ~1.5-2s each ≈ 4-5 min).
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
@@ -48,3 +51,20 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python scripts/scrape_runner.py
+
+      # Sold comps. eBay blocks completed-listing search from this runner
+      # (8/8 URL variants challenged, while active-listing search in the
+      # same session works), so sold data comes from sportscardspro, which
+      # republishes eBay sold comps WITH the eBay item id. It's behind
+      # Cloudflare — passable with a real browser here, but NOT from
+      # Vercel's Python runtime, which is why this lives in Actions.
+      # `if: always()` so a failure in the eBay pass above doesn't skip it.
+      - name: Run sold-comp scraper (sportscardspro)
+        if: always()
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Rotate the starting set each run so the whole catalog gets
+          # covered over successive runs (8 runs/day at the */3h schedule).
+          SCP_SET_OFFSET: ${{ github.run_number }}
+          SCP_MAX_CARDS: "120"
+        run: python scripts/scrape_sportscardspro.py

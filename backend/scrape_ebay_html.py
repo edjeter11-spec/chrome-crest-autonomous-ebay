@@ -30,15 +30,85 @@ from ebay_api import _is_valid_2025_f1_listing
 
 logger = logging.getLogger(__name__)
 
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/138.0.0.0 Safari/537.36"
+)
+
+# Full realistic Chrome navigation header set. eBay's edge (Akamai) checks for
+# the presence AND ordering-consistency of Sec-Fetch-* / sec-ch-ua alongside the
+# UA -- a bare UA + Accept pair is fingerprinted as a bot immediately.
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
+    "User-Agent": _UA,
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,image/apng,*/*;q=0.8"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-User": "?1",
+    "Sec-Fetch-Dest": "document",
+    "sec-ch-ua": '"Chromium";v="138", "Not)A;Brand";v="8", "Google Chrome";v="138"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "Cache-Control": "max-age=0",
+    "DNT": "1",
 }
+
+# Headers for an in-site navigation (search page reached from the homepage).
+SEARCH_HEADERS = {
+    **HEADERS,
+    "Sec-Fetch-Site": "same-origin",
+    "Referer": "https://www.ebay.com/",
+}
+
+# Markers that mean eBay served a bot challenge / login wall instead of results.
+BLOCK_MARKERS = (
+    "Pardon Our Interruption",
+    "Checking your browser before you access eBay",
+    "Sign in or Register",
+    "Security Measure",
+)
+
+
+def _is_blocked(html: str) -> bool:
+    if not html:
+        return True
+    head = html[:4000]
+    return any(m in head for m in BLOCK_MARKERS)
+
+
+async def _new_client() -> httpx.AsyncClient:
+    """Build an AsyncClient with HTTP/2 (closer to a real browser's TLS/ALPN
+    profile) and redirect following. Falls back to HTTP/1.1 if the `h2`
+    extra isn't installed in the Lambda bundle."""
+    try:
+        return httpx.AsyncClient(follow_redirects=True, http2=True, timeout=25.0)
+    except ImportError:
+        logger.warning("httpx[http2] not installed; falling back to HTTP/1.1")
+        return httpx.AsyncClient(follow_redirects=True, timeout=25.0)
+
+
+async def _warm_up(client: httpx.AsyncClient) -> bool:
+    """GET the eBay homepage first so the client banks the session cookies
+    (dp1, nonsession, s, ebay, etc.) that /sch/i.html expects a real browser to
+    already hold. Returns False if even the homepage is challenged, which means
+    the source IP itself is flagged and no header tweak will help."""
+    try:
+        resp = await client.get("https://www.ebay.com/", headers=HEADERS)
+    except Exception as e:
+        logger.warning(f"eBay warm-up failed: {e}")
+        return False
+    if resp.status_code != 200 or _is_blocked(resp.text):
+        logger.warning(
+            f"eBay warm-up challenged (status={resp.status_code}); source IP is likely blocked"
+        )
+        return False
+    logger.info(f"eBay warm-up ok, banked {len(client.cookies)} cookies")
+    return True
 
 QUERIES = [
     "2025 topps chrome f1",
@@ -89,24 +159,49 @@ def _extract_item_id(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def _build_url(query: str, mode: str, page: int = 1) -> str:
-    base = f"https://www.ebay.com/sch/i.html?_nkw={query.replace(' ', '+')}&_ipg=120&_pgn={page}"
+def _build_url(query: str, mode: str, page: int = 1, host: str = "www.ebay.com",
+               extra: str = "") -> str:
+    base = (
+        f"https://{host}/sch/i.html?_nkw={query.replace(' ', '+')}"
+        f"&_ipg=120&_pgn={page}"
+    )
     if mode == "auction":
-        return base + "&LH_Auction=1"
-    if mode == "sold":
-        return base + "&LH_Complete=1&LH_Sold=1"
-    return base
+        base += "&LH_Auction=1"
+    elif mode == "sold":
+        base += "&LH_Complete=1&LH_Sold=1"
+    return base + extra
+
+
+def _url_variants(query: str, mode: str, page: int = 1) -> list[str]:
+    """Ordered fallbacks. Desktop /sch/i.html first, then the `rt=nc&_fsrp=1`
+    variant, then the mobile host -- each is defended slightly differently, so
+    one may serve results when another serves a challenge."""
+    return [
+        _build_url(query, mode, page),
+        _build_url(query, mode, page, extra="&rt=nc&_fsrp=1"),
+        _build_url(query, mode, page, host="m.ebay.com"),
+    ]
 
 
 async def _fetch(url: str, client: httpx.AsyncClient) -> str:
+    """Fetch a search page on an already-warmed client. Returns "" on a
+    challenge page so callers treat it the same as an outright failure."""
     try:
-        resp = await client.get(url, headers=HEADERS, timeout=20.0, follow_redirects=True)
-        if resp.status_code == 200:
-            return resp.text
-        logger.warning(f"eBay HTML {resp.status_code} for {url}")
+        resp = await client.get(url, headers=SEARCH_HEADERS, timeout=25.0)
     except Exception as e:
         logger.warning(f"eBay HTML fetch {url}: {e}")
-    return ""
+        return ""
+    if resp.status_code != 200:
+        logger.warning(f"eBay HTML {resp.status_code} for {url}")
+        return ""
+    if _is_blocked(resp.text):
+        title = ""
+        m = re.search(r"<title>(.*?)</title>", resp.text, re.S)
+        if m:
+            title = m.group(1).strip()[:80]
+        logger.warning(f"eBay HTML challenge page for {url} (title={title!r})")
+        return ""
+    return resp.text
 
 
 def _parse_listings(html: str, mode: str) -> list[dict]:
@@ -115,23 +210,42 @@ def _parse_listings(html: str, mode: str) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
     items: list[dict] = []
 
-    for li in soup.select("li.s-item, li.s-card"):
+    # Old eBay layout used li.s-item; the current layout uses .s-card /
+    # .su-card-container. Mirrors the selector list in scripts/scrape_runner.py.
+    cards = soup.select(
+        "li.s-item, .s-item__wrapper, li.s-card, .s-card, .su-card-container"
+    )
+    seen_ids: set[str] = set()
+
+    for li in cards:
         try:
-            a = li.select_one("a.s-item__link, a.s-card__title-link, a[href*='/itm/']")
+            a = li.select_one(
+                "a.s-item__link, a.s-card__title-link, a.s-card__link, a[href*='/itm/']"
+            )
             if not a:
                 continue
             url = a.get("href", "")
             item_id = _extract_item_id(url)
             if not item_id:
                 continue
-            title_el = li.select_one(".s-item__title, .s-card__title, h3")
+            # Nested wrappers (.s-card inside .su-card-container) can yield the
+            # same listing twice -- dedupe within the page.
+            if item_id in seen_ids:
+                continue
+            title_el = li.select_one(
+                '.s-item__title, .s-card__title, [data-testid="item-title"], h3'
+            )
             title = title_el.get_text(" ", strip=True) if title_el else a.get_text(" ", strip=True)
             if not title or "Shop on eBay" in title:
                 continue
-            price_el = li.select_one(".s-item__price, .s-card__price")
+            price_el = li.select_one(
+                '.s-item__price, .s-card__price, [data-testid="item-price"], '
+                '.su-styled-text.positive'
+            )
             price = _price_float(price_el.get_text(strip=True) if price_el else "")
             if price <= 0:
                 continue
+            seen_ids.add(item_id)
 
             img_el = li.select_one("img")
             image_url = None
@@ -155,11 +269,18 @@ def _parse_listings(html: str, mode: str) -> list[dict]:
             }
 
             if mode == "auction":
-                tl_el = li.select_one(".s-item__time-left, .s-card__time-left, .s-item__timeLeft")
+                tl_el = li.select_one(
+                    ".s-item__time-left, .s-card__time-left, .s-item__timeLeft, "
+                    '[data-testid="time-left"]'
+                )
                 end_time = _parse_time_left(tl_el.get_text(strip=True) if tl_el else "")
                 row["end_time"] = end_time
             else:
-                sd_el = li.select_one(".s-item__title--tagblock .POSITIVE, .s-item__caption--row, .s-item__ended-date, .s-item__endedDate")
+                sd_el = li.select_one(
+                    ".s-item__title--tagblock .POSITIVE, .s-item__caption--row, "
+                    ".s-item__ended-date, .s-item__endedDate, "
+                    ".s-item__caption--signal, .s-item__listingDate, .s-card__caption"
+                )
                 sold_date = None
                 if sd_el:
                     sold_date = _parse_sold_date(sd_el.get_text(strip=True))
@@ -182,18 +303,33 @@ async def scrape_ebay_html(mode: str = "sold", queries: Optional[list[str]] = No
     queries = queries or QUERIES
     out: list[dict] = []
     seen: set[str] = set()
-    async with httpx.AsyncClient() as client:
+    client = await _new_client()
+    try:
+        # Bank homepage cookies before touching /sch/i.html. If the homepage
+        # itself is challenged the IP is flagged and every search will fail too,
+        # so bail out immediately rather than burning the rate limit further.
+        if not await _warm_up(client):
+            logger.warning("eBay HTML: warm-up blocked, aborting scrape")
+            return out
+        await asyncio.sleep(2.0)
+
         for q in queries:
             for p in range(1, pages + 1):
-                url = _build_url(q, mode, p)
-                html = await _fetch(url, client)
+                html = ""
+                for url in _url_variants(q, mode, p):
+                    html = await _fetch(url, client)
+                    if html:
+                        break
+                    await asyncio.sleep(2.0)
                 parsed = _parse_listings(html, mode)
                 logger.info(f"eBay HTML {mode} '{q}' p{p}: {len(parsed)}")
                 for it in parsed:
                     if it["item_id"] not in seen:
                         seen.add(it["item_id"])
                         out.append(it)
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(2.5)
+    finally:
+        await client.aclose()
     return out
 
 
