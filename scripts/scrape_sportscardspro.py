@@ -49,6 +49,7 @@ except ImportError:
 
 # Reuse scrape_runner's title parsers + DB layer — single source of truth.
 from scrape_runner import (  # noqa: E402
+    assert_expected_db,
     get_conn,
     upsert_sold,
     is_valid_2025_f1,
@@ -159,6 +160,7 @@ def sold_rows(page) -> list:
 
 def main():
     started_at = datetime.utcnow()
+    assert_expected_db()
     conn = get_conn()
     total_seen = 0
     total_added = 0

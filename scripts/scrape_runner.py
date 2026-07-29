@@ -242,6 +242,36 @@ def extract_ebay_item_id(url: str):
 
 # --- DB ---
 
+def assert_expected_db():
+    """Fail LOUDLY if DATABASE_URL doesn't point at the live app database.
+
+    Why this exists: the app migrated Supabase -> Neon on 2026-06-08, but the
+    GitHub Actions DATABASE_URL secret (last set 2026-04-17) was never
+    updated. For SEVEN WEEKS every scheduled run connected to the dead
+    Supabase DB, reported thousands of successful upserts, and wrote into a
+    database the site no longer reads. Nothing errored — the logs looked
+    perfect while the Sales page silently froze at 2026-06-08.
+
+    A wrong-DB target must never again look like success. Crash the job
+    instead so it shows up as a red run, not a green one with no effect.
+    """
+    host = ""
+    try:
+        # Cheap parse — avoids adding a urllib dependency for one field.
+        host = DB_URL.split("@", 1)[1].split("/", 1)[0]
+    except Exception:
+        pass
+    if "neon.tech" not in host:
+        log.error(
+            "DATABASE_URL points at %r, which is not the live Neon database. "
+            "Refusing to run — writes here would be silently discarded. "
+            "Update the DATABASE_URL secret to match Vercel production.",
+            host or "<unparseable>",
+        )
+        sys.exit(1)
+    log.info(f"DB target OK: {host}")
+
+
 def get_conn():
     """Connect with TCP keepalives so Neon doesn't drop the SSL connection
     while the Playwright scraper sits idle between page loads. Was crashing
@@ -829,6 +859,7 @@ def write_telemetry(conn, source, started_at, queries_attempted, queries_succeed
 
 def main():
     log.info("Starting scrape run")
+    assert_expected_db()
     conn = get_conn()
     started_at = datetime.utcnow()
     total_added = 0

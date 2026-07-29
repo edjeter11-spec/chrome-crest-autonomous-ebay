@@ -412,6 +412,79 @@ def clean_null_driver_sold(db: Session = Depends(get_db), _admin=Depends(require
         return {"ok": False, "error": str(e)[:200]}
 
 
+@app.get("/api/health/data-freshness")
+def data_freshness(response: Response = None, db: Session = Depends(get_db)):
+    """Is the data actually FRESH? Public, cheap, no auth.
+
+    Exists because /api/admin/scraper-health tracks whether scrapers RAN,
+    not whether their writes ever reached this database — and that's the
+    exact blind spot that hid a 7-week outage: after the 2026-06-08
+    Supabase->Neon migration, the GitHub Actions DATABASE_URL secret still
+    pointed at the dead Supabase DB. Every run reported thousands of
+    successful upserts into a database the site doesn't read. Telemetry
+    looked healthy; the Sales page was frozen.
+
+    This measures the only thing users actually feel: how old is the
+    newest row. Status is degraded/stale purely on age, so a silently
+    misrouted pipeline shows up here within a day.
+    """
+    from database import SoldCard
+    from sqlalchemy import func as _func
+
+    if response is not None:
+        response.headers["Cache-Control"] = "public, s-maxage=300"
+
+    now = datetime.utcnow()
+    out = {"checked_at": now.isoformat()}
+
+    try:
+        newest_sale, newest_scrape, total = (
+            db.query(
+                _func.max(SoldCard.sale_date),
+                _func.max(SoldCard.scraped_at),
+                _func.count(SoldCard.id),
+            ).first()
+        )
+        age_h = (now - newest_scrape).total_seconds() / 3600 if newest_scrape else None
+        # Scrapers run every 3h; 48h of silence means something is broken.
+        if age_h is None:
+            status = "unknown"
+        elif age_h <= 12:
+            status = "ok"
+        elif age_h <= 48:
+            status = "degraded"
+        else:
+            status = "stale"
+        out["sold_cards"] = {
+            "status": status,
+            "total_rows": int(total or 0),
+            "newest_sale_date": newest_sale.isoformat() if newest_sale else None,
+            "newest_scraped_at": newest_scrape.isoformat() if newest_scrape else None,
+            "hours_since_last_write": round(age_h, 1) if age_h is not None else None,
+        }
+    except Exception as e:
+        out["sold_cards"] = {"status": "error", "error": str(e)[:160]}
+
+    try:
+        active = db.query(Auction).filter(Auction.status == "active").count()
+        newest_auction = db.query(_func.max(Auction.last_updated)).scalar()
+        a_age = (now - newest_auction).total_seconds() / 3600 if newest_auction else None
+        out["auctions"] = {
+            "status": ("ok" if (a_age is not None and a_age <= 6)
+                       else "degraded" if (a_age is not None and a_age <= 24)
+                       else "stale" if a_age is not None else "unknown"),
+            "active_rows": int(active or 0),
+            "newest_updated_at": newest_auction.isoformat() if newest_auction else None,
+            "hours_since_last_write": round(a_age, 1) if a_age is not None else None,
+        }
+    except Exception as e:
+        out["auctions"] = {"status": "error", "error": str(e)[:160]}
+
+    worst = [v.get("status") for v in out.values() if isinstance(v, dict)]
+    out["ok"] = all(s in ("ok", "degraded") for s in worst if s)
+    return out
+
+
 @app.get("/api/admin/scraper-health")
 def scraper_health(db: Session = Depends(get_db), _admin=Depends(require_admin)):
     """Last 14d of scraper_runs per source — success rate, latency, last success."""
