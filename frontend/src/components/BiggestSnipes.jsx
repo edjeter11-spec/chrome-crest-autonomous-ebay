@@ -333,30 +333,55 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
 
     if (strict.length > 0) return strict
 
-    // Fallback: most-urgent auctions regardless of window. Hard windows
-    // (<2h, <4h, <24h) all fail when the F1 catalog runs 5-7-day auctions,
-    // which is the typical state. Showing "closest 6 to ending" guarantees
-    // the section is never empty while still prioritizing urgency. Ties
-    // broken by newest-listed so just-hit-eBay listings ('new shit') float
-    // up vs older inventory.
-    return (auctions || [])
-      .filter(a => {
-        if (a.status && a.status !== 'active') return false
-        if (!hasImage(a)) return false
-        const bo = a.buying_options || []
-        if (!bo.includes('AUCTION')) return false
-        return secsLeft(a) > 0
-      })
-      .sort((a, b) => {
-        const sL = secsLeft(a) - secsLeft(b)
-        if (sL !== 0) return sL
-        const ca = a.created_at ? new Date(a.created_at).getTime() : 0
-        const cb = b.created_at ? new Date(b.created_at).getTime() : 0
-        if (ca !== cb) return cb - ca
-        return (b.snipe_score || 0) - (a.snipe_score || 0)
-      })
-      .slice(0, 6)
+    // Fallback: nothing qualifies inside 2h (typical — F1 auctions run
+    // 5-7 days). Widen the window in steps instead of dropping the cap
+    // entirely, so the header can always truthfully say "within Nh" no
+    // matter how sparse the catalog is right now.
+    const STEPS = [6, 12, 24, 48, 72]
+    for (const hrs of STEPS) {
+      const widened = (auctions || [])
+        .filter(a => {
+          if (a.status && a.status !== 'active') return false
+          if (!hasImage(a)) return false
+          const bo = a.buying_options || []
+          if (!bo.includes('AUCTION')) return false
+          return isBigSnipe(a, hrs * 3600)
+        })
+        .sort((a, b) => {
+          const vr = verdictRank(b.verdict) - verdictRank(a.verdict)
+          if (vr !== 0) return vr
+          const s = (b.snipe_score || 0) - (a.snipe_score || 0)
+          if (s !== 0) return s
+          return secsLeft(a) - secsLeft(b)
+        })
+        .slice(0, 12)
+      if (widened.length > 0) return { rows: widened, hrs }
+    }
+
+    // Nothing passed isBigSnipe's quality bar at any window — last resort,
+    // just the soonest-ending auctions so the panel isn't empty. Still
+    // capped at 72h so the header claim stays honest.
+    return {
+      rows: (auctions || [])
+        .filter(a => {
+          if (a.status && a.status !== 'active') return false
+          if (!hasImage(a)) return false
+          const bo = a.buying_options || []
+          if (!bo.includes('AUCTION')) return false
+          return secsLeft(a) > 0 && secsLeft(a) <= 72 * 3600
+        })
+        .sort((a, b) => secsLeft(a) - secsLeft(b))
+        .slice(0, 6),
+      hrs: 72,
+    }
   }, [auctions, nowTick])
+
+  // `items` is a bare array in the common strict-2h case, or {rows, hrs}
+  // when the window had to widen. Normalized here so the header text
+  // (itemHrs) is always derived from what's ACTUALLY shown, never
+  // hardcoded — that mismatch was the original bug.
+  const itemRows = Array.isArray(items) ? items : items.rows
+  const itemHrs = Array.isArray(items) ? 2 : items.hrs
 
   // "Next Big Auctions" is meant to show what's coming — be more permissive
   // than `items` which gates on isBigSnipe heuristics. After today's phantom
@@ -367,9 +392,14 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
   // $30+ filter rendered 1 result, $5+ shows ~15. Sort by price desc + ending
   // soonest so the high-value ones still float to the top.
   const nextBig = useMemo(() => {
-    const inItems = new Set(items.map(a => a.id))
-    // Window: 2h-24h. Biggest Snipes is now <2h (true urgency); Next Big
-    // picks up the 2h-24h horizon — what to set alerts for next.
+    const inItems = new Set(itemRows.map(a => a.id))
+    // Window starts right after wherever Biggest Snipes actually cut off
+    // (itemHrs — 2h normally, wider when the strict window was empty) so
+    // the two panels never both claim the same auctions. Extends to 48h
+    // instead of a fixed 24h so there's still a "next" bucket even when
+    // Biggest Snipes had to widen to 24h/48h itself.
+    const startSecs = itemHrs * 3600
+    const endSecs = Math.max(48, itemHrs * 2) * 3600
     return (auctions || [])
       .filter(a => {
         if (a.status && a.status !== 'active') return false  // skip sold/ended/cancelled ghosts
@@ -377,7 +407,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
         const bo = a.buying_options || []
         if (!bo.includes('AUCTION')) return false
         const secs = secsLeft(a)
-        if (secs <= 2 * 3600 || secs > 24 * 3600) return false
+        if (secs <= startSecs || secs > endSecs) return false
         if (inItems.has(a.id)) return false
         const parallel = a.card?.parallel || a.parallel || ''
         if (BORING_PARALLELS.has(parallel)) return false
@@ -395,14 +425,14 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
         return secsLeft(a) - secsLeft(b)
       })
       .slice(0, 12)
-  }, [auctions, items, nowTick])
+  }, [auctions, itemRows, itemHrs, nowTick])
 
   // Auto-refresh: only refresh items that are ALREADY stale (>15 min old) and
   // throttle to once per 10 min. Originally fired every 60s for all 12 visible
   // items = 720 calls/hour per active dashboard viewer = blew through eBay's
   // 5000/day quota and locked out the entire ingest pipeline. Lesson learned.
   useEffect(() => {
-    const visibleIds = [...items, ...nextBig].map(a => a.id).filter(Boolean)
+    const visibleIds = [...itemRows, ...nextBig].map(a => a.id).filter(Boolean)
     if (visibleIds.length === 0) return
 
     const STALE_MS = 15 * 60 * 1000   // only refresh if >15min stale
@@ -436,7 +466,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
     }
 
     const fireRound = () => {
-      [...items, ...nextBig].forEach((a, i) => {
+      [...itemRows, ...nextBig].forEach((a, i) => {
         if (a.id) setTimeout(() => refreshOne(a.id, a.last_updated), i * 300)
       })
     }
@@ -445,7 +475,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
 
     return () => { cancelled = true; clearInterval(interval) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.map(a => a.id).join(','), nextBig.map(a => a.id).join(',')])
+  }, [itemRows.map(a => a.id).join(','), nextBig.map(a => a.id).join(',')])
 
   return (
     <div className="space-y-4">
@@ -456,7 +486,9 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
             Biggest Snipes
           </h2>
           <div className="text-[10px] text-gray-500 mt-1 font-medium">
-            Highest-value auctions ending within 2 hours — the bid window is now
+            {itemHrs <= 2
+              ? 'Highest-value auctions ending within 2 hours — the bid window is now'
+              : `Nothing ending within 2h right now — showing the highest-value auctions ending within ${itemHrs}h`}
           </div>
         </div>
         <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">
@@ -470,12 +502,12 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
                 </div>
               </div>
             ))
-          ) : items.length === 0 ? (
+          ) : itemRows.length === 0 ? (
             <div className="py-12 text-center text-gray-600 text-sm px-4">
-              No qualifying auctions ending in the next 2 hours. High-value listings appear here as their bid window opens.
+              No qualifying auctions ending in the next 72 hours. High-value listings appear here as their bid window opens.
             </div>
           ) : (
-            items.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} onOpen={onAuctionClick} />)
+            itemRows.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} onOpen={onAuctionClick} />)
           )}
         </div>
       </div>
@@ -487,13 +519,13 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
             Next Big Auctions
           </h2>
           <div className="text-[10px] text-gray-500 mt-1 font-medium">
-            Ending in 2–24 hours — set an alert to catch the close
+            Ending in {itemHrs}–{Math.max(48, itemHrs * 2)} hours — set an alert to catch the close
           </div>
         </div>
         <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">
           {loading ? null : nextBig.length === 0 ? (
             <div className="py-8 text-center text-gray-600 text-sm px-4">
-              Nothing big on deck in the next 24h.
+              Nothing big on deck in the next {Math.max(48, itemHrs * 2)}h.
             </div>
           ) : (
             nextBig.map((a, i) => <AuctionRow key={a.id || a.ebay_listing_id || i} a={a} nowTick={nowTick} freshOverride={freshMap[a.id]} onOpen={onAuctionClick} />)
