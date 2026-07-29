@@ -22,7 +22,7 @@ from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scrape_runner import (
     parallel_from_title, grade_from_title, driver_from_title, parse_price,
-    write_telemetry,
+    write_telemetry, assert_expected_db,
 )
 from stealth_helpers import (
     build_stealth_context, apply_stealth, warm_up, human_dwell, detect_block,
@@ -134,6 +134,7 @@ def scrape_goldin_query(page, query: str):
 
 def main():
     log.info("Starting Goldin scrape run")
+    assert_expected_db()
     started_at = datetime.utcnow()
     conn = get_conn()
     total_rows = []

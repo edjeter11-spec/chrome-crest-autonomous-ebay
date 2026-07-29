@@ -36,6 +36,8 @@ if not DB_URL:
     log.error("DATABASE_URL not set — exiting")
     sys.exit(1)
 
+from db_guard import assert_expected_db
+
 
 DRIVERS = [
     "Max Verstappen", "Lewis Hamilton", "Charles Leclerc", "Lando Norris",
@@ -266,6 +268,7 @@ def scrape_apr_for_driver(page, driver: str):
 
 def main():
     log.info("PSA scrape run start")
+    assert_expected_db(DB_URL)
     conn = get_conn()
 
     pop_total = 0

@@ -30,7 +30,7 @@ from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from scrape_runner import (
     parallel_from_title, grade_from_title, driver_from_title, parse_price,
-    is_valid_2025_f1, extract_ebay_item_id, write_telemetry,
+    is_valid_2025_f1, extract_ebay_item_id, write_telemetry, assert_expected_db,
 )
 from stealth_helpers import (
     build_stealth_context, apply_stealth, warm_up, detect_block,
@@ -225,6 +225,7 @@ def parse_ship(s: str):
 
 def main():
     log.info("Starting eBay-sitemap (detail-page) scrape run")
+    assert_expected_db()
     started_at = datetime.utcnow()
     conn = get_conn()
     out_rows = []
