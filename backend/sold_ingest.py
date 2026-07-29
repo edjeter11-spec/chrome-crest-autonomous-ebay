@@ -424,11 +424,13 @@ async def _upsert_active_item(item: dict, db: Session) -> str:
 # completion at all (see ingest_all_drivers comment — same root cause).
 # Now awaited for real, capped to a rotating slice per cron tick so the
 # full matrix cycles over several ticks instead of running (and dying) all
-# at once. Caller wraps this in asyncio.wait_for(timeout=45) — 4 pairs ×
-# 2 queries (sold+active) × ~2-3s (network + 1s pacing sleep) typically
-# fits well inside that; worst case it times out cleanly and resumes from
-# the same cursor position next tick (no data loss, just delay).
-_FINDING_API_PAIR_BATCH = 4
+# at once. Measured live 2026-07-29: 4 pairs still timed out at 60s under
+# current eBay conditions (each unit here does 2 sequential API calls —
+# sold + active — each subject to eBay's real-world latency, same slowness
+# pattern as the 3-page driver fetches elsewhere in this file). Cut to 2
+# pairs so the common case has real headroom; worst case still times out
+# cleanly and resumes from the same cursor position next tick.
+_FINDING_API_PAIR_BATCH = 2
 _finding_api_cursor = 0
 
 
