@@ -1,15 +1,20 @@
 """
-TEMP diagnostic (2026-07-29): find ANY request shape that returns real eBay
-SOLD results from a GitHub Actions runner.
+TEMP diagnostic (2026-07-29): can a GitHub Actions runner + Playwright get
+sold-comp data from sportscardspro.com?
 
-Why this exists: the runner's IP is blocked on sold searches (page titles
-"Security Measure" / "Sign in or Register") while auction/BIN searches from
-the SAME runner succeed — so it is not a blanket IP ban, it is specific to
-the sold/completed filters. The dev machine can't test this: its own IP is
-fully challenged by eBay (/splashui/challenge on the bare homepage), so
-local results are meaningless for this question.
+Background: every direct-eBay sold path is dead (see scrape_sportscardspro
+docstring). sportscardspro republishes eBay sold comps WITH the original
+eBay item id, but sits behind a Cloudflare challenge (`Cf-Mitigated:
+challenge`) that plain httpx cannot pass — verified: curl gets 200 while
+httpx gets 403 on the same URL/headers/moment, so it's TLS-fingerprint
+based, and Vercel (Python/httpx) would be blocked the same way.
 
-Probes a matrix of variants and prints a table. Delete once resolved.
+A real browser CAN pass a Cloudflare managed challenge. GH Actions already
+runs Playwright+stealth for the auction/BIN scraper, so if this works the
+whole sold pipeline can live there for free.
+
+Probes: set page -> card links -> per-card sold rows. Prints what it finds.
+Delete once the answer is known.
 """
 import re
 import sys
@@ -23,71 +28,16 @@ try:
 except ImportError:
     HAS_STEALTH = False
 
-KW = "2025 Topps Chrome F1 Verstappen"
-KW_Q = KW.replace(" ", "+")
-
-# (label, url) — ordered cheapest/most-likely-first
-VARIANTS = [
-    ("baseline sold _ipg=240",
-     f"https://www.ebay.com/sch/i.html?_nkw={KW_Q}&_ipg=240&LH_Complete=1&LH_Sold=1"),
-    ("sold _ipg=60",
-     f"https://www.ebay.com/sch/i.html?_nkw={KW_Q}&_ipg=60&LH_Complete=1&LH_Sold=1"),
-    ("sold no _ipg",
-     f"https://www.ebay.com/sch/i.html?_nkw={KW_Q}&LH_Complete=1&LH_Sold=1"),
-    ("sold LH_Sold only (no LH_Complete)",
-     f"https://www.ebay.com/sch/i.html?_nkw={KW_Q}&LH_Sold=1"),
-    ("sold + rt=nc",
-     f"https://www.ebay.com/sch/i.html?_nkw={KW_Q}&LH_Complete=1&LH_Sold=1&rt=nc"),
-    ("sold + _fsrp=1",
-     f"https://www.ebay.com/sch/i.html?_nkw={KW_Q}&LH_Complete=1&LH_Sold=1&_fsrp=1"),
-    ("sold via category path /b/",
-     f"https://www.ebay.com/sch/212/i.html?_nkw={KW_Q}&LH_Complete=1&LH_Sold=1"),
-    ("MOBILE m.ebay sold",
-     f"https://m.ebay.com/sch/i.html?_nkw={KW_Q}&LH_Complete=1&LH_Sold=1"),
-    ("ACTIVE control (known-good)",
-     f"https://www.ebay.com/sch/i.html?_nkw={KW_Q}&_ipg=240&LH_Auction=1&_sop=1"),
-]
-
-RESULT_SEL = "li.s-item, .s-item__wrapper, .srp-results, .su-card-container, .s-card"
-CHALLENGE_TITLES = ("pardon", "interruption", "security measure", "sign in or register", "error page")
+BASE = "https://www.sportscardspro.com"
+SET_URL = f"{BASE}/console/racing-cards-2025-topps-chrome-formula-1"
+CHALLENGE_MARKERS = ("just a moment", "attention required", "checking your browser")
 
 
-def count_results(page) -> int:
-    try:
-        return page.evaluate(
-            """() => document.querySelectorAll(
-                'li.s-item, .s-item__wrapper, .s-card, .su-card-container'
-            ).length"""
-        )
-    except Exception:
-        return -1
-
-
-def probe(page, label, url, warm_first=False):
-    if warm_first:
-        try:
-            page.goto("https://www.ebay.com/", wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(2500)
-        except Exception:
-            pass
-    try:
-        page.goto(url, wait_until="domcontentloaded", timeout=45000)
-    except Exception as e:
-        return {"label": label, "title": f"NAV-FAIL {str(e)[:50]}", "results": -1, "ok": False}
-    title = (page.title() or "")[:60]
-    blocked = any(t in title.lower() for t in CHALLENGE_TITLES)
-    n = 0
-    if not blocked:
-        try:
-            page.wait_for_selector(RESULT_SEL, timeout=12000)
-        except Exception:
-            pass
-        n = count_results(page)
-    return {"label": label, "title": title, "results": n, "ok": (not blocked and n > 0)}
+def blocked(title: str) -> bool:
+    return any(m in (title or "").lower() for m in CHALLENGE_MARKERS)
 
 
 def main():
-    rows = []
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -99,10 +49,6 @@ def main():
             viewport={"width": 1440, "height": 900},
             locale="en-US",
             timezone_id="America/New_York",
-            extra_http_headers={
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            },
         )
         page = ctx.new_page()
         if HAS_STEALTH:
@@ -114,51 +60,68 @@ def main():
         else:
             print("stealth: NOT INSTALLED")
 
-        # Warm once so we have a normal-looking session for the whole run.
-        try:
-            page.goto("https://www.ebay.com/", wait_until="domcontentloaded", timeout=30000)
-            page.wait_for_timeout(3000)
-            print(f"homepage warm: {page.title()[:60]}")
-        except Exception as e:
-            print(f"homepage warm failed: {e}")
+        # --- set page ---
+        print(f"\n=== GET {SET_URL}")
+        page.goto(SET_URL, wait_until="domcontentloaded", timeout=60000)
+        title = page.title() or ""
+        print(f"title: {title[:70]}")
+        if blocked(title):
+            # Cloudflare interstitials usually auto-resolve within ~5-10s.
+            print("challenge detected — waiting up to 25s for auto-solve...")
+            for _ in range(5):
+                page.wait_for_timeout(5000)
+                title = page.title() or ""
+                print(f"  ...title now: {title[:60]}")
+                if not blocked(title):
+                    break
+        if blocked(title):
+            print("RESULT: BLOCKED — Cloudflare challenge not solved by browser+stealth")
+            browser.close()
+            sys.exit(0)
 
-        for label, url in VARIANTS:
-            r = probe(page, label, url)
-            rows.append(r)
-            print(f"  [{'OK ' if r['ok'] else 'BLK'}] {r['label']:38s} n={r['results']:<4} {r['title']}")
-            time.sleep(3)
+        links = page.evaluate(
+            """() => Array.from(new Set(
+                Array.from(document.querySelectorAll('a[href^="/game/"]'))
+                     .map(a => a.getAttribute('href'))
+            ))"""
+        )
+        print(f"RESULT: PASSED challenge. card links found: {len(links)}")
+        if not links:
+            print("no card links — selector or page shape changed")
+            browser.close()
+            sys.exit(0)
 
-        # If everything blocked, try one pass with a fresh context per request
-        # (new fingerprint/session each time) on the baseline sold URL.
-        if not any(r["ok"] for r in rows if "ACTIVE control" not in r["label"]):
-            print("\nall sold variants blocked — retrying baseline with a FRESH context")
-            ctx2 = browser.new_context(
-                user_agent=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
-                            "(KHTML, like Gecko) Version/17.4 Safari/605.1.15"),
-                viewport={"width": 1512, "height": 982},
-                locale="en-US",
+        # --- a few card pages ---
+        total = 0
+        for href in links[:4]:
+            url = BASE + href
+            time.sleep(1.5)
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            except Exception as e:
+                print(f"  {href[:50]} NAV-FAIL {str(e)[:40]}")
+                continue
+            t = page.title() or ""
+            if blocked(t):
+                print(f"  {href[:50]} BLOCKED on card page")
+                continue
+            rows = page.evaluate(
+                """() => Array.from(document.querySelectorAll('tr[id^="ebay-"]')).map(tr => ({
+                    id: tr.id.replace('ebay-',''),
+                    date: (tr.querySelector('td.date')||{}).innerText || '',
+                    title: (tr.querySelector('td.title')||{}).innerText || '',
+                    price: (tr.querySelector('td.numeric')||{}).innerText || ''
+                }))"""
             )
-            p2 = ctx2.new_page()
-            if HAS_STEALTH:
-                try:
-                    stealth_sync(p2)
-                except Exception:
-                    pass
-            r = probe(p2, "FRESH-CTX safari sold", VARIANTS[2][1], warm_first=True)
-            rows.append(r)
-            print(f"  [{'OK ' if r['ok'] else 'BLK'}] {r['label']:38s} n={r['results']:<4} {r['title']}")
+            total += len(rows)
+            print(f"  {href.split('/')[-1][:40]:42s} rows={len(rows)}")
+            for r in rows[:2]:
+                print(f"      {r['date'].strip()} {r['price'].strip():>10} | {r['title'].strip()[:58]}")
 
+        print(f"\nTOTAL sold rows from 4 cards: {total}")
+        print("VERDICT: sportscardspro via Playwright on GH Actions = WORKS" if total
+              else "VERDICT: pages load but no sold rows parsed — check selectors")
         browser.close()
-
-    print("\n==== SUMMARY ====")
-    winners = [r for r in rows if r["ok"]]
-    for r in rows:
-        print(f"{'OK ' if r['ok'] else 'BLK'}  n={r['results']:<4} {r['label']}  |  {r['title']}")
-    if winners:
-        print(f"\nWORKING VARIANTS: {[w['label'] for w in winners]}")
-    else:
-        print("\nNO WORKING SOLD VARIANT from this runner IP.")
-    sys.exit(0)
 
 
 if __name__ == "__main__":
