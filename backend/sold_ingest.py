@@ -261,13 +261,17 @@ async def ingest_sold_for_driver(driver_name: str, db: Session) -> dict:
 # killed mid-flight almost every time and db.commit() rarely executed.
 # sold_cards went 7+ weeks stale as a result. Now it's awaited for real,
 # batched like price_history_sync.py so each cron tick finishes fast and
-# rotates through the full roster over many ticks. Kept small (2) because
-# the caller in main.py wraps this in asyncio.wait_for(timeout=25) — each
-# driver call is up to 3 sequential Finding-API pages at a 15s httpx
-# timeout apiece, so even 2 drivers can theoretically approach the
-# deadline. Small batch = the common case finishes well inside budget;
-# worst case it just times out cleanly and picks up next tick.
-_ALL_DRIVERS_BATCH_SIZE = 2
+# rotates through the full roster over many ticks.
+#
+# Measured live 2026-07-29 via /api/debug/price-history-isolated (same
+# fetch_sold_for_driver call this function uses): ~36-37s/driver, not the
+# 0-15s assumed originally — eBay's Finding API is just consistently slow
+# right now, 3 sequential pages near their 15s timeout each. main.py wraps
+# this call in asyncio.wait_for(timeout=25), so even ONE driver can exceed
+# that on a bad page. Batch=1 keeps this stage's typical cost close to the
+# per-driver cost instead of multiplying it — the 20-driver roster still
+# fully cycles over the 2h cron schedule.
+_ALL_DRIVERS_BATCH_SIZE = 1
 _all_drivers_cursor = 0
 
 

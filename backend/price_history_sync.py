@@ -13,15 +13,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Worst case per driver: fetch_sold_for_driver does up to 3 sequential
-# Finding-API pages, each with a 15s httpx timeout -> 45s/driver if eBay is
-# slow/rate-limited (not hypothetical: confirmed live 2026-07-29, Browse API
-# was in cooldown and this stage alone hung 2min50s+ with BATCH_SIZE=5,
-# taking the whole /api/cron/sync route down with it — no response, nothing
-# committed, silently retried forever by the caller). Cut to 2 so the worst
-# case (~90s + pacing) stays inside the wait_for deadline main.py wraps
-# this call in.
-BATCH_SIZE = 2      # drivers processed per cron run (~6 Finding API calls)
+# Measured live 2026-07-29 via /api/debug/price-history-isolated: each
+# driver costs ~36-37s (3 sequential Finding-API pages, each landing close
+# to the 15s httpx timeout — eBay is just slow right now, not erroring).
+# That's not a hang, it's real per-driver cost, but /api/cron/sync stacks
+# THIS stage + sold_ingest's two stages + 130point + ebay_html in one
+# route sharing a single Vercel function-duration ceiling, and 2 drivers
+# here alone ate 73s. Cut to 1 driver/tick (full 20-driver roster still
+# cycles in ~20 ticks = ~40h at the 2h cron schedule — acceptable, this
+# data refreshes slowly anyway per REFRESH_HOURS=24).
+BATCH_SIZE = 1      # drivers processed per cron run (~3 Finding API calls)
 REFRESH_HOURS = 24  # hours between re-fetching the same driver
 
 

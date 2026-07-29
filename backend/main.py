@@ -1443,49 +1443,19 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
         ph_error = str(e)[:200]
     logger.info(f"cron_sync: stage=price_history done error={ph_error}")
 
-    # Sold-card ingest — batched + awaited (was asyncio.create_task, which
-    # Vercel serverless kills mid-flight the instant the response returns,
-    # so this silently ran ~never and sold_cards went 7+ weeks stale).
-    # Both functions process a rotating slice per call and cycle through
-    # the full roster/matrix over successive cron ticks — see the
-    # _*_BATCH_SIZE / _*_cursor comments in sold_ingest.py.
-    #
-    # Hard per-stage deadline via wait_for: sync_real_ebay_listings +
-    # sync_price_history_batch above already make ~15-20 sequential
-    # eBay-API calls each (15s httpx timeout apiece) before we even get
-    # here, and this whole route has a single Vercel function-duration
-    # ceiling to share. Without a deadline, a slow/cooldown-throttled
-    # Finding API run here can push the WHOLE cron tick past that ceiling
-    # with no response ever sent — which is exactly what happened testing
-    # this fix (4m50s+, no completion, no error, nothing committed).
-    # Timing out cleanly just means "try again next tick" — every function
-    # here already commits incrementally, so a timeout can't corrupt data,
-    # only delay it by one 2h cycle.
-    # Each gets its OWN db session (db=None -> SessionLocal() internally),
-    # not the route's shared `db` — a cancelled-by-timeout SQLAlchemy
-    # session mid-query/mid-commit is not safe to keep using for the rest
-    # of this route (main sync/price-history/scraper code all still runs
-    # after this block on the same `db`).
+    # Sold-card ingest moved OUT of this route to its own cron
+    # (/api/cron/sold-ingest, see below) — this route was already stacking
+    # browse_sync + price_history + 2 free scrapers, and measured live
+    # 2026-07-29 each eBay-dependent stage costs ~35-40s/item right now
+    # (eBay Finding/Browse APIs are just slow, not erroring). Cramming
+    # sold_ingest in here too pushed the combined route past whatever
+    # Vercel's function-duration ceiling is on every test — no response,
+    # nothing committed, indistinguishable from a hang. Splitting the work
+    # across two independently-scheduled routes fixes it without needing
+    # to guess at the exact ceiling.
     sold_result = None
     finding_result = None
     sold_error = None
-    logger.info("cron_sync: stage=sold_ingest_all_drivers start")
-    try:
-        from sold_ingest import ingest_all_drivers
-        sold_result = await asyncio.wait_for(ingest_all_drivers(None), timeout=25)
-    except asyncio.TimeoutError:
-        sold_error = "ingest_all_drivers timed out (25s) — will retry next tick"
-    except Exception as e:
-        sold_error = str(e)[:200]
-    logger.info(f"cron_sync: stage=sold_ingest_all_drivers done result={sold_result} error={sold_error}")
-    try:
-        from sold_ingest import ingest_finding_api_all
-        finding_result = await asyncio.wait_for(ingest_finding_api_all(None), timeout=45)
-    except asyncio.TimeoutError:
-        sold_error = (sold_error + " | " if sold_error else "") + "ingest_finding_api_all timed out (45s) — will retry next tick"
-    except Exception as e:
-        sold_error = (sold_error + " | " if sold_error else "") + str(e)[:200]
-    logger.info(f"cron_sync: stage=sold_ingest_finding_api done result={finding_result} error={sold_error}")
 
     # Free scrapers — bypass eBay Browse API entirely.
     # Awaited (not fire-and-forget) so they actually run to completion each
@@ -1637,6 +1607,52 @@ async def cron_sync(db: Session = Depends(get_db), _auth: None = Depends(require
         "auto_watchlisted": auto_watchlisted,
         "rules_auto_watched": rules_auto_watched,
         "snipe_recompute": snipe_recompute,
+    }
+
+
+@app.get("/api/cron/sold-ingest")
+async def cron_sold_ingest(_auth: None = Depends(require_cron_or_admin)):
+    """Sold-card ingest — split out of /api/cron/sync (see comment there).
+
+    Previously dispatched via asyncio.create_task() (fire-and-forget) from
+    inside cron_sync, which Vercel serverless kills mid-flight the instant
+    the HTTP response returns — so this silently ran ~never and sold_cards
+    went 7+ weeks stale. Awaiting it properly inside cron_sync worked
+    functionally but pushed that already-loaded route past its time budget
+    (measured live: ~35-40s per eBay-dependent unit of work right now).
+    Own cron schedule = own time budget, no competition with browse_sync/
+    price_history/free-scrapers.
+
+    Each ingest fn is called with its own db session (db=None) and wrapped
+    in wait_for so a slow tick degrades to 'try again next tick' instead of
+    an unbounded hang — batch sizes in sold_ingest.py are tuned so the
+    common case finishes well inside these deadlines.
+    """
+    sold_result = None
+    finding_result = None
+    sold_error = None
+    logger.info("cron_sold_ingest: stage=all_drivers start")
+    try:
+        from sold_ingest import ingest_all_drivers
+        sold_result = await asyncio.wait_for(ingest_all_drivers(None), timeout=60)
+    except asyncio.TimeoutError:
+        sold_error = "ingest_all_drivers timed out (60s) — will retry next tick"
+    except Exception as e:
+        sold_error = str(e)[:200]
+    logger.info(f"cron_sold_ingest: stage=all_drivers done result={sold_result} error={sold_error}")
+    try:
+        from sold_ingest import ingest_finding_api_all
+        finding_result = await asyncio.wait_for(ingest_finding_api_all(None), timeout=60)
+    except asyncio.TimeoutError:
+        sold_error = (sold_error + " | " if sold_error else "") + "ingest_finding_api_all timed out (60s) — will retry next tick"
+    except Exception as e:
+        sold_error = (sold_error + " | " if sold_error else "") + str(e)[:200]
+    logger.info(f"cron_sold_ingest: stage=finding_api done result={finding_result} error={sold_error}")
+    return {
+        "ok": sold_error is None,
+        "sold_ingest": sold_result,
+        "sold_ingest_finding_api": finding_result,
+        "sold_ingest_error": sold_error,
     }
 
 
@@ -2747,32 +2763,6 @@ async def cron_scrape_free(request: Request):
         errors["ebay_html_auction"] = str(e)[:200]
 
     return {"ok": True, "results": results, "errors": errors}
-
-
-@app.get("/api/debug/price-history-isolated")
-async def debug_price_history_isolated(db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
-    """TEMP diagnostic (2026-07-29): isolate sync_price_history_batch from
-    the rest of /api/cron/sync to find why that route hangs indefinitely.
-    Remove once the hang is root-caused."""
-    import time as _time
-    from price_history_sync import _drivers_due, sync_driver
-    t0 = _time.time()
-    drivers = _drivers_due(db)
-    t1 = _time.time()
-    results = []
-    for d in drivers:
-        ds = _time.time()
-        try:
-            added = await sync_driver(db, d)
-            results.append({"driver": d, "added": added, "sec": round(_time.time() - ds, 2)})
-        except Exception as e:
-            results.append({"driver": d, "error": str(e)[:150], "sec": round(_time.time() - ds, 2)})
-    return {
-        "drivers_due": drivers,
-        "drivers_due_query_sec": round(t1 - t0, 2),
-        "results": results,
-        "total_sec": round(_time.time() - t0, 2),
-    }
 
 
 @app.get("/api/debug/ebay")

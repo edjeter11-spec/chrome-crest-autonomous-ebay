@@ -132,6 +132,10 @@
       "schedule": "0 */2 * * *"
     },
     {
+      "path": "/api/cron/sold-ingest",
+      "schedule": "1 1-23/2 * * *"
+    },
+    {
       "path": "/api/cron/sync-imminent",
       "schedule": "*/15 * * * *"
     },
