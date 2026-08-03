@@ -562,9 +562,10 @@ def get_fresh_snipes(limit: int = 6, response: Response = None, db: Session = De
     """
     from sqlalchemy.orm import joinedload
     if response is not None:
-        # Lightweight DB query but called on every dashboard load — cache 2min
-        # so a flurry of refreshes hits CDN, not the function.
-        response.headers["Cache-Control"] = "public, s-maxage=120, stale-while-revalidate=300"
+        # Lightweight DB query but called on every dashboard load — 5min
+        # fresh + 30min SWR matches the */15 keepalive warm cadence so the
+        # dashboard's 5s Promise.race never hits a cold function.
+        response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
 
     BORING_PARALLELS = {"Base", "B&W Ray Wave", "B&W Lazer", "Floor It", "Four & More"}
     RARE_PRINT_RE = re.compile(r"/(5|10|15|20|25|50|75|99|150|199|250|299)\b")

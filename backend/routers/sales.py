@@ -131,8 +131,11 @@ def list_sales(
                        date_from, date_to, is_auction, include_duplicates,
                        year=year, exclude_source=exclude_source, source=source)
     sales = q.order_by(desc(SoldCard.sale_date)).offset(offset).limit(limit).all()
-    # Vercel CDN cache: 30s fresh, 2min stale-while-revalidate
-    response.headers["Cache-Control"] = "public, s-maxage=30, stale-while-revalidate=120"
+    # Vercel CDN cache: 5min fresh + 30min SWR. Sales only land via the
+    # 2-3h scrape crons, so 30s freshness bought nothing — it just meant
+    # the keepalive-warmed copy died long before the next */15 warm and
+    # dashboard tiles (ticker / 7d sales) cold-started for real users.
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     return {
         "total": None,  # was an expensive COUNT(*) — frontend doesn't use it
         "include_duplicates": include_duplicates,
@@ -214,7 +217,9 @@ def sales_stats(
     include_duplicates: bool = False,
     db: Session = Depends(get_db),
 ):
-    response.headers["Cache-Control"] = "public, s-maxage=60, stale-while-revalidate=300"
+    # 5min fresh + 30min SWR — matches the */15 keepalive warm cadence so
+    # the Total Sales tile never cold-starts (stats move on cron cadence).
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     q = db.query(SoldCard)
     q = _apply_filters(q, driver, parallel, grade, None, None,
                        date_from, date_to, None, include_duplicates)

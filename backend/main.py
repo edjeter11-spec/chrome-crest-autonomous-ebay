@@ -2033,7 +2033,12 @@ async def cron_keepalive(request: Request):
         "/api/auctions/with-verdicts?buying=auction&limit=100",
         # Small/cheap endpoints — negligible transfer, real cold-start wins:
         "/api/sniper/fresh-snipes/6",                             # Dashboard snipes strip
-        "/api/sales/stats",                                       # Pre-aggregated summary (small)
+        "/api/auctions/snipe/targets",                            # Snipes-strip fallback (5s race loser)
+        "/api/sales/stats",                                       # Pre-aggregated summary (Total Sales tile)
+        # Sales feed — ticker + 7d Sales + big wins tiles. Was dropped in
+        # the 2026-07 Neon-quota trim; back now that Launch has 500 GB —
+        # without it the sales tiles cold-started on every first visit.
+        "/api/sales?limit=500&year=2025",
         "/api/health",                                            # Cheap baseline ping
     ]
     results = []

@@ -518,7 +518,10 @@ def snipe_targets(response: Response = None, db: Session = Depends(get_db)):
         Auction.end_time > now,
     ).order_by(Auction.snipe_score.desc()).limit(20).all()
     if response is not None:
-        response.headers["Cache-Control"] = "public, s-maxage=120, stale-while-revalidate=600"
+        # 5min fresh + 30min SWR — this is the dashboard's snipe fallback
+        # when fresh-snipes misses its 5s race; a cold hit here read as
+        # "Active Snipes: none" even when targets existed.
+        response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     if len(eligible) >= 5:
         return {"targets": [auction_to_dict(a) for a in eligible]}
     # Fallback: top active auctions ending within 48h, any score.
