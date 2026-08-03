@@ -502,7 +502,32 @@ def get_db():
         db.close()
 
 
+# Cold-start sentinel. create_tables() historically ran ~10 sequential DDL
+# round-trips against Neon on EVERY lambda boot (~4-8s of a 13s cold start,
+# and 151s worst-case after the 2026-08-03 deploy). None of that DDL does
+# anything once the schema is current. So: stamp the schema with a revision
+# string; on boot, one cheap SELECT decides whether the whole migration body
+# can be skipped. BUMP SCHEMA_REV whenever you add/change any DDL below —
+# the next boot then runs the full path exactly once and re-stamps.
+SCHEMA_REV = "2026-08-03-startup-sentinel-v1"
+_schema_verified = False  # per-process memo: repeat create_tables() calls are free
+
+
 def create_tables():
+    global _schema_verified
+    if _schema_verified:
+        return
+    from sqlalchemy import text as _text
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(_text("SELECT rev FROM app_schema_rev LIMIT 1")).fetchone()
+        if row and row[0] == SCHEMA_REV:
+            _schema_verified = True
+            return
+    except Exception:
+        # Table missing (fresh DB) or transient error — fall through to the
+        # full idempotent migration path below.
+        pass
     try:
         Base.metadata.create_all(bind=engine)
     except Exception as e:
@@ -523,6 +548,13 @@ def create_tables():
             "ALTER TABLE wishlist ADD COLUMN IF NOT EXISTS user_id TEXT",
             "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS user_id TEXT",
             "ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_legend BOOLEAN DEFAULT FALSE",
+            # Moved here from main.py's startup_event (they ran as bare ADD
+            # COLUMN there — failing every boot on Postgres once the column
+            # existed). Same columns, now idempotent and sentinel-gated.
+            "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS buying_options TEXT",
+            "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS extra_images TEXT",
+            "ALTER TABLE price_history ADD COLUMN IF NOT EXISTS ebay_item_id VARCHAR(64)",
+            "ALTER TABLE sold_cards ADD COLUMN IF NOT EXISTS source VARCHAR DEFAULT 'eBay'",
         ]
         with engine.begin() as conn:
             for sql in adds:
@@ -675,3 +707,17 @@ def create_tables():
     except Exception as e:
         import logging
         logging.getLogger("jarvis.db").warning(f"is_legend tag step: {e}")
+    # Stamp the schema revision so the next boot skips everything above with
+    # a single SELECT. SQLite path gets the same stamp (harmless, same win).
+    try:
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE IF NOT EXISTS app_schema_rev (rev TEXT PRIMARY KEY)"))
+            conn.execute(text("DELETE FROM app_schema_rev"))
+            conn.execute(
+                text("INSERT INTO app_schema_rev (rev) VALUES (:r)"), {"r": SCHEMA_REV}
+            )
+        _schema_verified = True
+    except Exception as e:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"schema rev stamp skipped: {e}")

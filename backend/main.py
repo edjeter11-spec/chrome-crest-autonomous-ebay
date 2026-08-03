@@ -4355,27 +4355,10 @@ async def startup_event():
     # Always ensure schema + tables exist (idempotent, fast on subsequent calls)
     create_tables()
 
-    # Add new columns if missing — handles both SQLite (local) and Postgres (Vercel).
-    try:
-        from database import engine as _engine, DATABASE_URL as _db_url
-        _sa_text = __import__("sqlalchemy").text
-        with _engine.connect() as conn:
-            migrations = [
-                ("auctions", "buying_options", "TEXT"),
-                ("auctions", "extra_images", "TEXT"),
-                ("price_history", "ebay_item_id", "VARCHAR(64)"),
-                ("sold_cards", "source", "VARCHAR DEFAULT 'eBay'"),
-            ]
-            for table, col, typedef in migrations:
-                try:
-                    conn.execute(_sa_text(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}"))
-                    conn.commit()
-                except Exception:
-                    pass  # Column already exists
-    except Exception as _mig_e:
-        # Outer wrapper around startup column migrations — best-effort, but log
-        # so a broken DB connection at startup doesn't stay invisible.
-        logger.warning(f"startup column migrations skipped: {_mig_e}")
+    # Column migrations that used to live here (buying_options, extra_images,
+    # ebay_item_id, sold_cards.source) moved into create_tables()'s sentinel-
+    # gated `adds` list — they were bare ADD COLUMNs that failed on every boot
+    # and cost a Neon round-trip each. See database.py SCHEMA_REV.
 
     import os
     is_vercel = bool(os.environ.get("VERCEL"))
