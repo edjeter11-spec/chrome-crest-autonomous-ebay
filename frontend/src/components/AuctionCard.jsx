@@ -719,7 +719,7 @@ function computeSecsLeft(auction) {
   return auction.time_left || 0
 }
 
-export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry, priority = false }) {
+export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry, priority = false, hideCheap = false }) {
   // Default click handler — keeps legacy "card click → eBay" behavior for any
   // caller that hasn't migrated to the in-app detail modal yet.
   const handleCardClick = onClick || (() => {
@@ -977,6 +977,14 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`
     window.open(intent, '_blank', 'noopener')
   }
+
+  // Junk filter, second layer: the page-level filter can only see the
+  // server-attached verdict_comp. When that was null (median budget
+  // exhausted server-side) and OUR per-card /api/sales/median fetch comes
+  // back under $20, drop the card entirely rather than showing a "usually
+  // sells for $4" row the page filter was supposed to hide. After all
+  // hooks, so React's hook order is stable.
+  if (hideCheap && comp?.median_total != null && comp.median_total < 20) return null
 
   return (
     <div

@@ -385,7 +385,7 @@ export default function BuyItNow() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
             {filtered.slice(0, visibleCount).map(a => (
-              <AuctionCard key={a.id} auction={a} onWatchlistChange={handleWatchlist} onClick={() => setSelected(a)} />
+              <AuctionCard key={a.id} auction={a} onWatchlistChange={handleWatchlist} onClick={() => setSelected(a)} hideCheap={hideCheap} />
             ))}
           </div>
           {visibleCount < filtered.length && (

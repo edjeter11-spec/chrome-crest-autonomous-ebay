@@ -640,6 +640,7 @@ export default function Auctions() {
               <AuctionCard
                 key={a.id}
                 auction={a}
+                hideCheap={hideCheap}
                 onWatchlistChange={handleWatchlist}
                 onClick={() => setSelected(a)}
                 onExpiry={(id) => {
