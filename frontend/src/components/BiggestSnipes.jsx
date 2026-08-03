@@ -212,7 +212,7 @@ function AuctionRow({ a, nowTick, freshOverride, onOpen }) {
   }
   return (
     <div
-      className={`px-4 py-3 transition-colors flex gap-3 ${clickable ? 'hover:bg-gray-800/60 cursor-pointer focus:bg-gray-800/60 focus:outline-none' : 'hover:bg-gray-800/40'}`}
+      className={`px-4 py-3 transition-colors flex gap-3 md:rounded-xl md:border md:border-gray-800/60 md:bg-gray-900/40 ${clickable ? 'hover:bg-gray-800/60 cursor-pointer focus:bg-gray-800/60 focus:outline-none' : 'hover:bg-gray-800/40'}`}
       onClick={handleRowClick}
       onKeyDown={handleKeyDown}
       role={clickable ? 'button' : undefined}
@@ -491,7 +491,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
               : `Nothing ending within 2h right now — showing the highest-value auctions ending within ${itemHrs}h`}
           </div>
         </div>
-        <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">
+        <div className="flex-1 max-h-[560px] md:max-h-[640px] overflow-y-auto divide-y divide-gray-800/50 md:divide-y-0 md:grid md:grid-cols-2 xl:grid-cols-3 md:gap-2.5 md:p-3 md:content-start">
           {loading ? (
             Array(4).fill(0).map((_, i) => (
               <div key={i} className="px-4 py-3 animate-pulse flex gap-3">
@@ -503,7 +503,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
               </div>
             ))
           ) : itemRows.length === 0 ? (
-            <div className="py-12 text-center text-gray-600 text-sm px-4">
+            <div className="py-12 text-center text-gray-600 text-sm px-4 md:col-span-full">
               No qualifying auctions ending in the next 72 hours. High-value listings appear here as their bid window opens.
             </div>
           ) : (
@@ -522,9 +522,9 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
             Ending in {itemHrs}–{Math.max(48, itemHrs * 2)} hours — set an alert to catch the close
           </div>
         </div>
-        <div className="flex-1 max-h-[560px] overflow-y-auto divide-y divide-gray-800/50">
+        <div className="flex-1 max-h-[560px] md:max-h-[640px] overflow-y-auto divide-y divide-gray-800/50 md:divide-y-0 md:grid md:grid-cols-2 xl:grid-cols-3 md:gap-2.5 md:p-3 md:content-start">
           {loading ? null : nextBig.length === 0 ? (
-            <div className="py-8 text-center text-gray-600 text-sm px-4">
+            <div className="py-8 text-center text-gray-600 text-sm px-4 md:col-span-full">
               Nothing big on deck in the next {Math.max(48, itemHrs * 2)}h.
             </div>
           ) : (
