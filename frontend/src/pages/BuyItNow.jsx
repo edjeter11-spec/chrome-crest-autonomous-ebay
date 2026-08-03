@@ -90,6 +90,8 @@ export default function BuyItNow() {
   // inventory and all were Base parallel; combined with No-Base default
   // the page rendered empty for everyone.
   const [filterPremium, setFilterPremium] = useState(false)
+  // Default ON — hide cards whose comps say they usually sell under $20.
+  const [hideCheap, setHideCheap] = useState(true)
   const [formulaType, setFormulaType] = useState('F1')
   const [teamFilter, setTeamFilter] = useState('All')
   const [selected, setSelected] = useState(null)
@@ -137,6 +139,12 @@ export default function BuyItNow() {
       if (filterDynasty && !/dynasty/i.test(a.title || '')) return false
       // Premium: hide low-end BIN — buy_now (or current) price must be at least $150
       if (filterPremium && Math.max(a.buy_now_price || 0, a.current_price || 0) < 150) return false
+      // Default junk filter: usual sale price under $20 -> hidden. Cards
+      // with no comps pass — can't call them cheap without data.
+      if (hideCheap) {
+        const m = a.verdict_comp?.median_total
+        if (m != null && m < 20) return false
+      }
       if (search) {
         const q = search.toLowerCase()
         return a.title?.toLowerCase().includes(q) || a.card?.driver_name?.toLowerCase().includes(q)
@@ -248,7 +256,17 @@ export default function BuyItNow() {
           className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
             filterPremium ? 'bg-amber-600/25 text-amber-300 border border-amber-500/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
-          💎 Premium ($150+)
+          Premium ($150+)
+        </button>
+
+        {/* Junk filter — hide cards that usually sell under $20 (default ON) */}
+        <button onClick={() => setHideCheap(!hideCheap)}
+          aria-pressed={hideCheap}
+          title="Hide cards that usually sell for under $20"
+          className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
+            hideCheap ? 'bg-sky-600/20 text-sky-300 border border-sky-500/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+          }`}>
+          $20+ value
         </button>
 
         {/* Strong Buys toggle */}

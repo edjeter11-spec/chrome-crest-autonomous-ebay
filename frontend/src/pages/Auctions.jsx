@@ -74,12 +74,15 @@ export default function Auctions() {
     listingType: 'All', filterSnipe: false, filterWatchlist: false,
     filterRookie: false, formulaType: 'F1', teamFilter: 'All',
     filterStrongBuy: false, autoVariant: 'Any', filterPremium: false,
-    filterDynasty: false,
+    filterDynasty: false, hideCheap: true,
   })
   const setF = (patch) => setFilters(prev => ({ ...prev, ...patch }))
   const { search, sortBy, filterParallel, printRun, listingType,
           filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter,
           filterStrongBuy, autoVariant, filterPremium, filterDynasty } = filters
+  // Default ON. Older persisted filter objects predate the key (undefined) —
+  // treat missing as ON so existing users get the junk filter too.
+  const hideCheap = filters.hideCheap !== false
   const [selected, setSelected] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [showSaveRule, setShowSaveRule] = useState(false)
@@ -116,6 +119,7 @@ export default function Auctions() {
       if (searchParams.get('watchlist')) fromUrl.filterWatchlist = searchParams.get('watchlist') === '1'
       if (searchParams.get('autoVariant')) fromUrl.autoVariant = searchParams.get('autoVariant')
       if (searchParams.get('premium')) fromUrl.filterPremium = searchParams.get('premium') === '1'
+      if (searchParams.get('cheap')) fromUrl.hideCheap = searchParams.get('cheap') === '1'
       if (Object.keys(fromUrl).length) setFilters(prev => ({ ...prev, ...fromUrl }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,6 +141,7 @@ export default function Auctions() {
     if (filters.listingType && filters.listingType !== 'All') params.set('listing', filters.listingType)
     if (filters.autoVariant && filters.autoVariant !== 'Any') params.set('autoVariant', filters.autoVariant)
     if (filters.filterPremium) params.set('premium', '1')
+    if (filters.hideCheap === false) params.set('cheap', '0')
     setSearchParams(params, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters])
@@ -279,6 +284,13 @@ export default function Auctions() {
       if (filterDynasty && !/dynasty/i.test(a.title || '')) return false
       // Premium: hide low-end auctions — current bid must be at least $100
       if (filterPremium && (a.current_price || 0) < 100) return false
+      // Default junk filter: a card whose comps say it USUALLY sells for
+      // under $20 stays hidden regardless of current bid. Unknown-median
+      // cards pass — no comps means we can't call them cheap.
+      if (hideCheap) {
+        const m = a.verdict_comp?.median_total
+        if (m != null && m < 20) return false
+      }
       if (search) {
         const q = search.toLowerCase()
         return a.title?.toLowerCase().includes(q) || a.card?.driver_name?.toLowerCase().includes(q)
@@ -455,7 +467,17 @@ export default function Auctions() {
           className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
             filterPremium ? 'bg-amber-600/25 text-amber-300 border border-amber-500/50' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
           }`}>
-          💎 Premium ($100+ bid)
+          Premium ($100+ bid)
+        </button>
+
+        {/* Junk filter — hide cards that usually sell under $20 (default ON) */}
+        <button onClick={() => setF({ hideCheap: !hideCheap })}
+          aria-pressed={hideCheap}
+          title="Hide cards that usually sell for under $20"
+          className={`px-3 py-2.5 sm:py-1.5 min-h-[40px] sm:min-h-0 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-colors ${
+            hideCheap ? 'bg-sky-600/20 text-sky-300 border border-sky-500/40' : 'bg-gray-800/60 text-gray-500 hover:text-gray-200 border border-transparent hover:border-gray-700/50'
+          }`}>
+          $20+ value
         </button>
 
         {/* Strong Buys toggle */}

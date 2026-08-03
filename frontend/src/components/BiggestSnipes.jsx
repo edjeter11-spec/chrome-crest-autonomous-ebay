@@ -65,6 +65,14 @@ function parsePrintRun(title) {
   return ''
 }
 
+// Junk floor: a card whose comps say it usually sells for under $20 is
+// never a "big" snipe no matter how discounted the current bid looks.
+// Unknown-median cards pass — no comps means we can't call them cheap.
+function cheapMedian(a) {
+  const m = a.verdict_comp?.median_total
+  return m != null && m < 20
+}
+
 function isBigSnipe(a, maxSecs) {
   // Drop anything backend has marked non-active (sold/ended/cancelled).
   // The end_time check below catches "ended naturally," but BIN-with-auction
@@ -320,6 +328,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
         if (!hasImage(a)) return false
         const bo = a.buying_options || []
         if (!bo.includes('AUCTION')) return false
+        if (cheapMedian(a)) return false
         return isBigSnipe(a, 2 * 3600)
       })
       .sort((a, b) => {
@@ -345,6 +354,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
           if (!hasImage(a)) return false
           const bo = a.buying_options || []
           if (!bo.includes('AUCTION')) return false
+          if (cheapMedian(a)) return false
           return isBigSnipe(a, hrs * 3600)
         })
         .sort((a, b) => {
@@ -368,6 +378,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
           if (!hasImage(a)) return false
           const bo = a.buying_options || []
           if (!bo.includes('AUCTION')) return false
+          if (cheapMedian(a)) return false
           return secsLeft(a) > 0 && secsLeft(a) <= 72 * 3600
         })
         .sort((a, b) => secsLeft(a) - secsLeft(b))
@@ -406,6 +417,7 @@ export default function BiggestSnipes({ auctions = [], loading = false, onAuctio
         if (!hasImage(a)) return false
         const bo = a.buying_options || []
         if (!bo.includes('AUCTION')) return false
+        if (cheapMedian(a)) return false
         const secs = secsLeft(a)
         if (secs <= startSecs || secs > endSecs) return false
         if (inItems.has(a.id)) return false
