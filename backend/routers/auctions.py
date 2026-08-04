@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, joinedload, defer
 from sqlalchemy import func
 from database import get_db, Auction, Card
 from lib.auth import client_ip
+from lib.parallels import effective_parallel
 from datetime import datetime
 from typing import Optional
 import asyncio
@@ -16,15 +17,18 @@ router = APIRouter(prefix="/api/auctions", tags=["auctions"])
 def auction_to_dict(a: Auction) -> dict:
     now = datetime.utcnow()
     time_left = max(0, int((a.end_time - now).total_seconds())) if a.end_time else 0
-    # Scarcity tier — derived from card.parallel (fallback: title-based later)
+    # Scarcity tier — title-derived parallel, falling back to the linked card
+    # row only when the title is unreadable. Was reading a.card.parallel, which
+    # is a driver-level join fallback and mislabeled 77% of active auctions.
     try:
         from lib.parallels import scarcity_for, is_rookie
-        parallel_label = a.card.parallel if a.card else None
+        parallel_label = effective_parallel(a.title, a.card.parallel if a.card else None)
         sc = scarcity_for(parallel_label)
         rookie = is_rookie(a.card.driver_name if a.card else None)
     except Exception:
         sc = {"tier": "-", "count": None, "rank": 99}
         rookie = False
+        parallel_label = a.card.parallel if a.card else None
     # Safeguard: re-extract grade from title to avoid stale/bogus card.grade
     try:
         from scraper import _extract_grade_from_title
@@ -78,7 +82,9 @@ def auction_to_dict(a: Auction) -> dict:
         "is_rookie": rookie,
         "card": {
             "driver_name": a.card.driver_name,
-            "parallel": a.card.parallel,
+            # Title-derived so the label shown matches the comp key used for
+            # the verdict — they must never disagree.
+            "parallel": parallel_label,
             # Trust the fresh title-derived grade as authoritative. If the
             # title has no grade keyword, show None rather than a stale/bogus
             # card.grade (eg. "/15" previously misparsed as "15").
@@ -350,7 +356,10 @@ def list_with_verdicts(
             logging.getLogger("auctions").warning(f"row serialize fail id={a.id}: {_row_err}")
             continue
         driver_name = a.card.driver_name if a.card else None
-        parallel = a.card.parallel if a.card else None
+        # Title-derived, NOT a.card.parallel — the linked card row is a
+        # driver-level fallback and disagreed with the title on 77% of active
+        # auctions, poisoning the comp median. See lib.parallels docstring.
+        parallel = effective_parallel(a.title, a.card.parallel if a.card else None)
         grade = _extract_grade_from_title(a.title or "")
         verdict_key = None
         comp_block = None
@@ -358,7 +367,11 @@ def list_with_verdicts(
         # is Chrome — a median for the same driver+parallel key would be
         # nonsense for an ultra-premium set. Honest silence until Dynasty
         # comps exist. See scraper.is_dynasty_title.
-        is_dynasty = "dynasty" in (a.title or "").lower()
+        # Widened from a dynasty-only check: Eccellenza / Topps Now / Merlin
+        # are likewise non-Chrome products that were being priced against
+        # Chrome medians, producing fake deep-discount verdicts.
+        from scraper import is_foreign_product
+        is_dynasty = is_foreign_product(a.title)
         if driver_name and not is_dynasty:
             try:
                 median, n_comps = _cached_median(db, driver_name, parallel, grade, live_budget=live_budget)

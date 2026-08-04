@@ -786,7 +786,12 @@ def extract_parallel_from_title(title: str) -> str:
     #    "SuperFractor Auto" -> SuperFractor not Autograph.
     if "SUPERFRACTOR" in t or "SUPER FRACTOR" in t \
             or "1/1" in t or "1 OF 1" in t:
-        return "Superfractor 1/1"
+        # Label must match what the sold-side writers store (scrape_runner's
+        # PARALLEL_PATTERNS emits "SuperFractor"), because median_comp_price
+        # matches parallel as an exact string. "Superfractor 1/1" here meant
+        # SuperFractor auctions never found their own comps and silently fell
+        # back to a driver-only median. See lib.parallels.effective_parallel.
+        return "SuperFractor"
 
     # 2. Print-run numbered parallels — colour + matching /N.
     if "RED" in t and "/5" in t: return "Red /5"
@@ -840,9 +845,12 @@ def extract_parallel_from_title(title: str) -> str:
     if "REFRACTOR" in t:
         return "Refractor"
 
-    # 7. Base — fallthrough.
-    if "CHROME" in t:
-        return "Base Chrome"
+    # 7. Base — fallthrough. Deliberately NOT "Base Chrome": the sold-side
+    #    writers store plain "Base", and the comp median matches parallel
+    #    exactly, so a "Base Chrome" key found zero comps and fell back to a
+    #    driver-only median that mixed in autographs — making $1 base cards
+    #    read as "100% off" against an $800 median. 1,635 active auctions
+    #    were affected (2026-08-04).
     return "Base"
 
 

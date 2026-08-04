@@ -125,3 +125,42 @@ def is_rookie(driver_name: str | None) -> bool:
     if not driver_name:
         return False
     return driver_name.strip() in ROOKIES_2025
+
+
+# --- Effective parallel resolution ----------------------------------------
+# The `cards` table only carries the ~20 seeded parallels (seed_data.PARALLELS),
+# but the title parser emits ~35 labels. Auctions are linked to a card row by
+# find_card_id_for(), which falls back to "any card for this driver" whenever
+# the exact driver+parallel pair doesn't exist. So a Teal /299 listing gets
+# joined to whatever card row came first for that driver — frequently the
+# Autograph one — and `auction.card.parallel` then reports "Autograph".
+#
+# Measured 2026-08-04 on prod: 77% of active auctions (5,383 / 6,994) had a
+# linked-card parallel that disagreed with their own title. That key feeds
+# the comp median, so cheap cards were priced against autograph comps and
+# rendered as "100% off usual sale" GOOD_BUYs — Eddie's skewed-data report.
+#
+# The listing's own title is authoritative. The linked card row is only a
+# fallback for titles the parser can't read.
+def effective_parallel(title: str | None, card_parallel: str | None) -> str | None:
+    """Parallel for a listing: title-derived first, linked-card row as fallback.
+
+    Never trust `auction.card.parallel` directly for pricing or display —
+    it reflects the join, not the listing.
+    """
+    # isinstance guard, not just truthiness: callers pass ORM attributes that
+    # may be a Mock/None/non-str, and the parser does regex work on it.
+    if isinstance(title, str) and title:
+        # Imported lazily: lib.parallels is imported by modules that ebay_api
+        # itself imports, so a top-level import here would be circular.
+        from ebay_api import extract_parallel_from_title
+        parsed = extract_parallel_from_title(title)
+        # "Base" is the parser's fallthrough, not a positive identification.
+        # Prefer a real stored label over a guessed Base, but keep the more
+        # specific "Base Chrome" when that's what the title actually says.
+        if parsed and parsed != "Base":
+            return parsed
+        if card_parallel:
+            return card_parallel
+        return parsed
+    return card_parallel

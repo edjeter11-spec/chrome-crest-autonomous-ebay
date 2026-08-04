@@ -10,6 +10,7 @@ from sqlalchemy import func, text
 from database import Card, Auction, PriceHistory, Alert
 from ebay_api import fetch_all_f1_listings, extract_driver_from_title as _raw_extract_driver_from_title
 from lib.driver_norm import normalize_driver
+from lib.parallels import effective_parallel
 import logging
 
 
@@ -72,6 +73,21 @@ def is_dynasty_title(title: str | None) -> bool:
     return "dynasty" in (title or "").lower()
 
 
+# Non-Chrome Topps F1 products that get scraped by the same driver queries but
+# whose prices share nothing with a Chrome parallel of the same driver. Same
+# reasoning as is_dynasty_title — a "Base" Topps Now card priced against the
+# Chrome Base median produced fake 90%-off bargains on the dashboard.
+_FOREIGN_PRODUCTS = ("dynasty", "eccellenza", "topps now", "merlin", "allen & ginter")
+
+
+def is_foreign_product(title: str | None) -> bool:
+    """True when the listing is a non-Chrome product — no Chrome comps apply."""
+    if not isinstance(title, str):
+        return False
+    t = title.lower()
+    return any(p in t for p in _FOREIGN_PRODUCTS)
+
+
 def median_comp_price(
     db: Session,
     driver: str | None,
@@ -105,9 +121,9 @@ def median_comp_price(
             SoldCard.sale_date >= cutoff,
             SoldCard.sale_price > 0,
             SoldCard.is_duplicate == False,  # noqa: E712
-            # Chrome comps only — Dynasty sold rows would poison the median
-            # for the same driver+parallel key (see is_dynasty_title).
-            ~SoldCard.title.ilike("%dynasty%"),
+            # Chrome comps only — non-Chrome sold rows would poison the median
+            # for the same driver+parallel key (see is_foreign_product).
+            *[~SoldCard.title.ilike(f"%{p}%") for p in _FOREIGN_PRODUCTS],
             *filters,
         )
         rows = [float(r.total) for r in q.all() if r.total is not None]
@@ -132,6 +148,18 @@ def median_comp_price(
         return (med, n)
 
     # Fallback: driver-only (no parallel scope), still grade-matched.
+    #
+    # DANGER: this pool mixes every tier for the driver — a $1 base card gets
+    # compared against a median that includes autographs and numbered
+    # parallels, which is how "$1, usually sells for $842, 100% off" reached
+    # the dashboard. It is only a legitimate signal when the caller knows the
+    # parallel is unidentified; it must never masquerade as a real comp for a
+    # card whose parallel we DID identify. Callers that gate on n_comps alone
+    # would be fooled, so a scoped request returns no-comp instead of a
+    # cross-tier median. Unscoped callers (parallel=None) still get the
+    # fallback, which is the best available answer for an unknown tier.
+    if parallel:
+        return (None, 0)
     filters = [SoldCard.driver_name == driver]
     if grade:
         filters.append(SoldCard.grade == grade)
@@ -181,7 +209,12 @@ def calculate_snipe_score(auction, card, db: Session | None = None) -> float:
             db = _SL()
         try:
             auction_grade = _extract_grade_from_title(auction.title or "")
-            med, n = median_comp_price(db, card.driver_name, card.parallel, auction_grade)
+            med, n = median_comp_price(
+                db,
+                card.driver_name,
+                effective_parallel(auction.title, card.parallel),
+                auction_grade,
+            )
             ref_price = med if (med and n >= 3) else (card.base_value or 0)
         finally:
             if owns_db:
@@ -402,7 +435,12 @@ def compute_snipe_eligible(auction, card=None, db: Session | None = None) -> boo
                 db = _SL()
             try:
                 grade = _extract_grade_from_title(getattr(auction, "title", "") or "")
-                med, n = median_comp_price(db, card.driver_name, card.parallel, grade)
+                med, n = median_comp_price(
+                    db,
+                    card.driver_name,
+                    effective_parallel(getattr(auction, "title", ""), card.parallel),
+                    grade,
+                )
                 if med and n >= 3:
                     has_comps = True
                     ref_price = med

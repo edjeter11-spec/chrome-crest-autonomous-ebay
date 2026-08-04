@@ -361,13 +361,14 @@ class ClickEvent(Base):
     auction_id = Column(Integer, nullable=True)
     card_id = Column(Integer, nullable=True)
     url = Column(Text, nullable=False)
+    # index=True already emits `ix_click_events_clicked_at`. A __table_args__
+    # Index of the SAME name used to be declared alongside it, so create_all
+    # emitted the CREATE INDEX twice and aborted mid-run every time it was
+    # reached ("index already exists") — silently skipping every table sorted
+    # after click_events. Keep exactly one declaration.
     clicked_at = Column(DateTime, default=datetime.utcnow, index=True)
     user_agent = Column(String, nullable=True)
     ip_hash = Column(String, nullable=True, index=True)
-
-    __table_args__ = (
-        Index("ix_click_events_clicked_at", "clicked_at"),
-    )
 
 
 class UserFeedback(Base):
@@ -509,7 +510,7 @@ def get_db():
 # string; on boot, one cheap SELECT decides whether the whole migration body
 # can be skipped. BUMP SCHEMA_REV whenever you add/change any DDL below —
 # the next boot then runs the full path exactly once and re-stamps.
-SCHEMA_REV = "2026-08-03-startup-sentinel-v1"
+SCHEMA_REV = "2026-08-04-click-events-dup-index-v2"
 _schema_verified = False  # per-process memo: repeat create_tables() calls are free
 
 

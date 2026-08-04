@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db, Auction, Card, PushSubscription
 from lib.discord_alerts import post_to_discord
+from lib.parallels import effective_parallel
 
 router = APIRouter(prefix="/api/sniper", tags=["sniper"])
 log = logging.getLogger("sniper")
@@ -93,7 +94,9 @@ def _rule_matches_auction(rule: dict, auction: Auction, db: Session) -> tuple[bo
     """Return (matched, reason)."""
     card = auction.card
     driver = (card.driver_name if card else "") or ""
-    parallel = (card.parallel if card else "") or ""
+    # Title-derived — a user rule for "Teal /299" must match on what the
+    # listing actually is, not on whichever card row the scraper joined it to.
+    parallel = effective_parallel(auction.title, card.parallel if card else None) or ""
     title = auction.title or ""
 
     r_driver = (rule.get("driver_name") or "").strip()
@@ -245,7 +248,12 @@ def run_match_engine(
                 card = auction.card
                 grade = (rule.get("grade") or "") or _extract_grade_from_title(auction.title or "")
                 if card:
-                    median_val, _ = median_comp_price(db, card.driver_name, card.parallel, grade)
+                    median_val, _ = median_comp_price(
+                        db,
+                        card.driver_name,
+                        effective_parallel(auction.title, card.parallel),
+                        grade,
+                    )
             except Exception:
                 pass
 
@@ -592,7 +600,11 @@ def get_fresh_snipes(limit: int = 6, response: Response = None, db: Session = De
 
     candidates = []
     for a in rows:
-        parallel = (a.card.parallel if a.card else "") or ""
+        # Title-derived: a.card.parallel is a driver-level join fallback and
+        # disagreed with the title on 77% of active auctions, so BORING_PARALLELS
+        # was filtering the wrong rows (real Ray Waves slipped through as
+        # "Autograph", real autographs got dropped as "Base").
+        parallel = effective_parallel(a.title, a.card.parallel if a.card else None) or ""
         title = (a.title or "").lower()
         price = a.current_price or 0
 
@@ -627,7 +639,7 @@ def get_fresh_snipes(limit: int = 6, response: Response = None, db: Session = De
                 "end_time": a.end_time.isoformat() if a.end_time else None,
                 "buying_options": json.loads(a.buying_options) if a.buying_options else [],
                 "driver_name": a.card.driver_name if a.card else None,
-                "parallel": a.card.parallel if a.card else None,
+                "parallel": effective_parallel(a.title, a.card.parallel if a.card else None),
                 "snipe_score": a.snipe_score,
                 "snipe_eligible": a.snipe_eligible,
                 "ebay_url": a.ebay_url,
