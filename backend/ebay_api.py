@@ -4,6 +4,7 @@ Uses OAuth 2.0 client credentials flow.
 Requires EBAY_APP_ID and EBAY_APP_SECRET in backend/.env
 """
 import os
+import re as _re_par  # used by extract_parallel_from_title's anchored matching
 import base64
 import httpx
 import asyncio
@@ -764,6 +765,16 @@ def extract_driver_from_title(title: str) -> Optional[str]:
     return None
 
 
+def _is_auto(t: str) -> bool:
+    """True when an UPPERCASED title indicates a signed card.
+
+    Shared by the autograph rule and the numbered-parallel rules so an
+    autographed /75 isn't demoted to a plain "F1 75th /75".
+    """
+    return ("AUTOGRAPH" in t or " AUTO " in t or t.endswith(" AUTO")
+            or "#CAC-" in t or "CHROME AUTO" in t or " SIGNED" in t)
+
+
 def extract_parallel_from_title(title: str) -> str:
     """Extract card parallel/variant from title.
 
@@ -784,8 +795,11 @@ def extract_parallel_from_title(title: str) -> str:
 
     # 1. SuperFractor — highest priority. Checked BEFORE Autograph so
     #    "SuperFractor Auto" -> SuperFractor not Autograph.
+    # "1/1" must be a standalone print run, not a substring of a longer one:
+    # bare `"1/1" in t` matched the "1/15" inside "141/150", tagging ordinary
+    # Blue /150 cards as the set's 1-of-1 chase card (188 sold rows affected).
     if "SUPERFRACTOR" in t or "SUPER FRACTOR" in t \
-            or "1/1" in t or "1 OF 1" in t:
+            or _re_par.search(r"(?<!\d)1\s*/\s*1(?!\d)", t) or "1 OF 1" in t:
         # Label must match what the sold-side writers store (scrape_runner's
         # PARALLEL_PATTERNS emits "SuperFractor"), because median_comp_price
         # matches parallel as an exact string. "Superfractor 1/1" here meant
@@ -794,26 +808,51 @@ def extract_parallel_from_title(title: str) -> str:
         return "SuperFractor"
 
     # 2. Print-run numbered parallels — colour + matching /N.
-    if "RED" in t and "/5" in t: return "Red /5"
-    if "GOLD" in t and "/10" in t: return "Gold /10"
-    if "BLACK" in t and "/10" in t: return "Black /10"
-    if "RED" in t and "/25" in t: return "Red /25"
-    if "ORANGE" in t and "/25" in t: return "Orange /25"
-    if "ORANGE" in t and "/50" in t: return "Orange /50"
-    if "GOLD" in t and "/50" in t: return "Gold /50"
-    if "/75" in t and ("75TH" in t or "F1 75" in t or "ANNIVERSARY" in t): return "F1 75th /75"
-    if "GREEN" in t and "/99" in t: return "Green /99"
-    if "BLUE" in t and "/150" in t: return "Blue /150"
-    if "PINK" in t and "/199" in t: return "Pink /199"
-    if "AQUA" in t and "/199" in t: return "Aqua /199"
-    if "PURPLE" in t and "/250" in t: return "Purple /250"
-    if "PINK" in t and "/250" in t: return "Pink /250"
-    if "TEAL" in t and "/299" in t: return "Teal /299"
+    #
+    # Both halves used to be naive substring checks, which mis-tagged the two
+    # rarest tiers in the set:
+    #   * "/5" matched inside "46/50", so any Gold /50 became "Red /5"
+    #     whenever the word RED appeared — and it almost always does, because
+    #     "RED BULL" is a team name (74 sold rows).
+    #   * "/25" matched inside "/250", turning Pink /250 into "Red /25" (74 rows).
+    # Fix: anchor the print run so /5 can't match /50 and /25 can't match /250,
+    # and require the colour to be a standalone word that isn't part of a team
+    # name ("RED BULL", "SCUDERIA FERRARI HP" etc.).
+    def _run(n: int) -> bool:
+        """True when the title carries print run /n as a whole number."""
+        return bool(_re_par.search(rf"/\s*{n}(?!\d)", t))
+
+    def _colour(word: str) -> bool:
+        """True when `word` appears as a colour, not inside a team name."""
+        if word == "RED" and _re_par.search(r"\bRED\s+BULL\b", t):
+            # Strip the team name, then look for a remaining standalone RED.
+            return bool(_re_par.search(r"\bRED\b", _re_par.sub(r"\bRED\s+BULL\b", " ", t)))
+        return bool(_re_par.search(rf"\b{word}\b", t))
+
+    if _colour("RED") and _run(5): return "Red /5"
+    if _colour("GOLD") and _run(10): return "Gold /10"
+    if _colour("BLACK") and _run(10): return "Black /10"
+    if _colour("RED") and _run(25): return "Red /25"
+    if _colour("ORANGE") and _run(25): return "Orange /25"
+    if _colour("ORANGE") and _run(50): return "Orange /50"
+    if _colour("GOLD") and _run(50): return "Gold /50"
+    # F1 75th /75 is checked AFTER the auto test below when the card is also
+    # signed — an autographed /75 is priced as an autograph, not as a plain
+    # numbered parallel (same reasoning as "Refractor Auto" -> Autograph).
+    if _run(75) and ("75TH" in t or "F1 75" in t or "ANNIVERSARY" in t) \
+            and not _is_auto(t):
+        return "F1 75th /75"
+    if _colour("GREEN") and _run(99): return "Green /99"
+    if _colour("BLUE") and _run(150): return "Blue /150"
+    if _colour("PINK") and _run(199): return "Pink /199"
+    if _colour("AQUA") and _run(199): return "Aqua /199"
+    if _colour("PURPLE") and _run(250): return "Purple /250"
+    if _colour("PINK") and _run(250): return "Pink /250"
+    if _colour("TEAL") and _run(299): return "Teal /299"
 
     # 3. Autograph — checked BEFORE Refractor so "Refractor Auto" wins
     #    Autograph (the trust-killer bug Eddie hit on Antonelli).
-    if "AUTOGRAPH" in t or " AUTO " in t or t.endswith(" AUTO") \
-            or "#CAC-" in t or "CHROME AUTO" in t or " SIGNED" in t:
+    if _is_auto(t):
         return "Autograph"
 
     # 4. Named insert parallels.
@@ -822,7 +861,10 @@ def extract_parallel_from_title(title: str) -> str:
     if "FLOOR IT" in t: return "Floor It"
     if "SPEED WHEELS" in t: return "Speed Wheels"
     if "TOP SPEED" in t: return "Top Speed"
-    if "FOUR & MORE" in t or "FOUR AND MORE" in t: return "Four & More"
+    # "4 & More" is how the insert is actually printed on most listings; only
+    # the spelled-out forms were matched, so 117 sold rows fell through to Base.
+    if "FOUR & MORE" in t or "FOUR AND MORE" in t \
+            or _re_par.search(r"\b4\s*(?:&|AND)\s*MORE\b", t): return "Four & More"
     if "DIAMOND 75" in t: return "Diamond 75th"
     if "HELIX" in t: return "Helix"
     if "ULTRASONIC" in t: return "Ultrasonic"

@@ -94,6 +94,9 @@ PARALLEL_PATTERNS = [
     ("B&W Ray Wave", re.compile(r"ray ?wave|b&w ray|black ?& ?white ray", re.I)),
     ("B&W Lazer", re.compile(r"b&w lazer|black ?& ?white lazer|\blazer\b", re.I)),
     ("Prism Refractor", re.compile(r"prism ?refractor|prizm ?refractor|prizm", re.I)),
+    # Logo Fractor was absent entirely, so 619 sold rows landed in "Base" and
+    # dragged the base median up. Must stay ABOVE the generic Refractor rule.
+    ("Logo Fractor", re.compile(r"logo ?fractor", re.I)),
     # 6. Refractor — generic, lowest priority before Base
     ("Refractor", re.compile(r"refractor", re.I)),
 ]
