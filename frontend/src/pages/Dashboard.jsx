@@ -246,9 +246,14 @@ export default function Dashboard() {
           // empty-state check actually fires when every row was filtered out
           // — previously sales.length>0 but post-filter rendered nothing,
           // leaving the section silently blank.
-          const feed = notable.length >= 5 ? notable : all
-          const withImages = (feed || []).filter(s => s && s.image_url && !String(s.image_url).includes('placehold'))
-          setSales(withImages.slice(0, 15))
+          // Recency wins. This used to drop every imageless row, which silently
+          // reached days back whenever fresh sales lacked art — on 2026-08-04
+          // only 123 of 500 rows had an image and 118 of those were from
+          // 2026-07-22/23, so "latest sales" showed 4-day-old sales while
+          // today's sat unused in the same payload. Rows keep their
+          // chronological order now; the row renders a placeholder tile when
+          // there's no art rather than vanishing.
+          setSales((feed || []).slice(0, 15))
           // Scrolling ticker (10 notable)
           setTicker((notable.length >= 3 ? notable : all).slice(0, 10))
           // Big wins (>= $100) — cap to max 2 per driver so one hot driver
@@ -794,7 +799,7 @@ export default function Dashboard() {
               ))
             ) : (Array.isArray(sales) ? sales : []).length === 0 ? (
               <EmptyRow text="No notable sales yet today" />
-            ) : (Array.isArray(sales) ? sales : []).filter(s => s && s.image_url && !String(s.image_url).includes('placehold')).map((s, i) => (
+            ) : (Array.isArray(sales) ? sales : []).map((s, i) => (
               <a
                 key={s?.id ?? i}
                 href={s?.ebay_url ? ebayAffiliateUrl(s.ebay_url) : `/sales?driver=${encodeURIComponent(s?.driver_name || '')}`}
@@ -802,14 +807,25 @@ export default function Dashboard() {
                 rel={s?.ebay_url ? 'noopener sponsored' : undefined}
                 className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/40 cursor-pointer transition-colors no-underline"
               >
-                <img
-                  src={upscaleEbayImage(s?.image_url, 140)}
-                  alt=""
-                  className="w-10 h-14 object-cover rounded border border-gray-800 shrink-0"
-                  loading="lazy"
-                  decoding="async"
-                  onError={e => { try { e.target.closest('a').style.display = 'none' } catch {} }}
-                />
+                {s?.image_url && !String(s.image_url).includes('placehold') ? (
+                  <img
+                    src={upscaleEbayImage(s.image_url, 140)}
+                    alt=""
+                    className="w-10 h-14 object-cover rounded border border-gray-800 shrink-0"
+                    loading="lazy"
+                    decoding="async"
+                    // Swap in the placeholder tile instead of hiding the row —
+                    // a sale that happened is worth showing without its photo.
+                    onError={e => { try { e.target.style.visibility = 'hidden' } catch {} }}
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-14 rounded border border-gray-800 shrink-0 bg-gray-800/40 flex items-center justify-center"
+                    aria-hidden="true"
+                  >
+                    <span className="text-[9px] text-gray-600 font-mono">F1</span>
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-semibold text-white truncate">

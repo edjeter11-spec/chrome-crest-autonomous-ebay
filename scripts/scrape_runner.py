@@ -768,6 +768,32 @@ def scrape_search_page(page, url: str):
         log.warning(f"No selector match at {url[:80]} (title={title})")
         return []
 
+    # Force lazy-loaded thumbnails to resolve before extracting. eBay only
+    # swaps data-src -> src once a card enters the viewport, so a headless
+    # run that never scrolls leaves most images unresolved. pickImage() reads
+    # the data-* attributes directly and doesn't depend on this, but scrolling
+    # also lets eBay populate srcset, so it's belt-and-braces. Bounded and
+    # best-effort — a scroll failure must never cost us the whole page.
+    try:
+        page.evaluate("""
+            () => new Promise(resolve => {
+                let y = 0;
+                const step = () => {
+                    y += window.innerHeight;
+                    window.scrollTo(0, y);
+                    if (y < document.body.scrollHeight && y < 20000) {
+                        setTimeout(step, 100);
+                    } else {
+                        window.scrollTo(0, 0);
+                        setTimeout(resolve, 250);
+                    }
+                };
+                step();
+            })
+        """)
+    except Exception as _scroll_err:
+        log.debug(f"lazy-load scroll skipped: {_scroll_err}")
+
     # Try old + new eBay layouts. Modern eBay uses .s-card / .su-card-container.
     # Price extraction is strict: only accept text that contains "$" so we don't
     # catch "16 watchers" or "FREE shipping" badges.
@@ -775,6 +801,28 @@ def scrape_search_page(page, url: str):
         () => {
             const out = [];
             const seen = new Set();
+            // eBay lazy-loads result thumbnails: until a card scrolls into view
+            // its <img> carries a spacer/base64 `src` and the REAL url lives in
+            // data-src / data-defer-load / srcset. The old code read
+            // `imgEl.src || imgEl.dataset.src`, and since a spacer src is a
+            // non-empty string the fallback never fired — so ~50% of rows were
+            // stored with no image from 2026-07-23 on. The dashboard sales feed
+            // drops imageless rows, which is why it showed only stale sales.
+            const pickImage = (img) => {
+                const bad = (u) => !u || u.startsWith('data:') || /\\/s-l1\\.|spacer|blank|placehold|1x1/i.test(u);
+                const cands = [
+                    img.getAttribute('data-src'),
+                    img.getAttribute('data-defer-load'),
+                    img.getAttribute('data-image-src'),
+                    img.currentSrc,
+                    img.src,
+                ];
+                for (const c of cands) { if (!bad(c)) return c; }
+                // srcset: take the highest-resolution entry that isn't a spacer.
+                const ss = img.getAttribute('srcset') || '';
+                const urls = ss.split(',').map(s => s.trim().split(/\\s+/)[0]).filter(u => !bad(u));
+                return urls.length ? urls[urls.length - 1] : '';
+            };
             const cards = document.querySelectorAll(
                 'li.s-item, .s-item__wrapper, .s-card, .su-card-container'
             );
@@ -848,7 +896,7 @@ def scrape_search_page(page, url: str):
                     title,
                     price: priceText,
                     url,
-                    image: imgEl ? (imgEl.src || imgEl.dataset.src || '') : '',
+                    image: imgEl ? pickImage(imgEl) : '',
                     date_text: dateText,
                     shipping_text: shippingText
                 });
