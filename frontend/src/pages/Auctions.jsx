@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { NavLink, useSearchParams } from 'react-router-dom'
 import { Search, Zap, Bookmark, RefreshCw, Gavel, SlidersHorizontal, Target, Check, X, Share2, ChevronDown } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
+import { sanitizeAuctions } from '../lib/sanitizeAuction'
 import AuctionModal from '../components/AuctionModal'
 import ThemeToggle from '../components/ThemeToggle'
 import { swrFetch } from '../lib/cache'
@@ -167,7 +168,7 @@ export default function Auctions() {
     swrFetch(
       `${API}/api/auctions/with-verdicts?limit=100&status=active&buying=auction`,
       d => {
-        const list = applySeasonFilter(d.auctions || d || [])
+        const list = applySeasonFilter(sanitizeAuctions(d.auctions || d || []))
         setAuctions(list)
         // Stale-data nudge: if the freshest listing is >10 min old, fire a
         // fire-and-forget background eBay refresh. Server-side rate-limits
@@ -195,7 +196,7 @@ export default function Auctions() {
           swrFetch(
             `${API}/api/auctions/with-verdicts?limit=500&status=active&buying=auction`,
             d2 => {
-              setAuctions(applySeasonFilter(d2.auctions || d2 || []))
+              setAuctions(applySeasonFilter(sanitizeAuctions(d2.auctions || d2 || [])))
             }
           )
         }, 1500)

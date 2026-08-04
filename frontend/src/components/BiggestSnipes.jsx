@@ -188,10 +188,23 @@ function AuctionRow({ a, nowTick, freshOverride, onOpen }) {
   // $4.99 ship listings that look like 95% off but are 40% off after shipping.
   const liveTotal = (livePrice || 0) + (a.shipping_cost || 0)
   const pctBelow = median && liveTotal ? Math.round((1 - liveTotal / median) * 100) : null
-  // Prefer the title-derived driver — covers F1 Legends (card_id NULL) and
-  // legacy mislabeled rows where the joined card disagrees with the title.
-  const driverName = a.title_driver || a.driver_name || a.driver || a.card?.driver_name
-  const parallel = a.card?.parallel || a.parallel || ''
+  // Trust chain for the display driver: title-derived first. The joined card
+  // row is a scraper GUESS — legacy runs matched team/logo cards to driver
+  // cards (an Alpine logo card rendered as "Max Verstappen · Auto"). Only
+  // trust the join when the driver's surname actually appears in the title;
+  // otherwise show a cleaned title fragment instead of a wrong driver.
+  const cardDriver = a.card?.driver_name || ''
+  const surname = cardDriver.split(' ').slice(-1)[0]?.toLowerCase() || ''
+  const joinAgreesWithTitle = !!surname && (a.title || '').toLowerCase().includes(surname)
+  const driverName = a.title_driver || a.driver_name || a.driver || (joinAgreesWithTitle ? cardDriver : null)
+  const parallel = (joinAgreesWithTitle ? a.card?.parallel : null) || a.parallel || ''
+  // Fallback label for driverless cards (team/logo/car cards): a trimmed
+  // title beats an em-dash or a fabricated driver.
+  const titleLabel = (a.title || '')
+    .replace(/^new listing/i, '')
+    .replace(/2025 topps chrome( formula 1| f1)?( sapphire)?( f1)?/i, '')
+    .trim()
+    .slice(0, 42)
   const parallelLabel = parallel && parallel !== 'Base' ? parallel : ''
   const printRun = parsePrintRun(a.title)
   // Clickable when the parent has wired an onOpen handler. Falls back to
@@ -237,13 +250,13 @@ function AuctionRow({ a, nowTick, freshOverride, onOpen }) {
               className="text-xs font-bold text-white truncate hover:text-red-300 hover:underline transition-colors text-left max-w-full"
               title="View card + seller details"
             >
-              {driverName || '—'}
+              {driverName || titleLabel || '—'}
               {parallelLabel && <span className="text-gray-300"> · {parallelLabel}</span>}
               {printRun && <span className="text-amber-300 ml-1">{printRun}</span>}
             </button>
           ) : (
             <div className="text-xs font-bold text-white truncate">
-              {driverName || '—'}
+              {driverName || titleLabel || '—'}
               {parallelLabel && <span className="text-gray-300"> · {parallelLabel}</span>}
               {printRun && <span className="text-amber-300 ml-1">{printRun}</span>}
             </div>

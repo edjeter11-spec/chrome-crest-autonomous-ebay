@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
 import DriverAvatar from '../components/DriverAvatar'
+import { sanitizeAuctions } from '../lib/sanitizeAuction'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import { SkeletonBox, SkeletonCard, SkeletonCardRow, SkeletonStat } from '../components/Skeleton'
 // BiggestSnipes hides behind the "Show more analytics" toggle and
@@ -294,7 +295,7 @@ export default function Dashboard() {
     swrFetch(
       `${API}/api/auctions/with-verdicts?limit=100`,
       d => {
-        try { setAuctions(applySeasonFilter(asArray(d, 'auctions')) || []) }
+        try { setAuctions(applySeasonFilter(sanitizeAuctions(asArray(d, 'auctions'))) || []) }
         catch (err) { console.error('[Dashboard] auctions handler', err); setAuctions([]) }
         finally { setAuctionsLoading(false) }
       }
@@ -305,7 +306,7 @@ export default function Dashboard() {
     swrFetch(
       `${API}/api/auctions/with-verdicts?buying=auction&limit=100`,
       d => {
-        try { setLiveAuctions(applySeasonFilter(asArray(d, 'auctions')) || []) }
+        try { setLiveAuctions(applySeasonFilter(sanitizeAuctions(asArray(d, 'auctions'))) || []) }
         catch (err) { console.error('[Dashboard] liveAuctions handler', err); setLiveAuctions([]) }
       }
     )
@@ -317,7 +318,7 @@ export default function Dashboard() {
     ]).then(freshRes => {
       try {
         if (freshRes?.auctions && Array.isArray(freshRes.auctions)) {
-          setSnipes(applySeasonFilter(freshRes.auctions) || [])
+          setSnipes(applySeasonFilter(sanitizeAuctions(freshRes.auctions)) || [])
           setSnipesLoading(false)
           return
         }
@@ -328,7 +329,7 @@ export default function Dashboard() {
       swrFetch(
         `${API}/api/auctions/snipe/targets`,
         d => {
-          try { setSnipes(applySeasonFilter(asArray(d, 'targets')) || []) }
+          try { setSnipes(applySeasonFilter(sanitizeAuctions(asArray(d, 'targets'))) || []) }
           catch (err) { console.error('[Dashboard] snipes handler', err); setSnipes([]) }
           finally { setSnipesLoading(false) }
         }

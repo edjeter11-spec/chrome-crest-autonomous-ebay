@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, Flag } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
+import { sanitizeAuctions } from '../lib/sanitizeAuction'
 import CardImage from './CardImage'
 
 const API = import.meta.env.VITE_API_URL || ''
@@ -63,7 +64,7 @@ export default function TopPicks() {
       .then(d => {
         if (cancelled) return
         const list = d?.auctions || d || []
-        setAuctions(Array.isArray(list) ? list : [])
+        setAuctions(Array.isArray(list) ? sanitizeAuctions(list) : [])
         setLoading(false)
       })
       .catch(() => { if (!cancelled) setLoading(false) })

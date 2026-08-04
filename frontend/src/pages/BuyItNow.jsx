@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Search, Tag, Bookmark, RefreshCw, ExternalLink, MessageSquare, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import AuctionCard from '../components/AuctionCard'
+import { sanitizeAuctions } from '../lib/sanitizeAuction'
 import AuctionModal from '../components/AuctionModal'
 import ThemeToggle from '../components/ThemeToggle'
 import { swrFetch } from '../lib/cache'
@@ -110,7 +111,7 @@ export default function BuyItNow() {
     if (showRefresh) setRefreshing(true)
     swrFetch(
       `${API}/api/auctions/with-verdicts?limit=500&status=active&buying=bin`,
-      d => { setAuctions(applySeasonFilter(d.auctions || d || [])); setLoading(false) },
+      d => { setAuctions(applySeasonFilter(sanitizeAuctions(d.auctions || d || []))); setLoading(false) },
       () => setRefreshing(false)
     )
   }, [])
