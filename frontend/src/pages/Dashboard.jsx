@@ -249,7 +249,7 @@ export default function Dashboard() {
           // today's sat unused in the same payload. Rows keep their
           // chronological order now; the row renders a placeholder tile when
           // there's no art rather than vanishing.
-          setSales((feed || []).slice(0, 15))
+          setSales((all || []).slice(0, 15))
           // Scrolling ticker (10 notable)
           setTicker((notable.length >= 3 ? notable : all).slice(0, 10))
           // Big wins (>= $100) — cap to max 2 per driver so one hot driver
