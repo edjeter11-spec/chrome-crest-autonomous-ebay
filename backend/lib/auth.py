@@ -17,7 +17,7 @@ except ImportError:
     _jwt = None
     _JWT_OK = False
 
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "").strip()
 
 
 def get_user_id(authorization: Optional[str] = Header(None)) -> Optional[str]:

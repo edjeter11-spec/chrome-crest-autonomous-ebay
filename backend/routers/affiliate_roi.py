@@ -11,9 +11,10 @@ from database import get_db, Auction, Card, SoldCard
 
 router = APIRouter(prefix="/api/affiliate-roi", tags=["affiliate_roi"])
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("VITE_SUPABASE_ANON_KEY", "")
+# .strip(): prod values carry a trailing "\n" (PowerShell paste) — see sniper.py
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+SUPABASE_ANON_KEY = (os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("VITE_SUPABASE_ANON_KEY", "")).strip()
 
 
 def _sb_headers(service: bool = True, jwt: str = None) -> dict:

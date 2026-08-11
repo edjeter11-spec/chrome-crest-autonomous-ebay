@@ -23,10 +23,15 @@ from lib.parallels import effective_parallel
 router = APIRouter(prefix="/api/sniper", tags=["sniper"])
 log = logging.getLogger("sniper")
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("VITE_SUPABASE_ANON_KEY", "")
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+# .strip(): the prod Vercel values for all three carry a trailing "\n"
+# (pasted via PowerShell — see the env-var newline trap). That newline made
+# every REST call fail ("supabase read failed" on /api/sniper/check since
+# whenever the vars were last set) — requests rejects header values
+# containing newlines and the URL itself was malformed.
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+SUPABASE_ANON_KEY = (os.getenv("SUPABASE_ANON_KEY", "") or os.getenv("VITE_SUPABASE_ANON_KEY", "")).strip()
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
 
 
 def _sb_headers(service: bool = True) -> dict:
