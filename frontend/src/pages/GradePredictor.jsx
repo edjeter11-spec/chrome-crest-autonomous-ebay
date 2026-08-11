@@ -54,7 +54,7 @@ function ScannedCards() {
     <div className="mt-6">
       <div className="flex items-center gap-3 mb-3">
         <div className="w-1 h-6 bg-cyan-500 rounded-full shrink-0" />
-        <h2 className="text-lg font-black text-white tracking-tight">🗂 Your Scanned Cards</h2>
+        <h2 className="text-lg font-black text-white tracking-tight">Your Scanned Cards</h2>
       </div>
 
       {authLoading || loading ? (

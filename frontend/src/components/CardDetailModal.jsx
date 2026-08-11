@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, ExternalLink, BookmarkPlus, BookmarkCheck, Clock, Gavel, Store, ShieldCheck } from 'lucide-react'
+import { X, ExternalLink, BookmarkPlus, BookmarkCheck, Clock, Gavel, Store, ShieldCheck, AlertTriangle } from 'lucide-react'
 import { ebayAffiliateUrl } from '../lib/ebay'
 import { verdictFor } from '../lib/verdict'
 import VerdictBadge from './VerdictBadge'
@@ -306,7 +306,7 @@ export default function CardDetailModal({ auction, onClose, onWatchlistChange })
                 )}
                 {sellerFb != null && sellerFb < 10 && (
                   <span className="text-[10px] text-amber-400 font-semibold">
-                    ⚠️ New / low-feedback seller
+                    <AlertTriangle size={10} className="inline -mt-0.5 mr-1" />New / low-feedback seller
                   </span>
                 )}
               </div>

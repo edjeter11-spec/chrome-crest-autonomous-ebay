@@ -1847,9 +1847,20 @@ async def cron_sync_imminent(db: Session = Depends(get_db), _auth: None = Depend
         return {"ok": False, "reason": "no_credentials"}
     try:
         result = await _do_imminent_sync(db, window_min=90)
-        return {"ok": True, **result}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}
+    # Critical-only sniper pass: score>=90 or ending<15min. The full match
+    # engine runs only every few hours — without this, a rule hit on an
+    # auction ending in minutes fires after it's already over. Dedup in
+    # user_snipe_matches keeps the */15 cadence from double-notifying.
+    try:
+        from routers.sniper import run_critical_match_pass
+        result["critical_pass"] = run_critical_match_pass(db)
+    except Exception as _cp:
+        import logging as _log
+        _log.getLogger("imminent").warning(f"critical match pass failed: {_cp}")
+        result["critical_pass"] = {"error": str(_cp)[:120]}
+    return {"ok": True, **result}
 
 
 @app.post("/api/sniper/refresh-imminent")
@@ -1952,6 +1963,70 @@ async def cron_refresh_bids(db: Session = Depends(get_db), _auth: None = Depends
             continue
     db.commit()
     return {"ok": True, "checked": len(rows), "updated": updated}
+
+
+@app.get("/api/cron/refresh-stale")
+async def cron_refresh_stale(db: Session = Depends(get_db), _auth: None = Depends(require_cron_or_admin)):
+    """Stale-price sweep. refresh-bids and refresh-top-page both order by
+    end_time asc, so rows ending 12-48h out can sit 6h+ with a $0.99/0-bid
+    price from insert time (2026-08-11 audit: 91/500 active rows >6h stale,
+    worst 9 days). This walks the OTHER end: active auctions ending within
+    48h, oldest last_updated first, so nothing on the dashboard rots."""
+    from database import Auction as _Auction
+    from ebay_api import get_item_details
+    from datetime import datetime as _dt
+
+    if not has_real_credentials():
+        return {"ok": False, "reason": "no_credentials"}
+
+    now = _dt.utcnow()
+    stale_cutoff = now - timedelta(hours=3)
+    rows = (
+        db.query(_Auction)
+        .filter(
+            _Auction.status == "active",
+            _Auction.is_real_ebay == True,  # noqa: E712
+            _Auction.ebay_listing_id.isnot(None),
+            _Auction.end_time > now,
+            _Auction.end_time <= now + timedelta(hours=48),
+            _Auction.last_updated < stale_cutoff,
+        )
+        .order_by(_Auction.last_updated.asc())
+        .limit(80)
+        .all()
+    )
+
+    updated = 0
+    ended = 0
+    for a in rows:
+        try:
+            item = await get_item_details(a.ebay_listing_id)
+            if item is None:
+                # Closed listing or rate limit — touch last_updated either way
+                # so one dead row can't wedge itself at the head of the sweep.
+                a.last_updated = _dt.utcnow()
+                continue
+            price = item.get("current_price")
+            if price:
+                a.current_price = price
+            bids = item.get("bid_count")
+            if bids is not None:
+                a.bid_count = bids
+            fresh_end = item.get("end_time")
+            if fresh_end:
+                from datetime import timezone as _tz
+                if hasattr(fresh_end, "tzinfo") and fresh_end.tzinfo:
+                    fresh_end = fresh_end.astimezone(_tz.utc).replace(tzinfo=None)
+                a.end_time = fresh_end
+                if fresh_end <= _dt.utcnow():
+                    a.status = "ended"
+                    ended += 1
+            a.last_updated = _dt.utcnow()
+            updated += 1
+        except Exception as _e:
+            logger.warning(f"refresh-stale item {a.id}: {_e}")
+    db.commit()
+    return {"ok": True, "checked": len(rows), "updated": updated, "ended": ended}
 
 
 @app.api_route("/api/ebay/refresh-top-page", methods=["GET", "POST"])

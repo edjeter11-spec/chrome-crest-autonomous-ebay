@@ -328,7 +328,7 @@ export default function Watchlist() {
         </div>
         {watching.length === 0 ? (
           <div className="bg-gradient-to-br from-yellow-900/20 to-orange-900/20 border border-yellow-700/40 rounded-2xl py-12 text-center">
-            <div className="text-4xl mb-3">👀</div>
+            <Eye size={36} className="mx-auto mb-3 text-yellow-400" />
             <p className="text-base font-bold text-white">Your watchlist is empty</p>
             <p className="text-sm text-gray-400 mt-2 mb-5">Browse Live Auctions or Buy It Now and click "Watch" to track listings in real-time.</p>
             <a href="/auctions" className="inline-flex items-center gap-2 px-4 py-2.5 bg-yellow-600 hover:bg-yellow-500 text-white text-sm font-bold rounded-lg">
@@ -457,7 +457,7 @@ export default function Watchlist() {
           </div>
         ) : wishlist.length === 0 ? (
           <div className="bg-gradient-to-br from-pink-900/20 to-red-900/20 border border-pink-700/40 rounded-2xl py-12 text-center">
-            <div className="text-4xl mb-3">💌</div>
+            <Heart size={36} className="mx-auto mb-3 text-pink-400" />
             <p className="text-base font-bold text-white">No cards on your wish list</p>
             <p className="text-sm text-gray-400 mt-2 mb-5">Set your targets and we'll auto-match them against every live auction. No more scrolling — we alert you.</p>
             <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-2 px-4 py-2.5 bg-pink-600 hover:bg-pink-500 text-white text-sm font-bold rounded-lg">

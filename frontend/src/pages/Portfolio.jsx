@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
-import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle, Upload, Sparkles, Camera, Zap } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle, Upload, Sparkles, Camera, Zap, Car } from 'lucide-react'
 import StatCard from '../components/StatCard'
 import CSVImportModal from '../components/CSVImportModal'
 import ScanCardModal from '../components/ScanCardModal'
@@ -475,7 +475,7 @@ function EditRow({ item, onSave, onCancel }) {
 
   return (
     <tr className="bg-gray-800/40">
-      <td><div className="w-9 h-11 rounded-lg bg-gray-800 flex items-center justify-center text-base">🏎</div></td>
+      <td><div className="w-9 h-11 rounded-lg bg-gray-800 flex items-center justify-center"><Car size={16} className="text-gray-500" /></div></td>
       <td><div className="font-semibold text-white text-sm">{item.card?.driver_name}</div></td>
       <td className="text-gray-500 text-xs">{item.card?.parallel}</td>
       <td className="text-xs text-gray-400">{item.card?.grade}</td>
@@ -741,7 +741,7 @@ export default function Portfolio() {
         <div className="panel h-64 animate-pulse" />
       ) : items.length === 0 ? (
         <div className="panel flex flex-col items-center justify-center py-20">
-          <div className="text-5xl mb-4">📦</div>
+          <Package size={48} className="mb-4 text-gray-500" />
           <p className="text-lg font-bold text-white">Time to build your portfolio</p>
           <p className="text-sm text-gray-400 mt-2 mb-6 max-w-sm text-center">Track purchases, monitor recent sales, and watch your collection grow. Scan a card or add holdings manually.</p>
           <div className="flex gap-3 flex-wrap justify-center">

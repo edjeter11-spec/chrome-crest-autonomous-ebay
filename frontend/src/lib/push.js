@@ -1,5 +1,19 @@
 // Web Push manager — registers the SW and manages browser subscription.
+import { supabase } from './supabase'
+
 const API = import.meta.env.VITE_API_URL || ''
+
+// Access token (if signed in) — lets the backend link this device to the
+// user so sniper-rule pushes only reach the rule's owner.
+async function authHeaders() {
+  try {
+    const { data } = (await supabase?.auth.getSession()) || {}
+    const token = data?.session?.access_token
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  } catch {
+    return {}
+  }
+}
 
 function urlB64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -56,7 +70,7 @@ export async function subscribePush() {
   }
   const res = await fetch(`${API}/api/push/subscribe`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ subscription: sub.toJSON() }),
   })
   // A backend failure used to leave the toggle showing "on" with ZERO

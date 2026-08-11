@@ -144,6 +144,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/refresh-stale",
+      "schedule": "50 * * * *"
+    },
+    {
       "path": "/api/cron/mark-ended",
       "schedule": "*/30 * * * *"
     },

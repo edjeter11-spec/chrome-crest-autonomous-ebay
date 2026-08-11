@@ -295,6 +295,9 @@ class PushSubscription(Base):
     p256dh = Column(String, nullable=False)
     auth = Column(String, nullable=False)
     user_agent = Column(String, nullable=True)
+    # Supabase user id — scopes sniper-rule pushes to the rule's owner.
+    # Nullable: legacy rows subscribed before auth capture get no rule pushes.
+    user_id = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -510,7 +513,7 @@ def get_db():
 # string; on boot, one cheap SELECT decides whether the whole migration body
 # can be skipped. BUMP SCHEMA_REV whenever you add/change any DDL below —
 # the next boot then runs the full path exactly once and re-stamps.
-SCHEMA_REV = "2026-08-04-click-events-dup-index-v2"
+SCHEMA_REV = "2026-08-11-push-sub-user-id"
 _schema_verified = False  # per-process memo: repeat create_tables() calls are free
 
 
@@ -556,6 +559,7 @@ def create_tables():
             "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS extra_images TEXT",
             "ALTER TABLE price_history ADD COLUMN IF NOT EXISTS ebay_item_id VARCHAR(64)",
             "ALTER TABLE sold_cards ADD COLUMN IF NOT EXISTS source VARCHAR DEFAULT 'eBay'",
+            "ALTER TABLE push_subscriptions ADD COLUMN IF NOT EXISTS user_id TEXT",
         ]
         with engine.begin() as conn:
             for sql in adds:

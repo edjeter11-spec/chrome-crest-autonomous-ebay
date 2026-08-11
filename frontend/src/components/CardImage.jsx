@@ -74,12 +74,45 @@ export default function CardImage({
   // Max-wait timer per attempt: if the image doesn't fire onLoad OR onError
   // within 10s (was 3s — too aggressive on slow eBay CDN), retry/fail so
   // genuinely dead URLs can't hold an infinite skeleton.
+  //
+  // Hidden tabs don't count: browsers deprioritize/park image loads while a
+  // tab is backgrounded but timers keep firing, so switching away for 30s
+  // used to burn all 3 attempts and permanently black out the card. Re-arm
+  // the full window instead of judging a load the browser never attempted.
   useEffect(() => {
     if (!upscaled || loaded || failed) return
-    const id = setTimeout(retryOrFail, 10000)
+    let id
+    const arm = () => {
+      id = setTimeout(() => {
+        if (typeof document !== 'undefined' && document.hidden) { arm(); return }
+        retryOrFail()
+      }, 10000)
+    }
+    arm()
     return () => clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upscaled, loaded, failed, attempt])
+
+  // Tab-return self-heal: loads aborted while hidden can leave the image
+  // stuck (failed, or complete-but-unnoticed since a hidden tab doesn't
+  // re-render). On return, mark cached-complete images loaded and give
+  // failed ones a fresh set of attempts.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return
+      const el = imgRef.current
+      if (el && el.complete && el.naturalWidth > 0) {
+        setLoaded(true)
+      } else if (failed) {
+        setFailed(false)
+        setLoaded(false)
+        setAttempt(0)
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [failed])
 
   const displaySrc = attempt > 0
     ? `${upscaled}${upscaled.includes('?') ? '&' : '?'}retry=${attempt}`

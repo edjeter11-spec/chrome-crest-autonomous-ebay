@@ -192,6 +192,45 @@ def run_match_engine(
         Auction.end_time > datetime.utcnow(),
     ).all()
 
+    return _match_and_notify(db, rules, auctions, use_fresh_lookup=use_fresh_lookup)
+
+
+def run_critical_match_pass(db: Session) -> dict:
+    """Lightweight critical-only pass for /api/cron/sync-imminent (*/15).
+
+    The full match engine only runs every few hours, so a rule hit on an
+    auction ending in minutes used to be discovered too late. This scans just
+    the critical slice — snipe_score >= 90 OR ending within 15 min — against
+    all active rules. Dedup via user_snipe_matches makes re-runs free.
+    """
+    if not (SUPABASE_URL and SUPABASE_SERVICE_KEY):
+        return {"status": "no_service_key"}
+    try:
+        rules = _sb_get("user_snipe_rules", {"active": "eq.true", "select": "*"})
+    except Exception as e:
+        log.error(f"critical pass: failed to load rules: {e}")
+        return {"status": "rules_load_failed"}
+    if not rules:
+        return {"rules_checked": 0, "matches_found": 0, "notified": 0}
+
+    from sqlalchemy import or_
+    now = datetime.utcnow()
+    auctions = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.end_time > now,
+        or_(
+            Auction.snipe_score >= 90,
+            Auction.end_time <= now + timedelta(minutes=15),
+        ),
+    ).all()
+    if not auctions:
+        return {"rules_checked": len(rules), "matches_found": 0, "notified": 0}
+    return _match_and_notify(db, rules, auctions, use_fresh_lookup=False)
+
+
+def _match_and_notify(db: Session, rules: list, auctions: list, use_fresh_lookup: bool = False) -> dict:
+    """Core loop: score `auctions` against `rules`, record matches, push to the
+    rule's owner. Shared by the full cron engine and the critical-only pass."""
     now = datetime.utcnow()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     seven_days_ago = now - timedelta(days=7)
@@ -280,13 +319,14 @@ def run_match_engine(
                 {"last_triggered_at": now.isoformat(), "trigger_count": (rule.get("trigger_count") or 0) + 1},
             )
 
-            # Push
+            # Push — scoped to the rule's owner only. Rules without a user_id
+            # get no push (never broadcast one user's private hits to everyone).
             try:
-                from routers.push import send_push_to_all
+                from routers.push import send_push_to_user
                 label = rule.get("name") or "Sniper match"
                 body = f"${total:.0f}: {(auction.title or '')[:80]}"
                 url = auction.ebay_url or f"/auctions?alert={auction.id}"
-                sent = send_push_to_all(db, title=f"🎯 {label}", body=body, url=url, tag=f"snipe-{rule_id}")
+                sent = send_push_to_user(db, user_id, title=f"🎯 {label}", body=body, url=url, tag=f"snipe-{rule_id}")
                 notified += sent
             except Exception as e:
                 log.warning(f"push failed: {e}")

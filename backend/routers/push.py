@@ -4,8 +4,9 @@ import json
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from typing import Optional
 from database import get_db, PushSubscription
-from lib.auth import require_admin
+from lib.auth import require_admin, get_user_id
 
 router = APIRouter(prefix="/api/push", tags=["push"])
 log = logging.getLogger("push")
@@ -17,7 +18,11 @@ def get_vapid_public_key():
 
 
 @router.post("/subscribe")
-async def subscribe(request: Request, db: Session = Depends(get_db)):
+async def subscribe(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: Optional[str] = Depends(get_user_id),
+):
     body = await request.json()
     sub = body.get("subscription") or body
     endpoint = sub.get("endpoint")
@@ -33,10 +38,15 @@ async def subscribe(request: Request, db: Session = Depends(get_db)):
         existing.p256dh = p256dh
         existing.auth = auth
         existing.user_agent = ua
+        # Only claim, never un-claim: an anonymous re-subscribe from the same
+        # browser must not strip ownership from a previously signed-in device.
+        if user_id:
+            existing.user_id = user_id
     else:
-        db.add(PushSubscription(endpoint=endpoint, p256dh=p256dh, auth=auth, user_agent=ua))
+        db.add(PushSubscription(endpoint=endpoint, p256dh=p256dh, auth=auth,
+                                user_agent=ua, user_id=user_id))
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "linked_user": bool(user_id)}
 
 
 @router.post("/unsubscribe")
@@ -59,7 +69,26 @@ def send_test(db: Session = Depends(get_db), _admin=Depends(require_admin)):
 
 
 def send_push_to_all(db: Session, title: str, body: str, url: str = "/", tag: str = "snipe") -> int:
-    """Fan out a web push to every subscribed browser. Returns count of successful sends."""
+    """Fan out a web push to every subscribed browser. Returns count of successful sends.
+    Broadcast-only — site-wide alerts. Per-user rule matches must go through
+    send_push_to_user so one user's private rule hits never reach everyone."""
+    subs = db.query(PushSubscription).all()
+    return _fan_out(db, subs, title, body, url, tag)
+
+
+def send_push_to_user(db: Session, user_id: Optional[str], title: str, body: str,
+                      url: str = "/", tag: str = "snipe") -> int:
+    """Push only to devices owned by `user_id`. No user_id → no push (legacy
+    unclaimed subscriptions stay silent rather than leaking to everyone)."""
+    if not user_id:
+        return 0
+    subs = db.query(PushSubscription).filter(PushSubscription.user_id == user_id).all()
+    if not subs:
+        return 0
+    return _fan_out(db, subs, title, body, url, tag)
+
+
+def _fan_out(db: Session, subs: list, title: str, body: str, url: str, tag: str) -> int:
     try:
         from pywebpush import webpush, WebPushException
     except Exception as e:
@@ -76,7 +105,6 @@ def send_push_to_all(db: Session, title: str, body: str, url: str = "/", tag: st
     sent = 0
     failed = 0
     dead: list = []
-    subs = db.query(PushSubscription).all()
     for s in subs:
         try:
             webpush(

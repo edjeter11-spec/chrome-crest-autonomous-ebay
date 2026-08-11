@@ -307,6 +307,42 @@ def sales_stats(
     }
 
 
+# Common name variants → the canonical driver_name stored by the scrapers.
+# The median lookup is an exact string match, so "Kimi Antonelli" returned
+# n=0 against stored "Andrea Kimi Antonelli" (2026-08-11 audit).
+DRIVER_ALIASES = {
+    "kimi antonelli": "Andrea Kimi Antonelli",
+    "andrea antonelli": "Andrea Kimi Antonelli",
+    "antonelli": "Andrea Kimi Antonelli",
+    "carlos sainz jr": "Carlos Sainz",
+    "carlos sainz jr.": "Carlos Sainz",
+    "alexander albon": "Alex Albon",
+    "guanyu zhou": "Zhou Guanyu",
+    "checo perez": "Sergio Perez",
+    "nico hulkenberg": "Nico Hülkenberg",
+    "max verstappen jr": "Max Verstappen",
+}
+
+
+def _canonical_driver(db: Session, driver: str) -> str:
+    """Resolve a query name to the stored driver_name. Exact match wins;
+    then the alias map; then a case-insensitive contains fallback."""
+    driver = (driver or "").strip()
+    if not driver:
+        return driver
+    if db.query(SoldCard.id).filter(SoldCard.driver_name == driver).first():
+        return driver
+    alias = DRIVER_ALIASES.get(driver.lower())
+    if alias:
+        return alias
+    row = (
+        db.query(SoldCard.driver_name)
+        .filter(SoldCard.driver_name.ilike(f"%{driver}%"))
+        .first()
+    )
+    return row[0] if row else driver
+
+
 @router.get("/median")
 def median_for(
     driver: str = Query(...),
@@ -323,6 +359,7 @@ def median_for(
     `low_confidence: true` when n < 3.
     """
     from scraper import _FOREIGN_PRODUCTS
+    driver = _canonical_driver(db, driver)
     cutoff = datetime.utcnow() - timedelta(days=days)
     q = db.query(SoldCard).filter(
         SoldCard.driver_name == driver,

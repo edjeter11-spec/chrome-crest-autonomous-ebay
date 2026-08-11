@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   ExternalLink, Zap, Clock, Tag, BookmarkPlus, BookmarkCheck,
   ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2,
@@ -261,10 +261,35 @@ function ImageCarousel({ images, title, driverName, teamColor, priority = false 
   const [idx, setIdx] = useState(0)
   const [failed, setFailed] = useState(new Set())
   const [retried, setRetried] = useState(new Set())
+  const imgRef = useRef(null)
   const valid = images?.filter(u => u && !u.includes('placehold.co')).map(proxyImg) || []
   const displayable = valid.filter((_, i) => !failed.has(i))
 
   useEffect(() => { setFailed(new Set()); setRetried(new Set()); setIdx(0) }, [images?.join(',')])
+
+  // Tab-return self-heal: browsers abort/park image loads while the tab is
+  // hidden, so switching away and back could leave tiles stuck on the dark
+  // bg-gray-900 backing (aborted load that fired onError → failed forever,
+  // or an incomplete load that never resumes). On return, forget failures
+  // accrued while hidden and kick any stuck load by re-assigning src.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return
+      if (failed.size || retried.size) {
+        setFailed(new Set())
+        setRetried(new Set())
+      }
+      const el = imgRef.current
+      if (el && el.src && !(el.complete && el.naturalWidth > 0)) {
+        const s = el.src
+        el.src = ''
+        el.src = s
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [failed, retried])
 
   if (!displayable.length) return (
     <CardImagePlaceholder driverName={driverName} teamColor={teamColor} />
@@ -276,6 +301,7 @@ function ImageCarousel({ images, title, driverName, teamColor, priority = false 
   return (
     <div className="relative w-full h-full group bg-gray-900">
       <img
+        ref={imgRef}
         src={displayable[safeIdx]}
         alt={title}
         loading={priority ? 'eager' : 'lazy'}
