@@ -54,7 +54,11 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
   const uploadRef = useRef(null)
 
   const reset = () => {
-    setFile(null); setPreviewUrl(null); setScanResult(null)
+    // Revoke before dropping the reference — object URLs otherwise pin the
+    // decoded blob in memory for the tab's lifetime. Scanning many cards in
+    // one session without this leaks a full-res image per scan.
+    setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null })
+    setFile(null); setScanResult(null)
     setForm({ driver_name: '', parallel: '', card_number: '', grade: '', purchase_price: '', notes: '' })
     setError(null)
     setFeedbackOpen(false); setFeedback({ driver: '', parallel: '', comment: '' }); setFeedbackSent(false)
@@ -65,7 +69,7 @@ export default function ScanCardModal({ open, onClose, onSaved }) {
   const handleFile = (f) => {
     if (!f) return
     setFile(f)
-    setPreviewUrl(URL.createObjectURL(f))
+    setPreviewUrl(prev => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(f) })
     setError(null)
     setScanResult(null)
   }

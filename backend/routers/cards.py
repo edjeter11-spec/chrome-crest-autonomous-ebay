@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database import get_db, Card, Auction
@@ -32,6 +32,7 @@ def card_to_dict(c: Card) -> dict:
 
 @router.get("")
 def list_cards(
+    response: Response,
     driver: Optional[str] = None,
     parallel: Optional[str] = None,
     grade: Optional[str] = None,
@@ -48,11 +49,14 @@ def list_cards(
         q = q.filter(Card.grade == grade)
     total = q.count()
     cards = q.offset(offset).limit(limit).all()
+    # Card metadata only changes on scraper/seed runs — safe to cache.
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     return {"total": total, "cards": [card_to_dict(c) for c in cards]}
 
 
 @router.get("/drivers-summary")
-def drivers_summary(db: Session = Depends(get_db)):
+def drivers_summary(response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     # Single query: base cards (Raw/Base) for driver metadata
     drivers_raw = db.query(
         Card.driver_name,
@@ -140,6 +144,7 @@ def drivers_summary(db: Session = Depends(get_db)):
 
 @router.get("/fmv")
 def card_fmv(
+    response: Response,
     driver: str,
     parallel: str | None = None,
     grade: str | None = None,
@@ -147,20 +152,23 @@ def card_fmv(
     db: Session = Depends(get_db),
 ):
     from lib.fmv import compute_fmv
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     return compute_fmv(db, driver, parallel, grade, days)
 
 
 @router.get("/{card_id}")
-def get_card(card_id: int, db: Session = Depends(get_db)):
+def get_card(card_id: int, response: Response, db: Session = Depends(get_db)):
     card = db.query(Card).filter(Card.id == card_id).first()
     if not card:
         from fastapi import HTTPException
         raise HTTPException(404, "Card not found")
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     return card_to_dict(card)
 
 
 @router.get("/{card_id}/price-history")
-def price_history(card_id: int, db: Session = Depends(get_db)):
+def price_history(card_id: int, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
     from database import PriceHistory
     # Note: ebay_item_id column added via startup migration in main.py;
     # the per-request ALTER TABLE that used to live here was wasteful

@@ -6,6 +6,14 @@
          ~100-300ms on first card image load (TLS handshake + DNS). -->
     <link rel="preconnect" href="https://i.ebayimg.com" crossorigin>
     <link rel="dns-prefetch" href="https://i.ebayimg.com">
+    <!-- Inter was loaded via a CSS @import in index.css, which blocks the
+         browser from discovering the font request until the whole stylesheet
+         is fetched+parsed. A <link> here lets the browser start the font
+         fetch in parallel with everything else. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+    <link rel="modulepreload" href="data:text/jsx;base64,aW1wb3J0IFJlYWN0IGZyb20gJ3JlYWN0Jw0KaW1wb3J0IFJlYWN0RE9NIGZyb20gJ3JlYWN0LWRvbS9jbGllbnQnDQppbXBvcnQgQXBwIGZyb20gJy4vQXBwJw0KaW1wb3J0ICcuL2luZGV4LmNzcycNCmltcG9ydCB7IHJlZ2lzdGVyU1cgfSBmcm9tICcuL2xpYi9wdXNoJw0KDQovLyBMYXp5LWxvYWQgU2VudHJ5IFNESyBPTkxZIHdoZW4gYSBEU04gaXMgcHJlc2VudC4gV2FzIGVhZ2VybHkgaW1wb3J0ZWQNCi8vICh+ODBLQiBnemlwcGVkIGluY2x1ZGluZyBSZXBsYXkgaW50ZWdyYXRpb24pIG9uIGV2ZXJ5IHBhZ2UgbG9hZCBldmVuDQovLyB3aGVuIERTTiB3YXMgdW5zZXQuIE5vdzogemVybyBjb3N0IG9uIHRoZSBjcml0aWNhbCBwYXRoIHVudGlsIGVycm9yDQovLyBtb25pdG9yaW5nIGlzIGFjdHVhbGx5IGNvbmZpZ3VyZWQuDQpjb25zdCBTRU5UUllfRFNOID0gaW1wb3J0Lm1ldGEuZW52LlZJVEVfU0VOVFJZX0RTTg0KY29uc3QgRU5WSVJPTk1FTlQgPSBpbXBvcnQubWV0YS5lbnYuTU9ERSB8fCAnZGV2ZWxvcG1lbnQnDQoNCmlmIChTRU5UUllfRFNOKSB7DQogIGltcG9ydCgnQHNlbnRyeS9yZWFjdCcpLnRoZW4oU2VudHJ5ID0+IHsNCiAgICBTZW50cnkuaW5pdCh7DQogICAgICBkc246IFNFTlRSWV9EU04sDQogICAgICBlbnZpcm9ubWVudDogRU5WSVJPTk1FTlQsDQogICAgICByZWxlYXNlOiBpbXBvcnQubWV0YS5lbnYuVklURV9BUFBfVkVSU0lPTiB8fCAndW5rbm93bicsDQogICAgICBpbnRlZ3JhdGlvbnM6IFsNCiAgICAgICAgbmV3IFNlbnRyeS5SZXBsYXkoeyBtYXNrQWxsVGV4dDogZmFsc2UsIGJsb2NrQWxsTWVkaWE6IGZhbHNlIH0pLA0KICAgICAgXSwNCiAgICAgIHRyYWNlc1NhbXBsZVJhdGU6IEVOVklST05NRU5UID09PSAncHJvZHVjdGlvbicgPyAwLjEgOiAxLjAsDQogICAgICByZXBsYXlzU2Vzc2lvblNhbXBsZVJhdGU6IEVOVklST05NRU5UID09PSAncHJvZHVjdGlvbicgPyAwLjEgOiAxLjAsDQogICAgICByZXBsYXlzT25FcnJvclNhbXBsZVJhdGU6IDEuMCwNCiAgICB9KQ0KICB9KS5jYXRjaCgoKSA9PiB7fSkNCn0NCg0KUmVhY3RET00uY3JlYXRlUm9vdChkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgncm9vdCcpKS5yZW5kZXIoDQogIDxSZWFjdC5TdHJpY3RNb2RlPg0KICAgIDxBcHAgLz4NCiAgPC9SZWFjdC5TdHJpY3RNb2RlPg0KKQ0KDQovLyBSZWdpc3RlciBzZXJ2aWNlIHdvcmtlciAoZm9yIHB1c2ggbm90aWZpY2F0aW9ucykNCmlmICgnc2VydmljZVdvcmtlcicgaW4gbmF2aWdhdG9yKSB7DQogIHdpbmRvdy5hZGRFdmVudExpc3RlbmVyKCdsb2FkJywgKCkgPT4geyByZWdpc3RlclNXKCkgfSkNCn0NCg==">
     <!-- Logo is now an inline SVG component (src/components/Logo.jsx) — no
          raster preload needed. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
@@ -64,9 +72,9 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
     <link rel="alternate" type="application/rss+xml" title="F1 Card Vault Strong Buys" href="/feed.xml" />
-    <script type="module" crossorigin src="/assets/index-CmjLdGKv.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/vendor-xtH6rtND.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BSsdUUlQ.css">
+    <script type="module" crossorigin src="/assets/index-CvxR3mZ0.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-C_VqF1vx.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-bXfj3UAe.css">
   </head>
   <body>
     <!-- Apply theme before paint to avoid flash-of-wrong-theme.

@@ -213,6 +213,12 @@ class SoldCard(Base):
 
     __table_args__ = (
         Index("ix_sold_cards_driver_parallel_date", "driver_name", "parallel", "sale_date"),
+        # Covers /api/sales/median's exact (driver, parallel, grade) + date-range
+        # lookup and rookie-premium/momentum's is_duplicate+date scans — those
+        # queries were falling back to the 3-col index above and rescanning on
+        # grade + is_duplicate in Python. (2026-08-11 perf audit)
+        Index("ix_sold_cards_driver_parallel_grade_date", "driver_name", "parallel", "grade", "sale_date"),
+        Index("ix_sold_cards_dup_date", "is_duplicate", "sale_date"),
     )
 
 
@@ -513,7 +519,7 @@ def get_db():
 # string; on boot, one cheap SELECT decides whether the whole migration body
 # can be skipped. BUMP SCHEMA_REV whenever you add/change any DDL below —
 # the next boot then runs the full path exactly once and re-stamps.
-SCHEMA_REV = "2026-08-11-push-sub-user-id"
+SCHEMA_REV = "2026-08-11-push-sub-user-id-cards-parallel-grade-idx"
 _schema_verified = False  # per-process memo: repeat create_tables() calls are free
 
 
@@ -691,6 +697,39 @@ def create_tables():
     except Exception as e:
         import logging
         logging.getLogger("jarvis.db").warning(f"sold_cards driver_name index: {e}")
+    # Index: cards.parallel/grade had no index while every sibling model
+    # (SoldCard, PsaPop, CompMedian...) indexes the same columns. list_cards
+    # and drivers_summary filter on both every hit — full table scan.
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_cards_parallel_grade "
+                "ON cards (parallel, grade)"
+            ))
+            conn.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"cards parallel/grade index: {e}")
+    # Index: same reasoning as ix_sold_cards_driver_name above — the composite
+    # indexes declared on the SoldCard model (driver+parallel+grade+date,
+    # is_duplicate+date) only auto-create via create_all on a FRESH table.
+    # Existing Postgres deployments need an explicit idempotent CREATE INDEX.
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_sold_cards_driver_parallel_grade_date "
+                "ON sold_cards (driver_name, parallel, grade, sale_date)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_sold_cards_dup_date "
+                "ON sold_cards (is_duplicate, sale_date)"
+            ))
+            conn.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger("jarvis.db").warning(f"sold_cards composite index: {e}")
     # Mark historic / Legends-set drivers so the UI can section them apart
     # from the current grid. Eddie's directive: legends are usually less
     # liquid in the raw market and shouldn't lead the drivers list.

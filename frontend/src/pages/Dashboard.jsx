@@ -157,11 +157,8 @@ export default function Dashboard() {
   // alertsData state removed — was set by /api/alerts fetch but never read.
   const [recent24hCount, setRecent24hCount] = useState(null)
 
-  const [nowTick, setNowTick] = useState(Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNowTick(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
+  // Removed dead nowTick state/interval — set but never read, forced a full
+  // Dashboard re-render (cascading to every child) once a second, forever.
 
   const [lastSync, setLastSync] = useState(null)
   const [refreshing, setRefreshing] = useState(false)

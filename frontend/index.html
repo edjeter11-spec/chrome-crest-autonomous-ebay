@@ -6,6 +6,14 @@
          ~100-300ms on first card image load (TLS handshake + DNS). -->
     <link rel="preconnect" href="https://i.ebayimg.com" crossorigin>
     <link rel="dns-prefetch" href="https://i.ebayimg.com">
+    <!-- Inter was loaded via a CSS @import in index.css, which blocks the
+         browser from discovering the font request until the whole stylesheet
+         is fetched+parsed. A <link> here lets the browser start the font
+         fetch in parallel with everything else. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap">
+    <link rel="modulepreload" href="/src/main.jsx">
     <!-- Logo is now an inline SVG component (src/components/Logo.jsx) — no
          raster preload needed. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />

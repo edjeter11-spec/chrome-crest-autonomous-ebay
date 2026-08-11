@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef, memo } from 'react'
 import {
   ExternalLink, Zap, Clock, Tag, BookmarkPlus, BookmarkCheck,
   ChevronDown, ChevronUp, TrendingUp, Shield, User, Gavel, MessageSquare, Share2,
@@ -27,12 +27,12 @@ const API = import.meta.env.VITE_API_URL || ''
 
 // Retina-sharp grid tiles: feed URLs arrive as s-l140/s-l225 thumbnails and
 // were stretched into the full-width h-44 tile (needs ~700+ device px on a
-// 2-3x phone) — the top image-quality bug on the site.
+// 2-3x phone) â€” the top image-quality bug on the site.
 const IMG_DPR = typeof window !== 'undefined' ? Math.min(2, window.devicePixelRatio || 1) : 1
 
 const proxyImg = (url) => {
   if (!url) return ''
-  // eBay CDN is CORS-friendly — skip the proxy for 1 less network hop
+  // eBay CDN is CORS-friendly â€” skip the proxy for 1 less network hop
   if (url.includes('i.ebayimg.com')) return upscaleEbayImage(url, Math.round(400 * IMG_DPR))
   return `${API}/api/proxy/image?url=${encodeURIComponent(url)}`
 }
@@ -47,7 +47,7 @@ function ShareMenu({ title, url, children, onShare }) {
         onShare?.('copied')
       } catch {}
     } else if (method === 'twitter') {
-      const text = `🏎️ ${title}`
+      const text = `ðŸŽï¸ ${title}`
       const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`
       window.open(intent, '_blank', 'noopener')
       onShare?.('twitter')
@@ -180,7 +180,7 @@ function BidIntentModal({ auction, onClose, onSaved }) {
         <div className="flex items-start justify-between mb-3">
           <div>
             <h3 className="text-white font-black text-lg">Plan Your Bid</h3>
-            <p className="text-xs text-gray-500 mt-0.5">{auction.card?.driver_name} · {auction.card?.parallel || ''}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{auction.card?.driver_name} Â· {auction.card?.parallel || ''}</p>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={18} /></button>
         </div>
@@ -196,7 +196,7 @@ function BidIntentModal({ auction, onClose, onSaved }) {
               autoFocus
             />
             <p className="text-[10px] text-gray-500 mt-1">
-              Current: ${auction.current_price?.toFixed(2) || '—'}
+              Current: ${auction.current_price?.toFixed(2) || 'â€”'}
             </p>
           </div>
           <div>
@@ -242,7 +242,7 @@ function ScarcityBadge({ tier, count }) {
   return (
     <span
       className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${style.color} tabular-nums`}
-      title={`Rarity ${tier}${count ? ` · /${count}` : ''}`}
+      title={`Rarity ${tier}${count ? ` Â· /${count}` : ''}`}
     >
       {style.label}
     </span>
@@ -269,7 +269,7 @@ function ImageCarousel({ images, title, driverName, teamColor, priority = false 
 
   // Tab-return self-heal: browsers abort/park image loads while the tab is
   // hidden, so switching away and back could leave tiles stuck on the dark
-  // bg-gray-900 backing (aborted load that fired onError → failed forever,
+  // bg-gray-900 backing (aborted load that fired onError â†’ failed forever,
   // or an incomplete load that never resumes). On return, forget failures
   // accrued while hidden and kick any stuck load by re-assigning src.
   useEffect(() => {
@@ -297,45 +297,51 @@ function ImageCarousel({ images, title, driverName, teamColor, priority = false 
 
   // Clamp idx to displayable range
   const safeIdx = Math.min(idx, displayable.length - 1)
+  const currentUrl = displayable[safeIdx]
+  const currentOrigIdx = valid.indexOf(currentUrl)
+  // Retry URL derives from state (retried set), not an imperative e.target.src
+  // mutation â€” React owns `src` via this prop, so writing to the DOM directly
+  // raced React's next render: if a re-render landed between the mutation and
+  // the retried-state update, React reasserted the ORIGINAL (already-failed)
+  // src, re-triggering onError in a loop instead of showing the retry.
+  const renderUrl = currentOrigIdx !== -1 && retried.has(currentOrigIdx)
+    ? `${currentUrl}${currentUrl.includes('?') ? '&' : '?'}1`
+    : currentUrl
 
   return (
     <div className="relative w-full h-full group bg-gray-900">
       <img
         ref={imgRef}
-        src={displayable[safeIdx]}
+        src={renderUrl}
         alt={title}
         loading={priority ? 'eager' : 'lazy'}
         fetchPriority={priority ? 'high' : 'auto'}
         className="w-full h-full object-cover"
-        onError={e => {
-          const failedUrl = e.target.src
-          const origIdx = valid.indexOf(failedUrl)
-          if (origIdx === -1) return
-          // Retry once with a cache-busting param swap before giving up
-          if (!retried.has(origIdx)) {
-            setRetried(prev => new Set([...prev, origIdx]))
-            const sep = failedUrl.includes('?') ? '&' : '?'
-            e.target.src = `${failedUrl}${sep}1`
+        onError={() => {
+          if (currentOrigIdx === -1) return
+          // Retry once (cache-busting param) before giving up on this image.
+          if (!retried.has(currentOrigIdx)) {
+            setRetried(prev => new Set([...prev, currentOrigIdx]))
             return
           }
-          setFailed(prev => new Set([...prev, origIdx]))
+          setFailed(prev => new Set([...prev, currentOrigIdx]))
         }}
       />
       {displayable.length > 1 && (
         <>
-          {/* Arrows: always visible on touch (hover never fires on phones —
+          {/* Arrows: always visible on touch (hover never fires on phones â€”
               multi-image carousels looked single-image); hover-reveal on md+.
-              w-9 + hit-slop keeps the target ≥40px. */}
+              w-9 + hit-slop keeps the target â‰¥40px. */}
           <button
             onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + displayable.length) % displayable.length) }}
             aria-label="Previous image"
             className="absolute left-1 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm rounded-full w-9 h-9 flex items-center justify-center text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-lg leading-none shadow-lg"
-          >‹</button>
+          >â€¹</button>
           <button
             onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % displayable.length) }}
             aria-label="Next image"
             className="absolute right-1 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm rounded-full w-9 h-9 flex items-center justify-center text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-lg leading-none shadow-lg"
-          >›</button>
+          >â€º</button>
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex">
             {displayable.map((_, i) => (
               <button
@@ -365,14 +371,14 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
   const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
   const driverName = auction.card?.driver_name || auction.driver_name
 
-  // Build "vs typical price" pill + verdict badge — plain-English so non-technical
+  // Build "vs typical price" pill + verdict badge â€” plain-English so non-technical
   // visitors immediately get whether this is a deal.
   let medianPill = null
   let verdict = null
   if (comp) {
     if (comp.low_confidence || (comp.n ?? 0) < 3) {
       medianPill = (
-        <span className="text-[10px] text-gray-500 font-medium" title={`Only ${comp.n} recent sales — not enough to compare`}>
+        <span className="text-[10px] text-gray-500 font-medium" title={`Only ${comp.n} recent sales â€” not enough to compare`}>
           Not enough sales data yet
         </span>
       )
@@ -407,7 +413,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
         <div className="min-w-0">
           <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
             <span className="text-xl font-black text-white tracking-tight">
-              ${auction.current_price?.toFixed(2) ?? '—'}
+              ${auction.current_price?.toFixed(2) ?? 'â€”'}
             </span>
             {showManualRefresh && (
               <span className="relative inline-flex items-center">
@@ -441,7 +447,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
           )}
           {comp?.median_total && (
             <div className="text-[10px] text-cyan-400 font-semibold mt-1" title={`Median of last ${comp.n} sales`}>
-              Usually sells for ~${comp.median_total.toFixed(0)} · {comp.n || 0} recent sales
+              Usually sells for ~${comp.median_total.toFixed(0)} Â· {comp.n || 0} recent sales
             </div>
           )}
           {hasAuction && (
@@ -486,7 +492,7 @@ function PricingOptions({ auction, comp, showManualRefresh, onManualRefresh, man
             className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 bg-green-700 hover:bg-green-600 active:bg-green-800 text-white text-xs font-bold rounded-lg transition-colors"
           >
             <Tag size={10} />
-            Buy Now · ${auction.buy_now_price?.toFixed(2)}
+            Buy Now Â· ${auction.buy_now_price?.toFixed(2)}
           </a>
         )}
         {hasBestOffer && (
@@ -559,7 +565,7 @@ function BidHistoryPanel({ auctionId, ebayListingId, ebayUrl }) {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-gray-600 italic">No bids yet — first mover advantage</p>
+        <p className="text-xs text-gray-600 italic">No bids yet â€” first mover advantage</p>
       )}
       {itemBidHistoryUrl && (
         <a href={ebayAffiliateUrl(itemBidHistoryUrl)} target="_blank" rel="sponsored noopener"
@@ -611,11 +617,11 @@ function DetailsPanel({ auctionId, onImages }) {
         </div>
       )}
       <div className="flex gap-3 text-xs text-gray-500 flex-wrap">
-        {details?.returns_accepted && <span className="text-green-500 font-medium">✓ Returns</span>}
+        {details?.returns_accepted && <span className="text-green-500 font-medium">âœ“ Returns</span>}
         {details?.item_location && <span>{details.item_location}</span>}
         {details?.quantity_sold > 0 && <span className="text-orange-400">{details.quantity_sold} sold</span>}
         {!details?.condition_description && !entries.length && (
-          <span className="text-gray-700 italic">Syncing details from eBay…</span>
+          <span className="text-gray-700 italic">Syncing details from eBayâ€¦</span>
         )}
       </div>
     </div>
@@ -671,7 +677,7 @@ function SellerPanel({ auctionId }) {
         </div>
       </div>
       <div className="flex gap-4 text-xs text-gray-500">
-        <span><span className="text-white font-bold">{seller.feedback_score?.toLocaleString() ?? '—'}</span> feedback</span>
+        <span><span className="text-white font-bold">{seller.feedback_score?.toLocaleString() ?? 'â€”'}</span> feedback</span>
         {seller.auctions_from_seller > 1 && (
           <span><span className="text-white font-bold">{seller.auctions_from_seller}</span> listings</span>
         )}
@@ -713,7 +719,7 @@ function SellerPanel({ auctionId }) {
 export { ShareMenu }
 
 // Module-level server/client clock offset. Populated once by the first
-// AuctionCard that mounts — all subsequent cards reuse the cached value so
+// AuctionCard that mounts â€” all subsequent cards reuse the cached value so
 // we do a single /api/time round trip per page load.
 let _serverOffsetMs = 0
 let _offsetFetched = false
@@ -746,8 +752,8 @@ function computeSecsLeft(auction) {
   return auction.time_left || 0
 }
 
-export default function AuctionCard({ auction, onWatchlistChange, onClick, onExpiry, priority = false, hideCheap = false }) {
-  // Default click handler — keeps legacy "card click → eBay" behavior for any
+function AuctionCardImpl({ auction, onWatchlistChange, onClick, onExpiry, priority = false, hideCheap = false }) {
+  // Default click handler â€” keeps legacy "card click â†’ eBay" behavior for any
   // caller that hasn't migrated to the in-app detail modal yet.
   const handleCardClick = onClick || (() => {
     if (auction?.ebay_url) {
@@ -758,7 +764,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   const { user } = useAuth() || { user: null }
   const [watching, setWatching] = useState(() => resolveWatchingState({ user, auction }))
   const [watchLoading, setWatchLoading] = useState(false)
-  // shareToast state removed — uses global toast system now (lib/toast).
+  // shareToast state removed â€” uses global toast system now (lib/toast).
   const [expandedPanel, setExpandedPanel] = useState(null)
   const [comp, setComp] = useState(null)
   const [bidIntentOpen, setBidIntentOpen] = useState(false)
@@ -782,7 +788,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auction.id, auction.end_time])
 
-  // Manual refresh — user-triggered live price pull for ending-soon auctions.
+  // Manual refresh â€” user-triggered live price pull for ending-soon auctions.
   const manualRefresh = async () => {
     if (manualRefreshing) return
     setManualRefreshing(true)
@@ -797,7 +803,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     setManualRefreshing(false)
   }
 
-  // Fetch latest bid intent for this auction (passive — non-blocking)
+  // Fetch latest bid intent for this auction (passive â€” non-blocking)
   useEffect(() => {
     if (!auction.id) return
     fetch(`${API}/api/auctions/${auction.id}/bid-intents`)
@@ -832,7 +838,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
   }, [isEnded])
 
   // Live price auto-refresh: when auction ends in < 10 min, fetch latest bid
-  // every 30s. Was < 1h — with the default ending-soonest sort, dozens of
+  // every 30s. Was < 1h â€” with the default ending-soonest sort, dozens of
   // cards qualified at once and fired N parallel fetches every 30s on
   // cellular, competing with image loads. The truly hot window is the
   // final minutes; the page-level refreshEndingSoon merge covers the rest.
@@ -863,7 +869,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
 
   // Pull median comp for this driver+parallel (+grade if present in title).
   // Server-side prefetch: when the parent already supplied verdict_comp on the
-  // auction row (Feature 2 — /api/auctions/with-verdicts), skip the per-card
+  // auction row (Feature 2 â€” /api/auctions/with-verdicts), skip the per-card
   // network round-trip entirely.
   useEffect(() => {
     if (auction.verdict_comp) { setComp(auction.verdict_comp); return }
@@ -881,7 +887,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
       .catch(() => {})
   }, [auction.id, auction.card?.driver_name, auction.card?.parallel, auction.title, auction.verdict_comp])
 
-  // Priority: extra_images → listing image_url → card catalog image
+  // Priority: extra_images â†’ listing image_url â†’ card catalog image
   const [images, setImages] = useState(() => {
     if (auction.extra_images?.length) return auction.extra_images
     if (auction.image_url) return [auction.image_url]
@@ -889,7 +895,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     return []
   })
   // Sync time + real-time expiry detection. CRITICAL: re-derive from end_time
-  // every tick (don't decrement state) — decrementing accumulates drift, and
+  // every tick (don't decrement state) â€” decrementing accumulates drift, and
   // if the initial value was stale (e.g. from a.time_left fetched minutes ago)
   // we'd never correct it. This is the "says 15 min but actually 50" fix.
   useEffect(() => {
@@ -924,11 +930,11 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
       setWatching(nextWatching)
       onWatchlistChange?.(auction.id, nextWatching)
       toast[nextWatching ? 'success' : 'info'](
-        nextWatching ? 'Saved locally — sign in to sync across devices' : 'Removed from watchlist',
+        nextWatching ? 'Saved locally â€” sign in to sync across devices' : 'Removed from watchlist',
       )
       return
     }
-    // Optimistic — flip immediately, reconcile after API.
+    // Optimistic â€” flip immediately, reconcile after API.
     const prevWatching = watching
     const nextOptimistic = !prevWatching
     setWatching(nextOptimistic)
@@ -945,7 +951,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     } catch (err) {
       // Roll back the optimistic flip on failure.
       setWatching(prevWatching)
-      toast.error('Watchlist save failed — try again')
+      toast.error('Watchlist save failed â€” try again')
     }
     setWatchLoading(false)
   }
@@ -958,7 +964,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     const url = `${window.location.origin}/auctions?id=${auction.id}`
     const shareData = {
       title: auction.title || 'F1 Card Vault',
-      text: `${auction.card?.driver_name || 'F1 card'} — $${auction.current_price?.toFixed(2) ?? ''} on F1 Card Vault`,
+      text: `${auction.card?.driver_name || 'F1 card'} â€” $${auction.current_price?.toFixed(2) ?? ''} on F1 Card Vault`,
       url,
     }
     try {
@@ -991,7 +997,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     const totalCost = (auction.current_price || 0) + (auction.shipping_cost || 0)
     const verdictObj = comp?.median_total ? verdictFor(totalCost, comp.median_total, comp.n) : null
     const verdictLabel = verdictObj?.label || null
-    const price = auction.current_price?.toFixed(2) ?? '—'
+    const price = auction.current_price?.toFixed(2) ?? 'â€”'
     const pctBelow = comp?.median_total
       ? Math.max(0, Math.round((1 - totalCost / comp.median_total) * 100))
       : null
@@ -1000,9 +1006,9 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     let text
     if (verdictLabel) {
       const pctPart = pctBelow != null && pctBelow > 0 ? ` (${pctBelow}% off median)` : ''
-      text = `🏎️ ${driver}${par} — ${verdictLabel} at $${price}${pctPart}`
+      text = `ðŸŽï¸ ${driver}${par} â€” ${verdictLabel} at $${price}${pctPart}`
     } else {
-      text = `🏎️ ${driver}${par} at $${price}`
+      text = `ðŸŽï¸ ${driver}${par} at $${price}`
     }
     const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`
     window.open(intent, '_blank', 'noopener')
@@ -1052,7 +1058,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
         <div className="absolute top-2 left-14 flex flex-col gap-1 z-10">
           {isEnded && (
             <div className="flex items-center gap-1 bg-gray-700 text-gray-200 text-[10px] font-black px-2 py-1 rounded-lg shadow-lg">
-              ✓ ENDED
+              âœ“ ENDED
             </div>
           )}
           {isHot && !isEnded && (
@@ -1072,7 +1078,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           {(auction.seller_feedback || 0) >= 1000 && (
             <span
               className="bg-green-900/70 backdrop-blur-sm border border-green-500/50 rounded-lg px-1.5 py-1 text-green-300"
-              title={`Verified seller · ${auction.seller_feedback?.toLocaleString()} feedback`}
+              title={`Verified seller Â· ${auction.seller_feedback?.toLocaleString()} feedback`}
             >
               <BadgeCheck size={10} />
             </span>
@@ -1109,7 +1115,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           )}
         </div>
 
-        {/* Timer — only on auction listings */}
+        {/* Timer â€” only on auction listings */}
         {((auction.buying_options || []).includes('AUCTION') || !(auction.buying_options?.length)) && (
           <>
             <div className={`absolute bottom-3 left-1/2 -translate-x-1/2 text-xs font-mono font-bold
@@ -1117,8 +1123,8 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
               <Clock size={9} />
               <Countdown endTime={auction.end_time} />
             </div>
-            {/* Countdown progress fill — shows how much of the auction window has elapsed.
-                Color ramps urgency: blue (safe) → orange (<1h) → red pulse (<5m). */}
+            {/* Countdown progress fill â€” shows how much of the auction window has elapsed.
+                Color ramps urgency: blue (safe) â†’ orange (<1h) â†’ red pulse (<5m). */}
             {!isEnded && timeLeft > 0 && (() => {
               const totalDurationSec = auction.original_duration_sec || (7 * 86400)
               const elapsedPct = Math.max(0, Math.min(100, 100 - (timeLeft / totalDurationSec * 100)))
@@ -1136,7 +1142,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
       {/* Body */}
       <div className="p-3 flex flex-col flex-1 gap-2">
 
-        {/* Driver + team chip — small color dot next to driver name */}
+        {/* Driver + team chip â€” small color dot next to driver name */}
         {driverName && (
           <div className="flex items-center gap-1.5 -mb-0.5">
             {teamColor && (
@@ -1153,12 +1159,12 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
               {driverName}
             </span>
             {teamName && (
-              <span className="text-[10px] text-gray-500 truncate">· {teamName}</span>
+              <span className="text-[10px] text-gray-500 truncate">Â· {teamName}</span>
             )}
           </div>
         )}
 
-        {/* Title — fall back to em-dash if data is genuinely absent rather than
+        {/* Title â€” fall back to em-dash if data is genuinely absent rather than
             holding a permanent pulse. Server-side rows that ship without a title
             previously left two skeleton bars pulsing forever. */}
         <p className="text-xs text-gray-400 leading-snug line-clamp-2 min-h-[2.25rem] md:min-h-[2.5rem]">
@@ -1185,7 +1191,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
                       : isTomorrow ? `Tomorrow ${time}`
                       : `${end.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`
                   })()
-                : '—'
+                : 'â€”'
               }
             </span>
           </div>
@@ -1238,12 +1244,12 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           </div>
         )}
 
-        {/* Seller row — em-dash fallback so a row with no seller doesn't keep
+        {/* Seller row â€” em-dash fallback so a row with no seller doesn't keep
             an animate-pulse running forever (was the source of stuck per-card
             skeletons on /auctions mobile audit). */}
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-[10px] text-gray-400 font-semibold truncate min-w-0 flex-1 max-w-[160px]">
-            {auction.seller || <span className="text-gray-600">—</span>}
+            {auction.seller || <span className="text-gray-600">â€”</span>}
           </span>
           <span className="shrink-0"><SellerBadge feedback={auction.seller_feedback} /></span>
           {auction.last_updated && (
@@ -1251,7 +1257,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           )}
         </div>
 
-        {/* Pricing options — disable if ended */}
+        {/* Pricing options â€” disable if ended */}
         {!isEnded && (
           <PricingOptions
             auction={{ ...auction, current_price: effectivePrice, bid_count: effectiveBidCount }}
@@ -1268,14 +1274,14 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
           <div className="text-[10px] text-amber-300 bg-amber-900/25 border border-amber-700/40 rounded-lg px-2 py-1 flex items-center gap-1.5">
             <Zap size={9} fill="currentColor" />
             <span className="font-bold">Your max bid: ${savedIntent.max_bid?.toFixed(2)}</span>
-            {savedIntent.notes && <span className="text-amber-400/70 truncate">· {savedIntent.notes}</span>}
+            {savedIntent.notes && <span className="text-amber-400/70 truncate">Â· {savedIntent.notes}</span>}
           </div>
         )}
 
-        {/* Place Bid (snipe executor) — gated behind auth.
+        {/* Place Bid (snipe executor) â€” gated behind auth.
             Signed-in: full-width "Place Snipe Bid" CTA.
             Signed-out: shrunk to a single heart icon (was a loud red banner
-            stacked on every card, per Eddie's audit — too pushy). The icon
+            stacked on every card, per Eddie's audit â€” too pushy). The icon
             still routes to /login with a returnTo deep-link, and the tooltip
             carries the intent for users who hover/long-press. */}
         {auction.snipe_eligible && (
@@ -1357,7 +1363,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
         {/* Expandable panel toggles */}
         <div className="flex gap-1 border-t border-gray-800/60 pt-2 mt-auto">
           {[
-            { key: 'bids', icon: TrendingUp, label: `${auction.bid_count ?? '—'} Bids` },
+            { key: 'bids', icon: TrendingUp, label: `${auction.bid_count ?? 'â€”'} Bids` },
             { key: 'seller', icon: Shield, label: 'Seller' },
             { key: 'details', icon: ExternalLink, label: 'Details' },
           ].map(({ key, icon: Icon, label }) => (
@@ -1394,3 +1400,9 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     </div>
   )
 }
+
+// Grids render dozens of these; without memo every card re-rendered whenever
+// its parent did (list refetch, unrelated sibling state, etc.) even though
+// its own `auction` prop was unchanged.
+const AuctionCard = memo(AuctionCardImpl)
+export default AuctionCard

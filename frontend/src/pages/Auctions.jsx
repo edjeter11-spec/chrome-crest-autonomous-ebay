@@ -257,6 +257,17 @@ export default function Auctions() {
     const id = setInterval(() => setTick(t => t + 1), 15_000)
     return () => clearInterval(id)
   }, [])
+  // Debounce the value that drives filtering (not the input binding) — typing
+  // was re-running .filter()/.sort() over the full auction list (up to 500
+  // rows) on every keystroke, each triggering a re-render of every visible
+  // AuctionCard. The input itself stays bound to `search` so keystrokes never
+  // feel delayed; only the expensive recompute waits 250ms after typing stops.
+  const [debouncedSearch, setDebouncedSearch] = useState(search)
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 250)
+    return () => clearTimeout(id)
+  }, [search])
+
   const nowMs = Date.now()
   const computeSecsLeft = (a) => {
     if (!a?.end_time) return Number(a?.time_left) || 0
@@ -296,8 +307,8 @@ export default function Auctions() {
         const m = a.verdict_comp?.median_total
         if (m != null && m < 20) return false
       }
-      if (search) {
-        const q = search.toLowerCase()
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase()
         return a.title?.toLowerCase().includes(q) || a.card?.driver_name?.toLowerCase().includes(q)
       }
       return true
@@ -346,7 +357,7 @@ export default function Auctions() {
     tag.textContent = JSON.stringify(payload)
     document.head.appendChild(tag)
     return () => { const el = document.getElementById('auctions-jsonld'); if (el) el.remove() }
-  }, [auctions, search, sortBy, filterParallel, printRun, listingType, filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter, filterStrongBuy, autoVariant, filterDynasty])
+  }, [auctions, debouncedSearch, sortBy, filterParallel, printRun, listingType, filterSnipe, filterWatchlist, filterRookie, formulaType, teamFilter, filterStrongBuy, autoVariant, filterDynasty])
 
   const snipeCount = filtered.filter(a => a.snipe_eligible).length
   const strongBuyCount = auctions.filter(a => a.verdict === 'STRONG_BUY' || a.verdict === 'GOOD_BUY').length

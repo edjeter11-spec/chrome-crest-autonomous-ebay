@@ -1257,7 +1257,10 @@ async def proxy_image(url: str = QueryParam(...)):
             return Response(
                 content=r.content,
                 media_type=content_type,
-                headers={"Cache-Control": "public, max-age=86400"},
+                # Proxied images are content-addressed by the source `url`
+                # query param — effectively immutable per URL. Let the edge
+                # (s-maxage) hold it far longer than the browser cache.
+                headers={"Cache-Control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000"},
             )
     except Exception:
         return Response(status_code=502)
@@ -1441,11 +1444,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 @app.get("/api/dashboard")
-def dashboard_bundle(db: Session = Depends(get_db)):
+def dashboard_bundle(response: Response, db: Session = Depends(get_db)):
     """Return everything the dashboard needs in one DB connection."""
     from routers.auctions import auction_to_dict
     from sqlalchemy import func
     from database import Alert as AlertModel
+
+    # Set here, not just in vercel.json's route-header block — that block
+    # was NOT reaching the client for this route (verified live: only bare
+    # "public" came through, no s-maxage), so the busiest bundle endpoint
+    # was hitting the lambda on every request instead of Vercel's edge cache.
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=1800"
 
     # Top 100 active auctions sorted by snipe score. end_time guard: legacy
     # BIN rows carry fabricated +365d end_times and stale rows can sit

@@ -288,11 +288,15 @@ def _match_and_notify(db: Session, rules: list, auctions: list, use_fresh_lookup
 
             median_val = None
             try:
-                from scraper import median_comp_price, _extract_grade_from_title
+                from scraper import _extract_grade_from_title
+                from routers.auctions import _cached_median
                 card = auction.card
                 grade = (rule.get("grade") or "") or _extract_grade_from_title(auction.title or "")
                 if card:
-                    median_val, _ = median_comp_price(
+                    # TTL-cached + comp_medians-backed lookup (same helper
+                    # with-verdicts uses) instead of a raw sold_cards scan
+                    # per rule x auction match — that was an uncapped N+1.
+                    median_val, _ = _cached_median(
                         db,
                         card.driver_name,
                         effective_parallel(auction.title, card.parallel),

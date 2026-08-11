@@ -377,10 +377,12 @@ def median_for(
     else:
         q = q.filter(SoldCard.grade.is_(None))
 
+    # Pull only the total (sale_price+shipping) column instead of full rows —
+    # was pulling every SoldCard column just to add two floats per row.
+    total_expr = func.coalesce(SoldCard.sale_price, 0) + func.coalesce(SoldCard.shipping_cost, 0)
     totals = [
-        (s.sale_price or 0) + (s.shipping_cost or 0) for s in q.all()
+        float(t) for (t,) in q.with_entities(total_expr).all() if t and t > 0
     ]
-    totals = [t for t in totals if t > 0]
     med = _median(totals)
     avg = (sum(totals) / len(totals)) if totals else None
     return {
@@ -405,25 +407,25 @@ def rookie_premium(days: int = 90, db: Session = Depends(get_db)):
     """
     from lib.parallels import ROOKIES_2025
     cutoff = datetime.utcnow() - timedelta(days=days)
-    rows = db.query(SoldCard).filter(
+    total_expr = func.coalesce(SoldCard.sale_price, 0) + func.coalesce(SoldCard.shipping_cost, 0)
+    base = db.query(SoldCard.driver_name, total_expr.label("total")).filter(
         SoldCard.sale_date >= cutoff,
         SoldCard.sale_price > 0,
         SoldCard.is_duplicate == False,  # noqa: E712
         SoldCard.driver_name.isnot(None),
-    ).all()
+    )
+    # Split into two queries via WHERE instead of pulling every row and
+    # branching in Python — rookie set is small, IN() is index-friendly.
+    rookie_rows = base.filter(SoldCard.driver_name.in_(ROOKIES_2025)).all()
+    nonrookie_rows = base.filter(~SoldCard.driver_name.in_(ROOKIES_2025)).all()
 
     rookie_vals: list[float] = []
     rookie_counts: dict[str, int] = {}
-    nonrookie_vals: list[float] = []
-    for r in rows:
-        total = float(r.sale_price or 0) + float(r.shipping_cost or 0)
-        if total <= 0:
-            continue
-        if r.driver_name in ROOKIES_2025:
-            rookie_vals.append(total)
-            rookie_counts[r.driver_name] = rookie_counts.get(r.driver_name, 0) + 1
-        else:
-            nonrookie_vals.append(total)
+    for dn, total in rookie_rows:
+        if total and total > 0:
+            rookie_vals.append(float(total))
+            rookie_counts[dn] = rookie_counts.get(dn, 0) + 1
+    nonrookie_vals = [float(total) for _, total in nonrookie_rows if total and total > 0]
 
     rookie_median = _median(rookie_vals)
     non_median = _median(nonrookie_vals)
@@ -461,7 +463,8 @@ def driver_momentum(
     recent_cut = now - timedelta(days=7)
     prior_cut = now - timedelta(days=21)
 
-    q = db.query(SoldCard).filter(
+    total_expr = func.coalesce(SoldCard.sale_price, 0) + func.coalesce(SoldCard.shipping_cost, 0)
+    q = db.query(SoldCard.driver_name, total_expr.label("total"), SoldCard.sale_date).filter(
         SoldCard.sale_date >= prior_cut,
         SoldCard.sale_price > 0,
         SoldCard.is_duplicate == False,  # noqa: E712
@@ -472,16 +475,14 @@ def driver_momentum(
     rows = q.all()
 
     buckets: dict[str, dict] = {}
-    for r in rows:
-        total = float(r.sale_price or 0) + float(r.shipping_cost or 0)
-        if total <= 0:
+    for dn, total, sale_date in rows:
+        if not total or total <= 0:
             continue
-        d = r.driver_name
-        b = buckets.setdefault(d, {"recent": [], "prior": []})
-        if r.sale_date >= recent_cut:
-            b["recent"].append(total)
+        b = buckets.setdefault(dn, {"recent": [], "prior": []})
+        if sale_date >= recent_cut:
+            b["recent"].append(float(total))
         else:
-            b["prior"].append(total)
+            b["prior"].append(float(total))
 
     out = []
     for d, b in buckets.items():

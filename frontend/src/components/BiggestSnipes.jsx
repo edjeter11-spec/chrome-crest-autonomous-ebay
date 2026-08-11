@@ -149,6 +149,7 @@ function SnipeImage({ src, driverName, teamColor }) {
       <img
         src={url}
         alt=""
+        loading="lazy"
         decoding="async"
         className={`w-full h-full object-cover transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
         onLoad={() => setLoaded(true)}
