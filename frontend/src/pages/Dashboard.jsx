@@ -51,7 +51,6 @@ function WelcomeBanner() {
   const display = first ? first.charAt(0).toUpperCase() + first.slice(1) : 'back'
   return (
     <div className="bg-gradient-to-r from-green-900/40 to-emerald-900/30 border border-green-700/40 rounded-2xl px-4 py-3 flex items-center gap-3">
-      <div className="text-2xl">👋</div>
       <div>
         <div className="text-white font-black text-lg">Welcome back, {display}</div>
         <div className="text-[11px] text-green-300/80">Here's what moved since you were last here</div>
@@ -1075,7 +1074,9 @@ function DealOfTheDay({ auctions }) {
   const s = secs % 60
   const countdown = h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`
 
-  const img = deal?.image_url || deal?.primary_image_url
+  // Hero-size the image: raw feed URLs are s-l140/225 thumbnails and this is
+  // the biggest image on the dashboard.
+  const img = upscaleEbayImage(deal?.image_url || deal?.primary_image_url, 800)
   const rawUrl = deal?.ebay_url || deal?.item_web_url || (deal?.ebay_item_id ? `https://www.ebay.com/itm/${deal.ebay_item_id}` : '#')
   const priceRaw = deal?.current_price ?? deal?.buy_it_now_price ?? deal?.sale_price ?? 0
   const price = Number.isFinite(Number(priceRaw)) ? Number(priceRaw) : 0

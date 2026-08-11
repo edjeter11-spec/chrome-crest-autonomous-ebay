@@ -332,7 +332,12 @@ export default function Layout() {
     <div className="flex h-screen overflow-hidden bg-gray-950">
       {/* Desktop sidebar */}
       <aside className={`hidden md:flex ${collapsed ? 'w-14' : 'w-[220px]'} flex-col bg-gray-900/95 border-r border-gray-800/60 transition-all duration-200 shrink-0 backdrop-blur-sm`}>
-        <SidebarContent />
+        {/* Plain function call, NOT <SidebarContent/>: the component type is
+            recreated every Layout render, so JSX usage remounts the entire
+            sidebar DOM on any state change (theme, drawer, WS status) —
+            flicker + lost nav scroll. A call keeps it inline in Layout's own
+            tree with no component boundary to remount. */}
+        {SidebarContent({})}
       </aside>
 
       {/* Mobile drawer overlay */}
@@ -351,7 +356,7 @@ export default function Layout() {
         }`}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <SidebarContent mobile />
+        {SidebarContent({ mobile: true })}
       </aside>
 
       {/* Main */}
@@ -395,7 +400,7 @@ export default function Layout() {
           <Outlet />
           {/* FTC-required affiliate disclosure */}
           <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-gray-800/60 light:border-gray-300">
-            <p className="text-[10px] text-gray-600 leading-relaxed light:text-gray-700">
+            <p className="text-[10px] text-gray-500 leading-relaxed light:text-gray-700">
               <strong className="text-gray-500 light:text-gray-600">Disclosure:</strong> As an eBay Partner, F1 Card Vault may be compensated
               when you make a qualifying purchase after clicking a link on this site. This does not affect the price
               you pay. Median prices and verdicts are computed from public sale data and are not investment advice.

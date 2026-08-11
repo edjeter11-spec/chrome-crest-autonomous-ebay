@@ -59,17 +59,22 @@ function ImageGallery({ images, title, driverName, teamColor }) {
       {displayable.length > 1 && (
         <>
           <button onClick={() => setIdx(i => (i - 1 + displayable.length) % displayable.length)}
-            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm w-8 h-8 rounded-full flex items-center justify-center text-white hover:bg-black/90 transition">
-            <ChevronLeft size={16} />
+            aria-label="Previous image"
+            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-black/90 transition">
+            <ChevronLeft size={18} />
           </button>
           <button onClick={() => setIdx(i => (i + 1) % displayable.length)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm w-8 h-8 rounded-full flex items-center justify-center text-white hover:bg-black/90 transition">
-            <ChevronRight size={16} />
+            aria-label="Next image"
+            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-black/90 transition">
+            <ChevronRight size={18} />
           </button>
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex">
             {displayable.map((_, i) => (
               <button key={i} onClick={() => setIdx(i)}
-                className={`rounded-full transition-all ${i === safe ? 'w-4 h-2 bg-white' : 'w-2 h-2 bg-white/40 hover:bg-white/70'}`} />
+                aria-label={`Image ${i + 1} of ${displayable.length}`}
+                className="p-2 flex items-center justify-center">
+                <span className={`rounded-full transition-all ${i === safe ? 'w-4 h-2 bg-white' : 'w-2 h-2 bg-white/40'}`} />
+              </button>
             ))}
           </div>
           <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
@@ -209,6 +214,15 @@ export default function AuctionModal({ auction, onClose, onWatchlistChange }) {
     window.addEventListener('keydown', fn)
     return () => window.removeEventListener('keydown', fn)
   }, [onClose])
+
+  // Lock body scroll while open — without this, overscrolling the panel
+  // scroll-chains to the page on iOS and the user loses their grid position
+  // on close. (Same pattern as CardDetailModal.)
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
 
   const toggleWatch = async () => {
     const res = await fetch(`${API}/api/auctions/${auction.id}/watchlist`, { method: 'POST' })
@@ -437,7 +451,7 @@ export default function AuctionModal({ auction, onClose, onWatchlistChange }) {
               <div className="text-xs text-gray-500">
                 {auction.seller_feedback?.toLocaleString()} feedback
                 {details?.returns_accepted && <span className="text-green-500 ml-2">✓ Returns</span>}
-                {details?.item_location && <span className="ml-2">📍 {details.item_location}</span>}
+                {details?.item_location && <span className="ml-2">{details.item_location}</span>}
               </div>
             </div>
             {auction.ebay_url && (

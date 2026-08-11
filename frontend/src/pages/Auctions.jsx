@@ -247,10 +247,14 @@ export default function Auctions() {
     const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(str)
     return new Date(hasTz ? str : str + 'Z')
   }
-  // Tick every second so secsLeft-derived UI (counts, sort) stays fresh.
+  // Tick every 15s so secsLeft-derived UI (expiry hiding, ending sort) stays
+  // fresh. Was 1s — that re-rendered the ENTIRE grid (up to 500 cloned rows +
+  // every AuctionCard) at 1Hz, the main scroll jank on phones. Cards run
+  // their own per-second countdowns internally; the page only needs a coarse
+  // tick to drop expired rows and re-sort.
   const [, setTick] = useState(0)
   useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 1000)
+    const id = setInterval(() => setTick(t => t + 1), 15_000)
     return () => clearInterval(id)
   }, [])
   const nowMs = Date.now()
@@ -452,13 +456,13 @@ export default function Auctions() {
 
         {/* Parallel */}
         <select value={filterParallel} onChange={e => setF({ filterParallel: e.target.value })}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
+          className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
           {PARALLELS.map(p => <option key={p} value={p}>{p === 'All' ? 'All Parallels' : p === 'No Base' ? 'No Base Cards' : p}</option>)}
         </select>
 
         {/* Sort */}
         <select value={sortBy} onChange={e => setF({ sortBy: e.target.value })}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
+          className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
           {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
 
@@ -549,19 +553,19 @@ export default function Auctions() {
         <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
           {/* Formula type */}
           <select value={formulaType} onChange={e => setF({ formulaType: e.target.value })}
-            className="input-field px-3 py-2 text-xs cursor-pointer">
+            className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
             {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
           </select>
 
           {/* Team */}
           <select value={teamFilter} onChange={e => setF({ teamFilter: e.target.value })}
-            className="input-field px-3 py-2 text-xs cursor-pointer">
+            className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
             {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
           </select>
 
           {/* Print run */}
           <select value={printRun} onChange={e => setF({ printRun: e.target.value })}
-            className="input-field px-3 py-2 text-xs cursor-pointer">
+            className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
             {PRINT_RUNS.map(p => <option key={p} value={p}>{p === 'Any' ? 'Any Print Run' : p}</option>)}
           </select>
 
@@ -577,9 +581,9 @@ export default function Auctions() {
 
           {/* Secondary toggle pills */}
           {[
-            { label: '⭐ First-Year Cards', active: filterRookie, key: 'filterRookie' },
+            { label: 'First-Year Cards', active: filterRookie, key: 'filterRookie' },
             { label: 'Snipe Only', active: filterSnipe, key: 'filterSnipe' },
-            { label: '🔖 Watchlist', active: filterWatchlist, key: 'filterWatchlist' },
+            { label: 'Watchlist', active: filterWatchlist, key: 'filterWatchlist' },
           ].map(({ label, active, key }) => (
             <button key={label} onClick={() => setF({ [key]: !active })}
               aria-pressed={active}

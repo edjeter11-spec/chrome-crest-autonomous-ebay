@@ -74,6 +74,7 @@ def send_push_to_all(db: Session, title: str, body: str, url: str = "/", tag: st
     claims = {"sub": "mailto:edjeter11@gmail.com"}
     payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
     sent = 0
+    failed = 0
     dead: list = []
     subs = db.query(PushSubscription).all()
     for s in subs:
@@ -87,6 +88,9 @@ def send_push_to_all(db: Session, title: str, body: str, url: str = "/", tag: st
                 vapid_private_key=priv_key,
                 vapid_claims=claims,
                 ttl=300,
+                # One hung push-service connection must not stall the cron
+                # tail (fan-out runs inside the request handler on purpose).
+                timeout=5,
             )
             sent += 1
         except WebPushException as e:
@@ -94,9 +98,13 @@ def send_push_to_all(db: Session, title: str, body: str, url: str = "/", tag: st
             if status in (404, 410):
                 dead.append(s.id)
             else:
+                failed += 1
                 log.warning(f"push send failed: {e}")
         except Exception as e:
+            failed += 1
             log.warning(f"push send error: {e}")
+    if failed:
+        log.warning(f"push fan-out: {sent} sent, {failed} FAILED, {len(dead)} dead-pruned")
 
     # Reap dead subscriptions
     if dead:

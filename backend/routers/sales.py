@@ -322,12 +322,16 @@ def median_for(
 
     `low_confidence: true` when n < 3.
     """
+    from scraper import _FOREIGN_PRODUCTS
     cutoff = datetime.utcnow() - timedelta(days=days)
     q = db.query(SoldCard).filter(
         SoldCard.driver_name == driver,
         SoldCard.sale_date >= cutoff,
         SoldCard.sale_price > 0,
         SoldCard.is_duplicate == False,  # noqa: E712
+        # Non-Chrome products have no business in a Chrome comp pool — a
+        # $100k Eccellenza 1/1 was skewing per-driver medians here.
+        *[~SoldCard.title.ilike(f"%{p}%") for p in _FOREIGN_PRODUCTS],
     )
     if parallel:
         q = q.filter(SoldCard.parallel == parallel)

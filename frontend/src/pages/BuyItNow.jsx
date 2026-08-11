@@ -241,13 +241,13 @@ export default function BuyItNow() {
 
         {/* Parallel */}
         <select value={filterParallel} onChange={e => setFilterParallel(e.target.value)}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
+          className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
           {PARALLELS.map(p => <option key={p} value={p}>{p === 'All' ? 'All Parallels' : p === 'No Base' ? 'No Base Cards' : p}</option>)}
         </select>
 
         {/* Sort */}
         <select value={sortBy} onChange={e => setSortBy(e.target.value)}
-          className="input-field px-3 py-2 text-xs cursor-pointer">
+          className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
           {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
 
@@ -311,19 +311,19 @@ export default function BuyItNow() {
         <div className="bg-gray-900/70 border border-gray-800/60 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
           {/* Formula type */}
           <select value={formulaType} onChange={e => setFormulaType(e.target.value)}
-            className="input-field px-3 py-2 text-xs cursor-pointer">
+            className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
             {FORMULA_TYPES.map(t => <option key={t} value={t}>{t === 'All' ? 'All Series' : t}</option>)}
           </select>
 
           {/* Team */}
           <select value={teamFilter} onChange={e => setTeamFilter(e.target.value)}
-            className="input-field px-3 py-2 text-xs cursor-pointer">
+            className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
             {ALL_TEAMS.map(t => <option key={t} value={t}>{t === 'All' ? 'All Teams' : t}</option>)}
           </select>
 
           {/* Print run */}
           <select value={printRun} onChange={e => setPrintRun(e.target.value)}
-            className="input-field px-3 py-2 text-xs cursor-pointer">
+            className="input-field px-3 py-2 min-h-[40px] sm:min-h-0 text-xs cursor-pointer">
             {PRINT_RUNS.map(p => <option key={p} value={p}>{p === 'Any' ? 'Any Print Run' : p}</option>)}
           </select>
 
@@ -339,9 +339,9 @@ export default function BuyItNow() {
 
           {/* Secondary toggle pills */}
           {[
-            { label: '💬 Best Offer Only', active: filterBestOffer, set: setFilterBestOffer },
-            { label: '⭐ First-Year Cards', active: filterRookie, set: setFilterRookie },
-            { label: '🔖 Watchlist', active: filterWatchlist, set: setFilterWatchlist },
+            { label: 'Best Offer Only', active: filterBestOffer, set: setFilterBestOffer },
+            { label: 'First-Year Cards', active: filterRookie, set: setFilterRookie },
+            { label: 'Watchlist', active: filterWatchlist, set: setFilterWatchlist },
           ].map(({ label, active, set }) => (
             <button key={label} onClick={() => set(!active)}
               aria-pressed={active}

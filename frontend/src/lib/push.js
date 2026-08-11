@@ -54,11 +54,14 @@ export async function subscribePush() {
       applicationServerKey: urlB64ToUint8Array(public_key),
     })
   }
-  await fetch(`${API}/api/push/subscribe`, {
+  const res = await fetch(`${API}/api/push/subscribe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ subscription: sub.toJSON() }),
   })
+  // A backend failure used to leave the toggle showing "on" with ZERO
+  // server-side rows — silent no-notifications-forever. Surface it instead.
+  if (!res.ok) throw new Error(`push subscribe failed (${res.status})`)
   // Wrap — Safari Private Mode throws QuotaExceededError on setItem,
   // which would kill the entire subscribe flow with an unhandled rejection.
   try { localStorage.setItem('cc_push_subscribed', '1') } catch {}

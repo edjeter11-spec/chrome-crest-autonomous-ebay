@@ -19,14 +19,21 @@ import InfoTooltip from './InfoTooltip'
 import Countdown from './Countdown'
 import { JARGON_DEFS } from '../lib/definitions'
 import { dealRating } from '../lib/dealRating'
+import { upscaleEbayImage } from '../lib/imageUrl'
+import CardImagePlaceholder from './CardImagePlaceholder'
 import DriverAvatar from './DriverAvatar'
 
 const API = import.meta.env.VITE_API_URL || ''
 
+// Retina-sharp grid tiles: feed URLs arrive as s-l140/s-l225 thumbnails and
+// were stretched into the full-width h-44 tile (needs ~700+ device px on a
+// 2-3x phone) — the top image-quality bug on the site.
+const IMG_DPR = typeof window !== 'undefined' ? Math.min(2, window.devicePixelRatio || 1) : 1
+
 const proxyImg = (url) => {
   if (!url) return ''
   // eBay CDN is CORS-friendly — skip the proxy for 1 less network hop
-  if (url.includes('i.ebayimg.com')) return url
+  if (url.includes('i.ebayimg.com')) return upscaleEbayImage(url, Math.round(400 * IMG_DPR))
   return `${API}/api/proxy/image?url=${encodeURIComponent(url)}`
 }
 
@@ -250,20 +257,6 @@ function SellerBadge({ feedback }) {
   return null
 }
 
-function CardImageFallback({ teamColor, driverName }) {
-  return (
-    <div
-      className="w-full h-full flex flex-col items-center justify-center"
-      style={{ background: `linear-gradient(145deg, #0d0d0d 0%, ${teamColor || '#1a1a2e'}55 100%)` }}
-    >
-      <div className="text-3xl mb-2 opacity-30 select-none">🏎</div>
-      <div className="text-[10px] text-gray-600 font-semibold tracking-widest uppercase">
-        {driverName?.split(' ').pop() || 'F1'}
-      </div>
-    </div>
-  )
-}
-
 function ImageCarousel({ images, title, driverName, teamColor, priority = false }) {
   const [idx, setIdx] = useState(0)
   const [failed, setFailed] = useState(new Set())
@@ -274,7 +267,7 @@ function ImageCarousel({ images, title, driverName, teamColor, priority = false 
   useEffect(() => { setFailed(new Set()); setRetried(new Set()); setIdx(0) }, [images?.join(',')])
 
   if (!displayable.length) return (
-    <CardImageFallback teamColor={teamColor} driverName={driverName} />
+    <CardImagePlaceholder driverName={driverName} teamColor={teamColor} />
   )
 
   // Clamp idx to displayable range
@@ -304,21 +297,29 @@ function ImageCarousel({ images, title, driverName, teamColor, priority = false 
       />
       {displayable.length > 1 && (
         <>
+          {/* Arrows: always visible on touch (hover never fires on phones —
+              multi-image carousels looked single-image); hover-reveal on md+.
+              w-9 + hit-slop keeps the target ≥40px. */}
           <button
             onClick={e => { e.stopPropagation(); setIdx(i => (i - 1 + displayable.length) % displayable.length) }}
-            className="absolute left-1.5 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm rounded-full w-6 h-6 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity text-base leading-none shadow-lg"
+            aria-label="Previous image"
+            className="absolute left-1 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm rounded-full w-9 h-9 flex items-center justify-center text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-lg leading-none shadow-lg"
           >‹</button>
           <button
             onClick={e => { e.stopPropagation(); setIdx(i => (i + 1) % displayable.length) }}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm rounded-full w-6 h-6 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity text-base leading-none shadow-lg"
+            aria-label="Next image"
+            className="absolute right-1 top-1/2 -translate-y-1/2 bg-black/70 backdrop-blur-sm rounded-full w-9 h-9 flex items-center justify-center text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity text-lg leading-none shadow-lg"
           >›</button>
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex">
             {displayable.map((_, i) => (
               <button
                 key={i}
                 onClick={e => { e.stopPropagation(); setIdx(i) }}
-                className={`rounded-full transition-all duration-200 ${i === safeIdx ? 'w-3.5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/70'}`}
-              />
+                aria-label={`Image ${i + 1} of ${displayable.length}`}
+                className="p-2 flex items-center justify-center"
+              >
+                <span className={`rounded-full transition-all duration-200 ${i === safeIdx ? 'w-3.5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/40'}`} />
+              </button>
             ))}
           </div>
           <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 rounded font-mono">
@@ -585,7 +586,7 @@ function DetailsPanel({ auctionId, onImages }) {
       )}
       <div className="flex gap-3 text-xs text-gray-500 flex-wrap">
         {details?.returns_accepted && <span className="text-green-500 font-medium">✓ Returns</span>}
-        {details?.item_location && <span>📍 {details.item_location}</span>}
+        {details?.item_location && <span>{details.item_location}</span>}
         {details?.quantity_sold > 0 && <span className="text-orange-400">{details.quantity_sold} sold</span>}
         {!details?.condition_description && !entries.length && (
           <span className="text-gray-700 italic">Syncing details from eBay…</span>
@@ -804,11 +805,14 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     }
   }, [isEnded])
 
-  // Live price auto-refresh: when auction ends in < 1h, fetch latest bid every 30s.
-  // Avoids showing stale $0.99 on hot items that have already been bid up.
+  // Live price auto-refresh: when auction ends in < 10 min, fetch latest bid
+  // every 30s. Was < 1h — with the default ending-soonest sort, dozens of
+  // cards qualified at once and fired N parallel fetches every 30s on
+  // cellular, competing with image loads. The truly hot window is the
+  // final minutes; the page-level refreshEndingSoon merge covers the rest.
   useEffect(() => {
     if (isEnded) return
-    if (timeLeft > 3600) return
+    if (timeLeft > 600) return
     let cancelled = false
     const refreshLive = async () => {
       if (cancelled) return
@@ -826,7 +830,7 @@ export default function AuctionCard({ auction, onWatchlistChange, onClick, onExp
     refreshLive()
     const id = setInterval(refreshLive, 30_000)
     return () => { cancelled = true; clearInterval(id) }
-  }, [auction.id, timeLeft > 3600 ? 1 : 0, isEnded])
+  }, [auction.id, timeLeft > 600 ? 1 : 0, isEnded])
 
   const effectivePrice = livePrice != null ? livePrice : auction.current_price
   const effectiveBidCount = liveBidCount != null ? liveBidCount : auction.bid_count

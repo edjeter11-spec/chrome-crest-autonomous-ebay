@@ -499,13 +499,14 @@ def upsert_auction(conn, rows):
             return 0, conn
 
 
-def get_default_card_id(conn) -> int:
-    """Return any card_id to satisfy the FK. We mostly want the listing data;
-    card linkage is best-effort matching on driver_name."""
-    with conn.cursor() as cur:
-        cur.execute("SELECT id FROM cards ORDER BY id LIMIT 1")
-        row = cur.fetchone()
-        return row[0] if row else 1
+def get_default_card_id(conn):
+    """No-match default is now NULL, not "first card row". The old behavior
+    linked every unmatched listing to card_id 1 (= Max Verstappen), which
+    made team/logo/F2-driver listings render as Verstappen cards AND get
+    priced against Verstappen's comp medians (fake STRONG_BUY verdicts).
+    auctions.card_id is nullable and the whole frontend already handles
+    card:null rows (F1 Legends ship without a join)."""
+    return None
 
 
 def _safe_card_lookup(conn, driver: str, parallel: str, default: int) -> int:

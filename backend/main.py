@@ -1447,9 +1447,13 @@ def dashboard_bundle(db: Session = Depends(get_db)):
     from sqlalchemy import func
     from database import Alert as AlertModel
 
-    # Top 100 active auctions sorted by snipe score
-    auctions = db.query(Auction).filter(Auction.status == "active")\
-        .order_by(Auction.snipe_score.desc()).limit(100).all()
+    # Top 100 active auctions sorted by snipe score. end_time guard: legacy
+    # BIN rows carry fabricated +365d end_times and stale rows can sit
+    # status=active after really ending — don't surface either.
+    auctions = db.query(Auction).filter(
+        Auction.status == "active",
+        Auction.end_time > datetime.utcnow(),
+    ).order_by(Auction.snipe_score.desc()).limit(100).all()
 
     # Analytics summary
     total_cards = db.query(func.count(Card.id)).scalar() or 0
@@ -2923,10 +2927,14 @@ async def debug_ebay():
 
 @app.get("/api/health")
 def health():
+    # push_configured: distinguishes "push silently dead" (missing private
+    # key) from "no alerts fired lately" — without it, VAPID misconfig only
+    # showed as a lambda-log warning nobody reads.
     return {
         "status": "ok",
         "service": "F1 Chrome Crest v2",
         "ebay_connected": has_real_credentials(),
+        "push_configured": bool(os.getenv("VAPID_PRIVATE_KEY")),
     }
 
 
@@ -3331,7 +3339,12 @@ def _refresh_comp_medians_impl(db: Session) -> dict:
             "FROM sold_cards "
             "WHERE sale_date >= :cutoff AND sale_price > 0 "
             "AND is_duplicate = FALSE AND driver_name IS NOT NULL "
-            "AND title NOT ILIKE '%dynasty%' "
+            # Full foreign-product exclusion (matches scraper._FOREIGN_PRODUCTS).
+            # Dynasty-only left a $100k Eccellenza 1/1 relic in Antonelli's
+            # 90-day pool, skewing every precomputed stat for that driver.
+            "AND title NOT ILIKE '%dynasty%' AND title NOT ILIKE '%eccellenza%' "
+            "AND title NOT ILIKE '%topps now%' AND title NOT ILIKE '%merlin%' "
+            "AND title NOT ILIKE '%allen & ginter%' "
             "GROUP BY driver_name, parallel, grade HAVING COUNT(*) >= 3"
         )
         driver_only_sql = (
@@ -3342,7 +3355,12 @@ def _refresh_comp_medians_impl(db: Session) -> dict:
             "FROM sold_cards "
             "WHERE sale_date >= :cutoff AND sale_price > 0 "
             "AND is_duplicate = FALSE AND driver_name IS NOT NULL "
-            "AND title NOT ILIKE '%dynasty%' "
+            # Full foreign-product exclusion (matches scraper._FOREIGN_PRODUCTS).
+            # Dynasty-only left a $100k Eccellenza 1/1 relic in Antonelli's
+            # 90-day pool, skewing every precomputed stat for that driver.
+            "AND title NOT ILIKE '%dynasty%' AND title NOT ILIKE '%eccellenza%' "
+            "AND title NOT ILIKE '%topps now%' AND title NOT ILIKE '%merlin%' "
+            "AND title NOT ILIKE '%allen & ginter%' "
             "GROUP BY driver_name HAVING COUNT(*) >= 3"
         )
     else:

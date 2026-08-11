@@ -356,6 +356,24 @@ def list_with_verdicts(
             logging.getLogger("auctions").warning(f"row serialize fail id={a.id}: {_row_err}")
             continue
         driver_name = a.card.driver_name if a.card else None
+        # The joined card is a scraper GUESS (unmatched drivers historically
+        # defaulted to the first card row = Verstappen) — live audit found
+        # 43/500 rows whose joined driver isn't in the title, 15 of them
+        # carrying fake STRONG/GOOD_BUY verdicts priced against the wrong
+        # driver's comps (an Albon Helix at $68 vs Verstappen's $555 median).
+        # Key comps on the TITLE-derived driver; if the title names nobody
+        # and doesn't contain the joined driver's surname, stay silent.
+        try:
+            from ebay_api import extract_driver_from_title as _xdrv
+            _title_driver = _xdrv(a.title or "") or None
+        except Exception:
+            _title_driver = None
+        if _title_driver:
+            driver_name = _title_driver
+        elif driver_name:
+            _surname = driver_name.split(" ")[-1].lower()
+            if _surname not in (a.title or "").lower():
+                driver_name = None
         # Title-derived, NOT a.card.parallel — the linked card row is a
         # driver-level fallback and disagreed with the title on 77% of active
         # auctions, poisoning the comp median. See lib.parallels docstring.
