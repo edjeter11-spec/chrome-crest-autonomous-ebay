@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { upscaleEbayImage } from '../lib/imageUrl'
 import CardImagePlaceholder from './CardImagePlaceholder'
+
+// Request a retina-sharp variant on high-DPR screens (phones are 2-3x).
+// Capped at 2x — beyond that the bytes outweigh the visible gain.
+const DPR = typeof window !== 'undefined' ? Math.min(2, window.devicePixelRatio || 1) : 1
 
 // Card image with three upgrades baked in:
 //   1. Auto-upscales eBay CDN URLs to a higher-res variant (s-l500 by default).
@@ -37,7 +41,8 @@ export default function CardImage({
   // Now we retry twice — with a cache-busting param so a poisoned edge
   // response doesn't just replay — before giving up to the placeholder.
   const [attempt, setAttempt] = useState(0)
-  const upscaled = src ? upscaleEbayImage(src, size) : ''
+  const imgRef = useRef(null)
+  const upscaled = src ? upscaleEbayImage(src, Math.round(size * DPR)) : ''
 
   // Reset loading/error state when src changes — important for lists that
   // recycle the same DOM node across rows.
@@ -46,6 +51,16 @@ export default function CardImage({
     setLoaded(false)
     setAttempt(0)
   }, [upscaled])
+
+  // Cached images can be `complete` BEFORE React attaches onLoad — the
+  // handler then never fires and the card sat invisible (opacity-0 skeleton)
+  // forever. That was the "click a card, go back, every image is gone" bug:
+  // back-navigation serves all thumbnails from browser cache, so every one
+  // of them hit this race at once.
+  useEffect(() => {
+    const el = imgRef.current
+    if (!loaded && el && el.complete && el.naturalWidth > 0) setLoaded(true)
+  })
 
   const retryOrFail = () => {
     if (attempt < 2) {
@@ -88,6 +103,7 @@ export default function CardImage({
       )}
       <img
         key={attempt}
+        ref={imgRef}
         src={displaySrc}
         alt={alt}
         loading={loading}
