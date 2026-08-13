@@ -112,12 +112,25 @@ function SnipeImage({ src, driverName, teamColor }) {
   const [stage, setStage] = useState('initial') // initial | retry | failed
   const [url, setUrl] = useState(upscaled)
   const [loaded, setLoaded] = useState(false)
+  const imgRef = useRef(null)
 
   useEffect(() => {
     setStage('initial')
     setUrl(upscaled)
     setLoaded(false)
   }, [upscaled])
+
+  // ROOT CAUSE of "NO IMAGE" on rows with a perfectly valid image_url
+  // (confirmed live 2026-08-11): a cached/already-decoded image can be
+  // `complete` with real pixels (naturalWidth > 0) before React attaches
+  // onLoad — the handler then never fires, `loaded` stays false, and the
+  // 10s timer eventually marks it 'failed' even though nothing was ever
+  // actually wrong. Checked on every render — cheap, only writes state
+  // when there's a real transition to make.
+  useEffect(() => {
+    const el = imgRef.current
+    if (!loaded && el && el.complete && el.naturalWidth > 0) setLoaded(true)
+  })
 
   // Max-wait timer: if neither onLoad nor onError fires within 10s
   // (slow eBay CDN edge, blocked decode), fall through to placeholder.
@@ -131,6 +144,24 @@ function SnipeImage({ src, driverName, teamColor }) {
     const id = setTimeout(() => setStage('failed'), 10000)
     return () => clearTimeout(id)
   }, [upscaled, loaded, stage])
+
+  // A backgrounded/inactive tab throttles image decode, so a genuinely-fine
+  // URL can hit the 10s timer and get stuck 'failed' for the rest of the
+  // session even after the tab is active again (confirmed: fetching the
+  // exact same failed URL directly succeeds in <300ms once foregrounded).
+  // One retry on visibility-regain, so a background-tab false negative
+  // isn't permanent.
+  useEffect(() => {
+    if (stage !== 'failed') return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        setStage('initial')
+        setUrl(upscaled)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [stage, upscaled])
 
   if (!upscaled || stage === 'failed') {
     return (
@@ -147,6 +178,7 @@ function SnipeImage({ src, driverName, teamColor }) {
     <div className="relative w-16 h-20 rounded shrink-0 overflow-hidden bg-gray-800">
       {!loaded && <div className="absolute inset-0 bg-gray-800 animate-pulse" aria-hidden="true" />}
       <img
+        ref={imgRef}
         src={url}
         alt=""
         loading="lazy"

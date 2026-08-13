@@ -31,10 +31,24 @@ function ImageGallery({ images, title, driverName, teamColor }) {
   const [idx, setIdx] = useState(0)
   const [failed, setFailed] = useState(new Set())
   const [loaded, setLoaded] = useState(new Set())
+  const imgRef = useRef(null)
   const valid = images?.filter(Boolean) || []
   const displayable = valid.filter((_, i) => !failed.has(i))
   const safe = Math.min(idx, Math.max(0, displayable.length - 1))
   const isLoaded = loaded.has(safe)
+
+  // Cached/already-decoded images can be `complete` before React attaches
+  // onLoad — the handler then never fires and the hero image sits at
+  // opacity-0 forever even though real pixel data (naturalWidth > 0) is
+  // there. Same race CardImage.jsx was fixed for; this hand-rolled gallery
+  // never got the same treatment. Checked on every render — cheap (one DOM
+  // read, no state write unless it's actually newly complete).
+  useEffect(() => {
+    const el = imgRef.current
+    if (!isLoaded && el && el.complete && el.naturalWidth > 0) {
+      setLoaded(p => new Set([...p, safe]))
+    }
+  })
 
   if (!displayable.length) return (
     <div className="w-full h-64 rounded-xl overflow-hidden">
@@ -48,6 +62,7 @@ function ImageGallery({ images, title, driverName, teamColor }) {
         <div className="absolute inset-0 bg-gray-800 animate-pulse" aria-hidden="true" />
       )}
       <img
+        ref={imgRef}
         src={proxyImg(displayable[safe])}
         alt={title}
         loading="lazy"
