@@ -112,6 +112,17 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    """Standard hardening headers — API responses had none of these
+    (2026-08-11 security audit)."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
+
 # --- Global error handler -------------------------------------------------
 # Hard rule: NO unhandled 500s ever reach the browser. Every API route either
 # returns its real shape or a graceful empty/degraded version.

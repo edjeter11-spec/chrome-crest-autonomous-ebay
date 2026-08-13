@@ -104,6 +104,11 @@
       "dest": "frontend/dist/sw.js",
       "headers": { "Content-Type": "application/javascript" }
     },
+    {
+      "src": "/favicon.svg",
+      "dest": "frontend/dist/favicon.svg",
+      "headers": { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=31536000, immutable" }
+    },
     { "src": "/auctions/?", "dest": "frontend/dist/auctions/index.html" },
     { "src": "/bin/?", "dest": "frontend/dist/bin/index.html" },
     { "src": "/sales/?", "dest": "frontend/dist/sales/index.html" },

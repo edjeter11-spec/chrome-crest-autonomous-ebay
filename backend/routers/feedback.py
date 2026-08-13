@@ -2,6 +2,7 @@
 floating widget on the live site. Eddie reviews via /api/feedback/list (admin).
 """
 import hashlib
+import hmac
 import os
 from datetime import datetime
 from typing import Optional
@@ -29,7 +30,7 @@ def _hash_ip(ip: Optional[str]) -> Optional[str]:
 
 def _require_admin(x_admin_token: Optional[str] = Header(None)):
     expected = os.getenv("ADMIN_TOKEN", "")
-    if not expected or x_admin_token != expected:
+    if not expected or not x_admin_token or not hmac.compare_digest(x_admin_token, expected):
         raise HTTPException(status_code=401, detail="admin only")
 
 

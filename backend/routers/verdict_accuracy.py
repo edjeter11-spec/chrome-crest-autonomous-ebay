@@ -3,13 +3,14 @@ Verdict Accuracy Feedback — track how user-reviewed verdicts actually performe
 Enables closed-loop feedback: "Was this a win?" buttons on sold cards.
 """
 import json
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, case
 from datetime import datetime, timedelta
 from typing import Optional
 
 from database import get_db, VerdictFeedback, SoldCard, SystemState
+from lib.auth import client_ip
 
 router = APIRouter(prefix="/api/verdicts", tags=["verdicts"])
 
@@ -17,9 +18,15 @@ router = APIRouter(prefix="/api/verdicts", tags=["verdicts"])
 # public-facing scoreboard widget without clashing with the /api/verdicts prefix.
 public_router = APIRouter(prefix="/api/verdict", tags=["verdicts"])
 
+# No auth on this endpoint (intentional — anonymous up/down feedback is the
+# feature). Rate-limited by IP so it can't be spammed to pollute the public
+# accuracy scoreboard.
+_feedback_tracker: dict = {}  # client_ip -> last_submit_time
+
 
 @router.post("/feedback")
 def submit_verdict_feedback(
+    request: Request,
     sold_card_id: int,
     verdict_key: str,
     feedback: str = Query(..., regex="^(up|down|neutral)$"),
@@ -27,6 +34,11 @@ def submit_verdict_feedback(
     notes: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
+    key = client_ip(request)
+    last = _feedback_tracker.get(key, datetime.min)
+    if datetime.utcnow() - last < timedelta(seconds=2):
+        raise HTTPException(429, "Too many requests")
+    _feedback_tracker[key] = datetime.utcnow()
     """
     Record user feedback on a verdict's accuracy.
     - feedback: 'up' (verdict was right/underpriced), 'down' (verdict was wrong/overpriced), 'neutral'

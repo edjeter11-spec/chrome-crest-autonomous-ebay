@@ -1,5 +1,5 @@
 import { lazy, Suspense, Component } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom'
 import useKeyboardShortcuts from './lib/useKeyboardShortcuts'
 import Layout from './components/Layout'
 import { AuthProvider, useAuth } from './lib/auth'
@@ -172,6 +172,15 @@ export default function App() {
           <Route path="affiliate-roi" element={<Suspense fallback={<PageFallback />}><AffiliateROI /></Suspense>} />
           <Route path="admin/feedback" element={<Suspense fallback={<PageFallback />}><AdminFeedback /></Suspense>} />
           <Route path="how-we-score" element={<Suspense fallback={<PageFallback />}><HowWeScore /></Suspense>} />
+          {/* No path="*" previously — an unmatched URL rendered the Layout
+              shell (header/footer) with a blank Outlet and no messaging. */}
+          <Route path="*" element={
+            <div className="flex flex-col items-center justify-center text-center px-6 py-24 gap-3">
+              <h1 className="text-2xl font-black text-white">Page not found</h1>
+              <p className="text-gray-500 text-sm max-w-sm">That link doesn't match anything here.</p>
+              <Link to="/" className="mt-2 text-red-500 hover:text-red-400 font-semibold text-sm">Back to Dashboard</Link>
+            </div>
+          } />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -1,6 +1,7 @@
 """Affiliate click-out tracking — logs outbound eBay clicks for EPN attribution analytics."""
 import os
 import hashlib
+import hmac
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -60,7 +61,7 @@ def _client_ip(request: Request) -> Optional[str]:
 
 def _require_admin(x_admin_token: Optional[str] = Header(None)):
     expected = os.getenv("ADMIN_TOKEN", "")
-    if not expected or x_admin_token != expected:
+    if not expected or not x_admin_token or not hmac.compare_digest(x_admin_token, expected):
         raise HTTPException(status_code=401, detail="admin only")
 
 

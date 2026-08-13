@@ -2,6 +2,7 @@
 Sales Database — queries against the SoldCard table.
 """
 from fastapi import APIRouter, Depends, Query, Response, HTTPException
+from lib.auth import require_admin
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
@@ -768,10 +769,16 @@ def sales_volatility_heatmap(
 
 
 @router.post("/backfill-from-price-history")
-def backfill_from_price_history(db: Session = Depends(get_db)):
+def backfill_from_price_history(db: Session = Depends(get_db), _auth: None = Depends(require_admin)):
     """
     One-time bootstrap: promote existing price_history rows into the new
     SoldCard table so users see real data immediately.
+
+    Admin-gated — this had NO auth and was verified live-callable by anyone
+    (2026-08-11 security audit), inserting rows into prod on an
+    unauthenticated POST. Idempotent (dedupes on ebay_item_id) so no
+    corruption occurred, but it's a full-table scan + bulk insert that
+    shouldn't be triggerable by an anonymous caller on demand.
     """
     from database import PriceHistory, Card
     from sqlalchemy import and_

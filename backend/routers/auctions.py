@@ -585,9 +585,22 @@ def get_auction(auction_id: int, db: Session = Depends(get_db)):
     return auction_to_dict(a)
 
 
+# Global column (not per-user) + zero auth — rate-limit by IP so an
+# automated caller can't flip status in a tight loop and corrupt the
+# site-wide watchlist feed every dashboard/Wishlist page reads from.
+_watchlist_tracker: dict = {}  # client_ip -> last_toggle_time
+
+
 @router.post("/{auction_id}/watchlist")
-def toggle_watchlist(auction_id: int, db: Session = Depends(get_db)):
+def toggle_watchlist(auction_id: int, request: Request, db: Session = Depends(get_db)):
     """Toggle an auction between active and watchlist status."""
+    from datetime import timedelta
+    key = client_ip(request)
+    last = _watchlist_tracker.get(key, datetime.min)
+    if datetime.utcnow() - last < timedelta(seconds=1):
+        raise HTTPException(429, "Too many requests")
+    _watchlist_tracker[key] = datetime.utcnow()
+
     a = db.query(Auction).filter(Auction.id == auction_id).first()
     if not a:
         raise HTTPException(404, "Auction not found")
