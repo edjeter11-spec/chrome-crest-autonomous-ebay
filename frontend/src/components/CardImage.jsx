@@ -52,16 +52,6 @@ export default function CardImage({
     setAttempt(0)
   }, [upscaled])
 
-  // Cached images can be `complete` BEFORE React attaches onLoad — the
-  // handler then never fires and the card sat invisible (opacity-0 skeleton)
-  // forever. That was the "click a card, go back, every image is gone" bug:
-  // back-navigation serves all thumbnails from browser cache, so every one
-  // of them hit this race at once.
-  useEffect(() => {
-    const el = imgRef.current
-    if (!loaded && el && el.complete && el.naturalWidth > 0) setLoaded(true)
-  })
-
   const retryOrFail = () => {
     if (attempt < 2) {
       setAttempt(a => a + 1)
@@ -117,6 +107,25 @@ export default function CardImage({
   const displaySrc = attempt > 0
     ? `${upscaled}${upscaled.includes('?') ? '&' : '?'}retry=${attempt}`
     : upscaled
+
+  // Cached images can be `complete` BEFORE React attaches onLoad — the
+  // handler then never fires and the card sat invisible (opacity-0 skeleton)
+  // forever. That was the "click a card, go back, every image is gone" bug:
+  // back-navigation serves all thumbnails from browser cache, so every one
+  // of them hit this race at once. A single post-render check isn't always
+  // enough either (naturalWidth can land a beat after the one check this
+  // effect gets if nothing else re-renders the component) — poll briefly.
+  useEffect(() => {
+    if (loaded) return
+    const check = () => {
+      const el = imgRef.current
+      if (el && (el.complete || el.naturalWidth > 0)) { setLoaded(true); return true }
+      return false
+    }
+    if (check()) return
+    const id = setInterval(() => { if (check()) clearInterval(id) }, 300)
+    return () => clearInterval(id)
+  }, [loaded, displaySrc])
 
   if (!upscaled || failed) {
     return (

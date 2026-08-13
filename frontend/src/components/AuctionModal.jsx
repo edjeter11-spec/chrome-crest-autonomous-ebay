@@ -40,15 +40,25 @@ function ImageGallery({ images, title, driverName, teamColor }) {
   // Cached/already-decoded images can be `complete` before React attaches
   // onLoad — the handler then never fires and the hero image sits at
   // opacity-0 forever even though real pixel data (naturalWidth > 0) is
-  // there. Same race CardImage.jsx was fixed for; this hand-rolled gallery
-  // never got the same treatment. Checked on every render — cheap (one DOM
-  // read, no state write unless it's actually newly complete).
+  // there. A single post-render check isn't enough: if nothing else
+  // re-renders this component, the check only ever runs once, and a
+  // `naturalWidth` that lands a beat later (confirmed live: stuck at
+  // complete:false/naturalWidth:600 for 20+s straight) is never re-checked.
+  // Poll briefly instead of relying on a re-render to trigger the recheck.
   useEffect(() => {
-    const el = imgRef.current
-    if (!isLoaded && el && el.complete && el.naturalWidth > 0) {
-      setLoaded(p => new Set([...p, safe]))
+    if (isLoaded) return
+    const check = () => {
+      const el = imgRef.current
+      if (el && (el.complete || el.naturalWidth > 0)) {
+        setLoaded(p => new Set([...p, safe]))
+        return true
+      }
+      return false
     }
-  })
+    if (check()) return
+    const id = setInterval(() => { if (check()) clearInterval(id) }, 300)
+    return () => clearInterval(id)
+  }, [isLoaded, safe])
 
   if (!displayable.length) return (
     <div className="w-full h-64 rounded-xl overflow-hidden">

@@ -121,16 +121,23 @@ function SnipeImage({ src, driverName, teamColor }) {
   }, [upscaled])
 
   // ROOT CAUSE of "NO IMAGE" on rows with a perfectly valid image_url
-  // (confirmed live 2026-08-11): a cached/already-decoded image can be
-  // `complete` with real pixels (naturalWidth > 0) before React attaches
-  // onLoad — the handler then never fires, `loaded` stays false, and the
-  // 10s timer eventually marks it 'failed' even though nothing was ever
-  // actually wrong. Checked on every render — cheap, only writes state
-  // when there's a real transition to make.
+  // (confirmed live 2026-08-11): a cached/already-decoded image can become
+  // ready with real pixels (naturalWidth > 0) without React ever seeing
+  // `complete` flip or onLoad fire — the 10s timer then marks it 'failed'
+  // even though nothing was ever actually wrong. A single post-render check
+  // isn't enough (if nothing re-renders this component the check only runs
+  // once and can land before naturalWidth updates) — poll briefly instead.
   useEffect(() => {
-    const el = imgRef.current
-    if (!loaded && el && el.complete && el.naturalWidth > 0) setLoaded(true)
-  })
+    if (loaded) return
+    const check = () => {
+      const el = imgRef.current
+      if (el && (el.complete || el.naturalWidth > 0)) { setLoaded(true); return true }
+      return false
+    }
+    if (check()) return
+    const id = setInterval(() => { if (check()) clearInterval(id) }, 300)
+    return () => clearInterval(id)
+  }, [loaded, url])
 
   // Max-wait timer: if neither onLoad nor onError fires within 10s
   // (slow eBay CDN edge, blocked decode), fall through to placeholder.
