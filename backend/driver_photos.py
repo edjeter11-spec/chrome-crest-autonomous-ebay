@@ -45,7 +45,27 @@ DRIVER_WIKIPEDIA = {
     "Nico Hulkenberg": "Nico Hülkenberg",
     "Jack Doohan": "Jack Doohan",
     "Isack Hadjar": "Isack Hadjar",
+    "Alex Albon": "Alex Albon",
+    "Franco Colapinto": "Franco Colapinto",
+    # F2/F3 drivers who appear in the Chrome set (and so in top-sellers).
+    "Gabriele Mini": "Gabriele Minì",
+    "Leonardo Fornaroli": "Leonardo Fornaroli",
+    # Legends subset — these show up in sales/driver lists too.
+    "Ayrton Senna": "Ayrton Senna",
+    "Michael Schumacher": "Michael Schumacher",
+    "Alain Prost": "Alain Prost",
+    "Nigel Mansell": "Nigel Mansell",
+    "Damon Hill": "Damon Hill",
+    "James Hunt": "James Hunt",
+    "Jackie Stewart": "Jackie Stewart",
+    "Mika Hakkinen": "Mika Häkkinen",
+    "Kimi Raikkonen": "Kimi Räikkönen",
 }
+
+# Non-driver subjects that appear in `driver_name` (team-branded cards).
+# Without this the avatar endpoint burns a Wikipedia round-trip per request
+# and still 404s, leaving a blank circle in the UI.
+NON_DRIVER_NAMES = {"McLaren (Team)", "Mercedes (Team)"}
 
 # Hard fallbacks for drivers whose Wikipedia page image fetch is flaky.
 _PHOTO_FALLBACKS: dict[str, str] = {
@@ -127,6 +147,11 @@ async def get_photo(driver_name: str) -> str:
     3. Wikipedia API fetch
     4. Hardcoded fallbacks
     """
+    # Team-branded cards carry a team name in driver_name — there's no
+    # headshot to find, so don't spend a Wikipedia round-trip to 404.
+    if driver_name in NON_DRIVER_NAMES:
+        return ""
+
     cached = _photo_cache.get(driver_name, "")
     if cached and not is_wikimedia_original(cached):
         return cached
