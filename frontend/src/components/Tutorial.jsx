@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { X, Gavel, Tag, Database, Users, Share, Smartphone, Target, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -64,6 +64,12 @@ export default function Tutorial({ onClose }) {
   const [step, setStep] = useState(0)
   const platform = useMemo(detectPlatform, [])
 
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div
@@ -79,7 +85,7 @@ export default function Tutorial({ onClose }) {
               {step === 0 ? 'Six things to know' : 'Turn this into a real app — takes 5 seconds'}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white">
+          <button onClick={onClose} aria-label="Close tutorial" className="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white">
             <X size={16} />
           </button>
         </div>
