@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, lazy, Suspense } from 'react'
+import { useEffect, useState, useMemo, lazy, Suspense, startTransition } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ArrowLeftRight, TrendingUp, TrendingDown, ExternalLink, Calculator } from 'lucide-react'
 
@@ -30,7 +30,9 @@ function groupByKey(sales) {
 export default function Arbitrage() {
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') === 'grade' ? 'grade' : 'arb'
-  const setTab = (t) => setParams(t === 'arb' ? {} : { tab: t })
+  // startTransition: the 'grade' tab renders a lazy() chunk, which would
+  // otherwise suspend during synchronous input (React error #426).
+  const setTab = (t) => startTransition(() => setParams(t === 'arb' ? {} : { tab: t }))
   const [loading, setLoading] = useState(true)
   const [ebay, setEbay] = useState([])
   const [scp, setScp] = useState([])

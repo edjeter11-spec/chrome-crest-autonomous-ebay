@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense, startTransition } from 'react'
 import { TrendingUp, TrendingDown, DollarSign, Package, Pencil, Trash2, X, Check, Plus, Award, AlertTriangle, Upload, Sparkles, Camera, Zap, Car } from 'lucide-react'
 import StatCard from '../components/StatCard'
 import CSVImportModal from '../components/CSVImportModal'
@@ -664,7 +664,9 @@ export default function Portfolio() {
             tab === 'holdings' ? 'text-white border-red-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>
           <Package size={14} /> Holdings
         </button>
-        <button onClick={() => setTab('ai')}
+        {/* startTransition: the AI tab renders a lazy() chunk — suspending
+            during synchronous input is fatal (React error #426). */}
+        <button onClick={() => startTransition(() => setTab('ai'))}
           className={`px-4 py-2 text-sm font-bold flex items-center gap-1.5 border-b-2 transition-colors ${
             tab === 'ai' ? 'text-white border-red-500' : 'text-gray-500 border-transparent hover:text-gray-300'}`}>
           <Sparkles size={14} /> AI Grader

@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, Link } from 'react-router-dom'
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense, startTransition } from 'react'
 import {
   LayoutDashboard, Gavel, Tag, Users, Briefcase, Heart, TrendingUp,
   Bell, Wifi, WifiOff, AlertCircle, ChevronLeft, Menu, X, Zap, Shield,
@@ -132,6 +132,12 @@ export default function Layout() {
       clearTimeout(safety)
     }
   }
+
+  // startTransition: Tutorial is a lazy() chunk, so mounting it inside a
+  // discrete input event (the help-button click) made React suspend during
+  // synchronous input — minified React error #426, which crashed the whole
+  // app. A transition lets React show the Suspense fallback instead.
+  const openTutorial = () => startTransition(() => setShowTutorial(true))
 
   const dismissTutorial = () => {
     try { localStorage.setItem('cc_tutorial_seen', '1') } catch {}
@@ -460,7 +466,9 @@ export default function Layout() {
       </div>
 
       {showTutorial && (
-        <Suspense fallback={null}>
+        <Suspense fallback={
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+        }>
           <Tutorial onClose={dismissTutorial} />
         </Suspense>
       )}
@@ -469,7 +477,7 @@ export default function Layout() {
           (MobileHeaderMenu) since there's no separate header bar to float
           over there; this used to render fixed on mobile too and sat right
           on top of the logo wordmark. */}
-      {!showTutorial && <TopRightMenu user={user} signOut={signOut} onHelp={() => setShowTutorial(true)} />}
+      {!showTutorial && <TopRightMenu user={user} signOut={signOut} onHelp={openTutorial} />}
     </div>
   )
 }

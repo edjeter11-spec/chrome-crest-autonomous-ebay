@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense, startTransition } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import {
   Gavel, Flame, Database, DollarSign, Zap, Activity,
@@ -148,6 +148,12 @@ export default function Dashboard() {
 
   // Card detail modal — opens when a user clicks an AuctionCard body.
   const [detailAuction, setDetailAuction] = useState(null)
+  // startTransition: CardDetailModal is a lazy() chunk. Opening it straight
+  // from a click suspended during synchronous input, which React treats as
+  // fatal (minified error #426 — crashed the app on the first card tap of a
+  // session, before the chunk was cached). A transition lets the Suspense
+  // fallback render instead.
+  const openDetail = (a) => startTransition(() => setDetailAuction(a))
 
   const [ebayLimited, setEbayLimited] = useState(false)
 
@@ -525,7 +531,9 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 max-w-[1800px]">
       {detailAuction && (
-        <Suspense fallback={null}>
+        <Suspense fallback={
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+        }>
           <CardDetailModal auction={detailAuction} onClose={() => setDetailAuction(null)} />
         </Suspense>
       )}
@@ -701,7 +709,7 @@ export default function Dashboard() {
           <BiggestSnipes
             auctions={auctions}
             loading={auctionsLoading}
-            onAuctionClick={a => setDetailAuction(a)}
+            onAuctionClick={openDetail}
           />
         </Suspense>
       </SectionBoundary>
@@ -884,7 +892,7 @@ export default function Dashboard() {
           <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
             {(endingStrip || []).filter(Boolean).map((a, i) => (
               <div key={a?.id ?? i} className="w-[78vw] max-w-[300px] sm:w-64 shrink-0 snap-start">
-                <AuctionCard auction={a} onClick={() => setDetailAuction(a)} priority={i < 3} />
+                <AuctionCard auction={a} onClick={() => openDetail(a)} priority={i < 3} />
               </div>
             ))}
           </div>
@@ -918,7 +926,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {(hotSnipes || []).filter(Boolean).map((a, i) => <AuctionCard key={a?.id ?? i} auction={a} onClick={() => setDetailAuction(a)} />)}
+            {(hotSnipes || []).filter(Boolean).map((a, i) => <AuctionCard key={a?.id ?? i} auction={a} onClick={() => openDetail(a)} />)}
           </div>
         )}
       </div>
