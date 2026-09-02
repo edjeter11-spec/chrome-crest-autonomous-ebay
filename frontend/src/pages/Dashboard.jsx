@@ -10,12 +10,12 @@ import DriverAvatar from '../components/DriverAvatar'
 import { sanitizeAuctions } from '../lib/sanitizeAuction'
 import RaceCalendarStrip from '../components/RaceCalendarStrip'
 import { SkeletonBox, SkeletonCard, SkeletonCardRow, SkeletonStat } from '../components/Skeleton'
-// BiggestSnipes hides behind the "Show more analytics" toggle and
-// WelcomeModal only shows once per user — defer both off the critical path.
+// BiggestSnipes hides behind the "Show more analytics" toggle — defer off
+// the critical path. First-visit welcome is Tutorial (Layout.jsx) only —
+// see its comment for why the other two modals were retired.
 // CardDetailModal only renders when a card is clicked (detailAuction != null).
 // EndingStripEmpty only renders when the ending strip has 0 items.
 const BiggestSnipes = lazy(() => import('../components/BiggestSnipes'))
-const WelcomeModal = lazy(() => import('../components/WelcomeModal'))
 const CardDetailModal = lazy(() => import('../components/CardDetailModal'))
 const EndingStripEmpty = lazy(() => import('../components/EndingStripEmpty'))
 import { swrFetch } from '../lib/cache'
@@ -524,7 +524,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 max-w-[1800px]">
-      <Suspense fallback={null}><WelcomeModal /></Suspense>
       {detailAuction && (
         <Suspense fallback={null}>
           <CardDetailModal auction={detailAuction} onClose={() => setDetailAuction(null)} />
@@ -622,6 +621,7 @@ export default function Dashboard() {
                         <DriverAvatar
                           name={driverName}
                           className="w-full h-full object-cover text-sm"
+                          loading="eager"
                         />
                       </div>
                       <span

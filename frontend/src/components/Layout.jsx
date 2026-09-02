@@ -8,10 +8,12 @@ import {
 } from 'lucide-react'
 import { pushSupported, isSubscribed, subscribePush, unsubscribePush } from '../lib/push'
 // Heavy one-off modals: lazy-loaded so first paint doesn't pay for code 99% of users never see.
-// Tutorial is gated behind `cc_tutorial_seen`, OnboardingTour behind `cc_onboarding_v2_dismissed`,
-// and FeedbackWidget only renders interactive UI when the user clicks it.
+// Tutorial is gated behind `cc_tutorial_seen` and is the ONLY auto-shown
+// first-visit surface — it used to run alongside OnboardingTour and
+// WelcomeModal (both retired 2026-08-13), which stacked up to 3 near-identical
+// "Welcome to F1 Card Vault" modals on a single first load.
+// FeedbackWidget only renders interactive UI when the user clicks it.
 const Tutorial = lazy(() => import('./Tutorial'))
-const OnboardingTour = lazy(() => import('./OnboardingTour'))
 const FeedbackWidget = lazy(() => import('./FeedbackWidget'))
 import StatusFooter from './StatusFooter'
 import { useAuth } from '../lib/auth'
@@ -374,12 +376,20 @@ export default function Layout() {
             <Menu size={22} />
           </button>
           <Logo compact size={26} />
-          {snipeCount > 0 ? (
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-600/20">
-              <Zap size={10} className="text-red-400" fill="currentColor" />
-              <span className="text-[10px] font-black text-red-400">{snipeCount}</span>
-            </div>
-          ) : <div className="w-8" />}
+          <div className="flex items-center gap-1.5">
+            {snipeCount > 0 && (
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-600/20">
+                <Zap size={10} className="text-red-400" fill="currentColor" />
+                <span className="text-[10px] font-black text-red-400">{snipeCount}</span>
+              </div>
+            )}
+            {/* Account/sign-in lives inline in the bar on mobile — it used to
+                float as a separate `fixed` element at roughly this same
+                position, overlapping the logo text ("CARD VAI[gn in]").
+                TopRightMenu below is now md:flex-only (desktop, which has
+                no top bar to collide with). */}
+            <MobileHeaderMenu user={user} signOut={signOut} onHelp={() => setShowTutorial(true)} />
+          </div>
         </div>
 
         {/* Snipe alert banner */}
@@ -396,7 +406,6 @@ export default function Layout() {
         )}
 
         <main className="flex-1 overflow-y-auto p-3 md:p-6 overflow-x-hidden pb-24 md:pb-6">
-          <Suspense fallback={null}><OnboardingTour /></Suspense>
           <Outlet />
           {/* FTC-required affiliate disclosure */}
           <div className="max-w-6xl mx-auto mt-10 pt-6 border-t border-gray-800/60 light:border-gray-300">
@@ -456,7 +465,75 @@ export default function Layout() {
         </Suspense>
       )}
 
+      {/* Desktop only — mobile's equivalent lives inline in the top bar
+          (MobileHeaderMenu) since there's no separate header bar to float
+          over there; this used to render fixed on mobile too and sat right
+          on top of the logo wordmark. */}
       {!showTutorial && <TopRightMenu user={user} signOut={signOut} onHelp={() => setShowTutorial(true)} />}
+    </div>
+  )
+}
+
+// Compact account control for the mobile top bar's own flex row — renders
+// inline, never `fixed`, so it can't overlap sibling content.
+function MobileHeaderMenu({ user, signOut, onHelp }) {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [open])
+
+  if (user) {
+    return (
+      <div className="relative">
+        <button
+          onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
+          className="w-9 h-9 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700/50 flex items-center justify-center"
+          aria-label="Account menu"
+          aria-haspopup="true"
+          aria-expanded={open}
+          title={user.email || 'Account'}
+        >
+          <User size={15} />
+        </button>
+        {open && (
+          <div
+            className="absolute right-0 mt-1 w-44 rounded-xl bg-gray-900 border border-gray-700/60 shadow-xl py-1 text-sm z-50"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-3 py-2 text-[11px] text-gray-500 border-b border-gray-800 truncate">{user.email || 'Signed in'}</div>
+            <Link to="/my-cards" onClick={() => setOpen(false)} className="block px-3 py-2 text-gray-300 hover:bg-gray-800">My Cards</Link>
+            <Link to="/portfolio" onClick={() => setOpen(false)} className="block px-3 py-2 text-gray-300 hover:bg-gray-800">Portfolio</Link>
+            <button
+              onClick={() => { setOpen(false); onHelp() }}
+              className="w-full text-left px-3 py-2 text-gray-300 hover:bg-gray-800"
+            >Tutorial</button>
+            <button
+              onClick={() => { setOpen(false); signOut?.() }}
+              className="w-full text-left px-3 py-2 text-red-400 hover:bg-red-900/30 border-t border-gray-800"
+            >Sign out</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={onHelp}
+        className="w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 flex items-center justify-center"
+        aria-label="Help"
+        title="Show tutorial"
+      >
+        <HelpCircle size={14} />
+      </button>
+      <Link
+        to="/login"
+        className="inline-flex items-center justify-center px-3 py-1.5 min-h-[32px] rounded-full text-[11px] font-bold bg-red-600 text-white border border-red-500 hover:bg-red-500 shadow-sm shadow-red-900/40 whitespace-nowrap"
+      >Sign in</Link>
     </div>
   )
 }
@@ -472,10 +549,10 @@ function TopRightMenu({ user, signOut, onHelp }) {
 
   if (user) {
     return (
-      <div className="fixed top-[calc(env(safe-area-inset-top,0px)+0.75rem)] right-3 md:top-4 md:right-4 z-40">
+      <div className="hidden md:block fixed top-4 right-4 z-40">
         <button
           onClick={(e) => { e.stopPropagation(); setOpen(o => !o) }}
-          className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
+          className="w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
           aria-label="Account menu"
           aria-haspopup="true"
           aria-expanded={open}
@@ -506,14 +583,14 @@ function TopRightMenu({ user, signOut, onHelp }) {
   }
 
   return (
-    <div className="fixed top-[calc(env(safe-area-inset-top,0px)+0.75rem)] right-3 md:top-4 md:right-4 z-40 flex items-center gap-2">
+    <div className="hidden md:flex fixed top-4 right-4 z-40 items-center gap-2">
       <Link
         to="/login"
-        className="inline-flex items-center justify-center px-4 py-2 sm:py-1.5 min-h-[40px] sm:min-h-0 rounded-full text-xs font-bold bg-red-600 text-white border border-red-500 hover:bg-red-500 shadow-md shadow-red-900/40"
+        className="inline-flex items-center justify-center px-4 py-1.5 rounded-full text-xs font-bold bg-red-600 text-white border border-red-500 hover:bg-red-500 shadow-md shadow-red-900/40"
       >Sign in</Link>
       <button
         onClick={onHelp}
-        className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
+        className="w-8 h-8 rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/50 flex items-center justify-center backdrop-blur-sm shadow-lg"
         aria-label="Help"
         title="Show tutorial"
       >
